@@ -1,0 +1,8 @@
+{
+  "name": "guad",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Guad: documentation, scheduling and AI coverage for disability support agencies",
+  "engines": { "node": ">=18" },
+  "scripts": {}
+}
