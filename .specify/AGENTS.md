@@ -11,13 +11,13 @@ Before writing any code, read the relevant `.specify/` files:
 | File | Contains |
 |------|----------|
 | `constitution.md` | Non-negotiable engineering principles (14 rules). Read this first. |
-| `schema.ts` | Drizzle pgTable definitions for all 30 tables. This is the single source of truth for the data model. |
+| `schema.ts` | Drizzle pgTable definitions for all 37 tables. This is the single source of truth for the data model. |
 | `services.md` | Service boundaries, data ownership matrix, dependency graph, BullMQ job registry. |
 | `trpc-router.md` | Every tRPC procedure: input/output types, required role, behavior. |
 | `charting-ux.md` | Screen-by-screen UX spec, component catalog, accessibility requirements, charting preset system. |
 | `ai-pipeline.md` | Lomi AI: prompts, model config, fallback strategy, HIPAA compliance, rate limits. |
 | `security.md` | Threat model, auth flows, PHI inventory, encryption, breach response, BAA matrix. |
-| `rls.sql` | Row-Level Security policies for every table. |
+| `rls.sql` | Row-Level Security policies for every table, plus integrity triggers (privileged columns, note transitions, MAR immutability, server-side clock verification, audit). Tested by `tests/rls/run.sh`. |
 | `openapi.yaml` | External API spec (EVV, reports, exports, webhooks). |
 | `notifications.md` | Notification types, channels, escalation rules, user preferences. |
 | `offline-sync.md` | PowerSync sync rules, conflict resolution, data lifecycle on device. |
@@ -82,7 +82,7 @@ The `charting_preset` agency config (`"therap"` or `"default"`) changes UI label
 
 ### 8. MAR entries are irrevocable
 
-Once a MAR entry is recorded as `given`, it cannot be deleted -- only amended with a correction entry referencing the original. This maintains a complete medication administration history for regulatory compliance.
+Once a MAR entry is recorded (given, refused or held), it cannot be edited or deleted -- only amended with a new correction entry whose `amends_id` references the original. This matches constitution principle 13; the `mar_records_immutable` trigger enforces it. This maintains a complete medication administration history for regulatory compliance.
 
 ### 9. tRPC internal, OpenAPI external
 
@@ -163,7 +163,7 @@ Reference these when implementing validation, forms, and business logic:
 - **Incident severity:** Low, Medium, High (title case, matches `incident_severity` in schema.ts)
 - **Note statuses:** draft -> submitted -> approved | returned
 - **Coverage statuses:** searching -> filled | unfilled
-- **MAR statuses:** given, refused, held (given is irrevocable)
+- **MAR statuses:** given, refused, held (all irrevocable; corrections are amendments)
 
 ## Code Style
 

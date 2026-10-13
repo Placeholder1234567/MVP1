@@ -46,7 +46,7 @@ The MVP stores **all application data as a single JSON object** in the browser's
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Database | Supabase Postgres (minimum version tracked in `supabase/config.toml`) | 30 normalized tables, RLS, realtime subscriptions |
+| Database | Supabase Postgres (minimum version tracked in `supabase/config.toml`) | 37 normalized tables, RLS, realtime subscriptions |
 | Auth | Supabase Auth | Email/password, magic link, SSO, MFA, JWT with agency_id claim |
 | ORM | Drizzle | Type-safe schema definition, migration generation |
 | Internal API | tRPC | End-to-end typed frontend-to-backend communication |
@@ -84,7 +84,7 @@ The MVP is a prototype containing only synthetic test data entered during develo
 | Reason | Detail |
 |--------|--------|
 | No real data exists | MVP contains only developer-entered test scenarios |
-| Schema incompatibility | MVP uses nested JSON objects; production uses 30 normalized tables |
+| Schema incompatibility | MVP uses nested JSON objects; production uses 37 normalized tables |
 | ID format change | MVP uses 8-char random strings; production uses UUIDs |
 | No auth mapping | MVP has no user accounts; production requires Supabase Auth UIDs |
 | Compliance risk | Any automated data transfer from an unauthenticated plaintext store would create audit complications |
@@ -599,7 +599,7 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | SvelteKit project init | `npm create svelte@latest`, Svelte 5 runes mode, TypeScript strict, Vite | Repo with `src/`, `static/`, `svelte.config.js` |
 | Supabase project setup | Create project, enable Auth (email/password + magic link), configure JWT claims for `agency_id` | Supabase dashboard configured, env vars set |
 | Drizzle ORM setup | Install `drizzle-orm` + `drizzle-kit`, copy `schema.ts` from `.specify/`, configure `drizzle.config.ts` | `npx drizzle-kit push` succeeds |
-| Schema push | Push all 30 tables to local Supabase Postgres | All tables created with indexes |
+| Schema push | Push all 37 tables to local Supabase Postgres | All tables created with indexes |
 | RLS policies | Apply all policies from `.specify/rls.sql` | `SELECT * FROM pg_policies` shows complete coverage |
 | Auth integration | Supabase Auth client in SvelteKit hooks, session management, role extraction from JWT | Login/logout works, roles propagate |
 | Seed script | Faker.js-based seed (see Section 8) | `npm run db:seed` populates dev database |

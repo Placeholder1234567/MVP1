@@ -9,7 +9,7 @@ Supabase Postgres 15+        PowerSync Service          Client (PWA)
  (source of truth)         (sync gateway)           (wa-sqlite via OPFS)
  ┌──────────────┐         ┌──────────────┐         ┌──────────────────┐
  │              │  WAL    │              │  delta   │  wa-sqlite DB    │
- │  30 tables   │────────>│  Sync Rules  │────────> │  (encrypted,     │
+ │  37 tables   │────────>│  Sync Rules  │────────> │  (encrypted,     │
  │  RLS-enforced│         │  (YAML)      │         │   OPFS-backed)   │
  │              │<────────│              │<────────│                  │
  │              │  writes │  Bucket      │  write  │  Write Queue     │

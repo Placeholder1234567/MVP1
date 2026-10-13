@@ -85,7 +85,7 @@ function lint() {
   const services = read("services.md");
   const trpcRouter = read("trpc-router.md");
   const agents = read("AGENTS.md");
-  const claudeMd = read("CLAUDE.md");
+  const claudeMd = read("../CLAUDE.md") || read("CLAUDE.md");  // moved to the repo root
   const offlineSync = read("offline-sync.md");
   const notifications = read("notifications.md");
   const chartingUx = read("charting-ux.md");

@@ -2,6 +2,11 @@
 
 ## Quick Start
 
+> **The SvelteKit app isn't set up yet.** The commands below are for the rebuild. Today the repo holds the vanilla-JS MVP (run it with `npx vercel dev`, see README.md) and the specs in `.specify/`. Spec checks you can run now:
+>
+> - `node .specify/lint.js`: cross-spec consistency
+> - `bash .specify/tests/rls/run.sh`: applies `schema.ts` + `rls.sql` to a throwaway Postgres (needs Docker) and runs the RLS and integrity-trigger tests
+
 ```bash
 npm install
 npx supabase start          # Local Postgres + Auth (or set SUPABASE_URL + SUPABASE_ANON_KEY)
@@ -49,14 +54,14 @@ Read `.specify/` for full specs. Key files:
 | File | What to read it for |
 |------|---------------------|
 | `.specify/constitution.md` | Engineering principles -- read before writing any code |
-| `.specify/schema.ts` | Database schema (30 Drizzle pgTable definitions, source of truth) |
+| `.specify/schema.ts` | Database schema (37 Drizzle pgTable definitions, source of truth) |
 | `.specify/services.md` | Service boundaries, data ownership, dependencies |
 | `.specify/trpc-router.md` | tRPC procedure specification (20 routers, all input/output types) |
 | `.specify/charting-ux.md` | Screen specs, component catalog, UX flows, accessibility |
 | `.specify/ai-pipeline.md` | Lomi AI: prompts, models, fallback, rate limits |
 | `.specify/ai-voice-analysis.md` | **Voice architecture decision: batch vs real-time, per-section editing** |
 | `.specify/security.md` | Auth, PHI handling, encryption, breach response |
-| `.specify/rls.sql` | Row-Level Security policies for all tables |
+| `.specify/rls.sql` | Row-Level Security policies and integrity triggers (column, state-transition and audit rules RLS can't express) |
 | `.specify/openapi.yaml` | External API (EVV, reports, exports, webhooks) |
 | `.specify/design-system.md` | **Visual identity: exact colors, fonts, radii, shadows from production CSS** |
 | `.specify/notifications.md` | Notification types, escalation rules |
@@ -83,7 +88,8 @@ These are absolute. Do not deviate.
 - **NO custom auth.** All auth goes through Supabase Auth. No custom JWTs, no custom session cookies, no tokens in localStorage.
 - **NO secrets in client bundle.** API keys, AWS/Azure credentials, Twilio tokens -- server-side env vars only. Supabase anon key is the sole exception.
 - **NO schema branching on charting preset.** Preset affects UI labels and form ordering only. Same schema, same API, same validation for `"therap"` and `"default"`.
-- **NO deleting MAR records.** `given` entries are irrevocable. Corrections are amendments referencing the original.
+- **NO deleting or editing MAR records.** Every MAR entry (given, refused, held) is irrevocable. Corrections are new records with `amends_id` referencing the original.
+- **NO writing to Supabase from the client.** Online writes go through tRPC, offline writes through `sync.upload`. RLS and the triggers in `rls.sql` are the backstop, not the main validation.
 - **NO calling OpenAPI from internal UI.** tRPC for all frontend-to-backend. OpenAPI is for external integrations only.
 
 ## Conventions
