@@ -75,6 +75,18 @@ member stops recording.
 
 API reference for the Lomi function: https://docs.claude.com/en/api/overview
 
+### Protect the API routes
+
+`/api/lomi` and `/api/transcribe` spend your Anthropic and OpenAI credits, and
+there are no user accounts yet. `api/_guard.js` rejects requests that don't come
+from the app's own pages and rate-limits each IP address, but a script can fake
+the Origin header. For any deployment with real API keys:
+
+1. Turn on **Project Settings → Deployment Protection** in Vercel (password or
+   Vercel Authentication) so only your team can open the app or its API.
+2. If the app is served from more than one domain, list the extra hosts in
+   `GUAD_ALLOWED_ORIGINS` (comma-separated, e.g. `guad.example.org`).
+
 ## How location check-in works
 
 - Each home has latitude, longitude and a radius (default 150 m). Admins set these in **Setup**, either by typing coordinates or by tapping **Use my location** while standing at the home.
@@ -103,7 +115,7 @@ Every meaningful action is appended to `state.events` with a type, timestamp, ho
 - [ ] Replace `src/store.js` with a HIPAA-ready backend: encrypted database, per-user access by role and home, append-only audit log, backups
 - [ ] Real authentication (replace the development sign-in screen) and staff invitations
 - [ ] Signed BAAs with your host, database and AI provider
-- [ ] Protect `/api/lomi`: require a signed-in session, add rate limits, and never log note text
+- [ ] Protect `/api/lomi` and `/api/transcribe`: require a signed-in session (today they only have a same-site check and a per-IP rate limit), and never log note text
 - [ ] Per-person vital sign limits set by a nurse (`LIM` in `src/app-core.js` is a placeholder)
 - [ ] Your state's incident reporting rules and deadlines (`notifRules` in `src/app-core.js` is a placeholder)
 - [ ] Medication records connected to prescriber orders, with nurse oversight
