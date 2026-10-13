@@ -1,0 +1,1175 @@
+openapi: 3.1.0
+info:
+  title: Guad External API
+  version: 1.0.0
+  description: |
+    External integration API for Guad, a HIPAA-compliant IDD residential care platform.
+
+    This API is for **external systems only** — state reporting, Electronic Visit Verification (EVV),
+    agency data exports, and webhook subscriptions. All internal application communication uses tRPC.
+
+    ## Authentication
+    Every request must include a Bearer token in the `Authorization` header. API keys are issued
+    per agency and scoped to a single `agency_id`. All data returned is tenant-isolated — an API
+    key can only access data belonging to its agency.
+
+    ## HIPAA Compliance
+    All endpoints are served over TLS 1.3. PHI is encrypted at rest (AES-256). API key holders
+    must have a Business Associate Agreement (BAA) on file with the agency. Audit logs record
+    every API access with the API key identifier, timestamp, endpoint, and parameters.
+
+    ## Rate Limits
+    Default: 30 requests per minute per API key. Bulk export endpoints: 10 requests per hour.
+    Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) are
+    included in every response.
+  contact:
+    name: Guad API Support
+    email: api@guad.care
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.guad.care/api/v1
+    description: Production
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: EVV
+    description: Electronic Visit Verification — clock records with GPS coordinates for state compliance
+  - name: Reports
+    description: Generate and download compliance reports (incidents, notes, MAR, goals, attendance, timesheets, audit)
+  - name: Export
+    description: Bulk data export in CSV or JSON format
+  - name: Webhooks
+    description: Register, list, and manage webhook subscriptions for real-time event delivery
+
+paths:
+  # ─── EVV ──────────────────────────────────────────────────────────────────────
+
+  /evv/visits:
+    get:
+      operationId: listEvvVisits
+      tags: [EVV]
+      summary: List EVV visit records
+      description: |
+        Returns clock records with GPS verification data for Electronic Visit Verification
+        compliance. Each record includes clock-in/out timestamps, GPS coordinates, distance
+        from home, and verification status. Designed for submission to state EVV aggregators.
+      parameters:
+        - $ref: '#/components/parameters/HomeIdFilter'
+        - $ref: '#/components/parameters/ProfileIdFilter'
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Start date (inclusive), ISO 8601
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: End date (inclusive), ISO 8601
+        - name: verified_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: If true, return only GPS-verified visits
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of EVV visit records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EvvVisit'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /evv/visits/{visitId}:
+    get:
+      operationId: getEvvVisit
+      tags: [EVV]
+      summary: Get a single EVV visit record
+      parameters:
+        - name: visitId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Single EVV visit record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvvVisit'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /evv/summary:
+    get:
+      operationId: getEvvSummary
+      tags: [EVV]
+      summary: EVV compliance summary
+      description: |
+        Returns aggregated EVV metrics for a date range: total visits, verified count,
+        unverified count, and verification rate. Useful for compliance dashboards.
+      parameters:
+        - $ref: '#/components/parameters/HomeIdFilter'
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: EVV compliance summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total_visits, verified_count, unverified_count, verification_rate, period]
+                properties:
+                  total_visits:
+                    type: integer
+                  verified_count:
+                    type: integer
+                  unverified_count:
+                    type: integer
+                  verification_rate:
+                    type: number
+                    format: float
+                    description: Decimal between 0 and 1
+                  period:
+                    type: object
+                    required: [from, to]
+                    properties:
+                      from:
+                        type: string
+                        format: date
+                      to:
+                        type: string
+                        format: date
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ─── Reports ──────────────────────────────────────────────────────────────────
+
+  /reports/{type}:
+    post:
+      operationId: generateReport
+      tags: [Reports]
+      summary: Generate a report
+      description: |
+        Enqueues report generation. Returns a `report_id` to poll for completion.
+        Reports are retained for 24 hours after generation.
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [incidents, notes, mar, goals, attendance, timesheets, audit]
+          description: Report type to generate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from:
+                  type: string
+                  format: date
+                  description: Report period start (inclusive)
+                to:
+                  type: string
+                  format: date
+                  description: Report period end (inclusive)
+                home_id:
+                  type: string
+                  format: uuid
+                  description: Filter to a specific home (omit for agency-wide)
+                client_id:
+                  type: string
+                  format: uuid
+                  description: Filter to a specific client (applicable to notes, mar, goals, attendance)
+                format:
+                  type: string
+                  enum: [csv, pdf]
+                  default: csv
+                  description: Output format
+      responses:
+        '202':
+          description: Report generation accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report_id, status]
+                properties:
+                  report_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [queued]
+                  estimated_seconds:
+                    type: integer
+                    description: Estimated time to completion
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /reports/{type}/{reportId}:
+    get:
+      operationId: getReportStatus
+      tags: [Reports]
+      summary: Check report status
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [incidents, notes, mar, goals, attendance, timesheets, audit]
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report_id, type, status]
+                properties:
+                  report_id:
+                    type: string
+                    format: uuid
+                  type:
+                    type: string
+                  status:
+                    type: string
+                    enum: [queued, processing, ready, failed]
+                  format:
+                    type: string
+                    enum: [csv, pdf]
+                  created_at:
+                    type: string
+                    format: date-time
+                  ready_at:
+                    type: string
+                    format: date-time
+                  expires_at:
+                    type: string
+                    format: date-time
+                    description: Reports expire 24 hours after generation
+                  error:
+                    type: string
+                    description: Error message if status is 'failed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /reports/{type}/{reportId}/download:
+    get:
+      operationId: downloadReport
+      tags: [Reports]
+      summary: Download a completed report
+      description: |
+        Returns the report file as a binary stream. Only available when report status is `ready`.
+        Reports expire 24 hours after generation.
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [incidents, notes, mar, goals, attendance, timesheets, audit]
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report file
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                contentMediaType: application/pdf
+                contentEncoding: base64
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'attachment; filename="report-{type}-{date}.{ext}"'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Report is not ready or has expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: CONFLICT
+                message: Report is not ready for download or has expired
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ─── Export ───────────────────────────────────────────────────────────────────
+
+  /export/{type}:
+    get:
+      operationId: exportData
+      tags: [Export]
+      summary: Bulk data export
+      description: |
+        Exports agency data in CSV or JSON format. Intended for data warehouse ingestion,
+        backup, and migration. Rate limited to 10 requests per hour.
+
+        Supported types:
+        - `clients` — Client demographics (no PHI health details in default export; use `include_health=true`)
+        - `staff` — Staff roster with roles and home assignments
+        - `notes` — Clinical notes with content, status, and goal data
+        - `incidents` — Incident reports
+        - `mar` — Medication administration records
+        - `medications` — Medication list per client
+        - `health` — Vitals, seizures, illness, appointments
+        - `attendance` — Daily attendance/services
+        - `clock_records` — Clock-in/out with GPS data
+        - `schedule` — Schedule slots
+        - `goals` — ISP goals per client
+        - `referrals` — Intake referrals
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - clients
+              - staff
+              - notes
+              - incidents
+              - mar
+              - medications
+              - health
+              - attendance
+              - clock_records
+              - schedule
+              - goals
+              - referrals
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [csv, json]
+            default: csv
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter records created/updated on or after this date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter records created/updated on or before this date
+        - $ref: '#/components/parameters/HomeIdFilter'
+        - name: include_health
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: For client exports, include health info (allergies, conditions, diet, doctor, guardian, DOB). Requires explicit opt-in due to PHI sensitivity.
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Incremental export — return only records updated after this timestamp. Useful for delta syncs.
+            When both from/to and since are provided, results must satisfy both constraints (intersection).
+            For delta syncs, use since alone and omit from/to.
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Exported data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination, exported_at]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: |
+                        Shape varies by export type. See per-type schemas:
+                        - clients: ExportClient
+                        - notes: ExportNote
+                        - incidents: ExportIncident
+                        Other types follow the same pattern, reflecting their respective schema.ts table columns.
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  exported_at:
+                    type: string
+                    format: date-time
+                    description: Server timestamp of the export
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ─── Webhooks ─────────────────────────────────────────────────────────────────
+
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      tags: [Webhooks]
+      summary: List registered webhooks
+      description: |
+        Returns all webhook subscriptions for the agency. Agencies typically have
+        a small number of webhooks, so pagination is included for consistency but
+        most responses will fit in a single page.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of webhook subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Webhook'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      operationId: createWebhook
+      tags: [Webhooks]
+      summary: Register a webhook
+      description: |
+        Registers a URL to receive POST callbacks when specified events occur.
+        The webhook payload is signed with HMAC-SHA256 using the returned `secret`.
+        Store the secret securely — it is only shown once.
+
+        Available events:
+        - `incident.created` — New incident report filed
+        - `incident.reviewed` — Incident reviewed by supervisor
+        - `note.submitted` — Note signed and submitted
+        - `note.approved` — Note approved by supervisor
+        - `coverage.created` — Callout initiated, coverage search started
+        - `coverage.filled` — Open shift filled
+        - `coverage.unfilled` — All candidates declined, shift unfilled
+        - `clock.in` — Caregiver clocked in
+        - `clock.out` — Caregiver clocked out
+        - `client.created` — New client admitted
+        - `referral.created` — New referral received
+        - `mar.recorded` — Medication administered, refused, or held
+        - `health.flagged` — Vitals recorded outside normal thresholds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: HTTPS endpoint to receive POST callbacks
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - incident.created
+                      - incident.reviewed
+                      - note.submitted
+                      - note.approved
+                      - coverage.created
+                      - coverage.filled
+                      - coverage.unfilled
+                      - clock.in
+                      - clock.out
+                      - client.created
+                      - referral.created
+                      - mar.recorded
+                      - health.flagged
+                  minItems: 1
+                  description: Events to subscribe to
+                description:
+                  type: string
+                  maxLength: 256
+                  description: Human-readable label for this webhook
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Webhook'
+                  - type: object
+                    required: [secret]
+                    properties:
+                      secret:
+                        type: string
+                        description: HMAC-SHA256 signing secret. Shown only once — store it securely.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: URL is not HTTPS or is unreachable
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /webhooks/{webhookId}:
+    get:
+      operationId: getWebhook
+      tags: [Webhooks]
+      summary: Get webhook details
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Webhook details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    patch:
+      operationId: updateWebhook
+      tags: [Webhooks]
+      summary: Update a webhook
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - incident.created
+                      - incident.reviewed
+                      - note.submitted
+                      - note.approved
+                      - coverage.created
+                      - coverage.filled
+                      - coverage.unfilled
+                      - clock.in
+                      - clock.out
+                      - client.created
+                      - referral.created
+                      - mar.recorded
+                      - health.flagged
+                  minItems: 1
+                active:
+                  type: boolean
+                  description: Set to false to pause delivery without deleting
+                description:
+                  type: string
+                  maxLength: 256
+      responses:
+        '200':
+          description: Updated webhook
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      summary: Delete a webhook
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Webhook deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /webhooks/{webhookId}/test:
+    post:
+      operationId: testWebhook
+      tags: [Webhooks]
+      summary: Send a test event
+      description: Sends a test payload to the webhook URL to verify connectivity and signature validation.
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, status_code, response_time_ms]
+                properties:
+                  success:
+                    type: boolean
+                  status_code:
+                    type: integer
+                    description: HTTP status code returned by the webhook endpoint
+                  response_time_ms:
+                    type: integer
+                  error:
+                    type: string
+                    description: Error message if the test failed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /webhooks/{webhookId}/deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      tags: [Webhooks]
+      summary: List recent deliveries
+      description: Returns the last 100 delivery attempts for a webhook, including status and response.
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Delivery log
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, event, status, attempted_at]
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        event:
+                          type: string
+                        status:
+                          type: string
+                          enum: [delivered, failed, pending]
+                        status_code:
+                          type: integer
+                        attempted_at:
+                          type: string
+                          format: date-time
+                        response_time_ms:
+                          type: integer
+                        next_retry_at:
+                          type: string
+                          format: date-time
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+# ─── Components ───────────────────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: |
+        Agency-scoped API key. Issued by Guad admins. Include as `Authorization: Bearer <key>`.
+        Each key is bound to a single agency_id and has read-only or read-write scope.
+
+  parameters:
+    HomeIdFilter:
+      name: home_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+      description: Filter to a specific home
+
+    ProfileIdFilter:
+      name: profile_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+      description: Filter to a specific staff member
+
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 100
+      description: Maximum number of records to return
+
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Number of records to skip for pagination
+
+  schemas:
+    EvvVisit:
+      type: object
+      required:
+        - id
+        - profile_id
+        - profile_name
+        - home_id
+        - home_name
+        - clock_in_at
+        - verified
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: clock_records.id
+        profile_id:
+          type: string
+          format: uuid
+        profile_name:
+          type: string
+        home_id:
+          type: string
+          format: uuid
+        home_name:
+          type: string
+        home_address:
+          type: string
+        clock_in_at:
+          type: string
+          format: date-time
+        clock_out_at:
+          type: ['string', 'null']
+          format: date-time
+          description: Clock-out timestamp (null if not clocked out yet)
+        verified:
+          type: boolean
+          description: True if GPS coordinates were within the home's geofence radius at clock-in
+        manual_override:
+          type: boolean
+          description: True if this entry was manually created by a supervisor
+        visitor_lat:
+          type: ['number', 'null']
+          format: float
+          description: Visitor GPS latitude at clock-in (null if GPS unavailable). Required by most state EVV aggregators.
+        visitor_lng:
+          type: ['number', 'null']
+          format: float
+          description: Visitor GPS longitude at clock-in (null if GPS unavailable)
+        distance_meters:
+          type: ['integer', 'null']
+          description: Distance from home coordinates at clock-in (null if GPS unavailable)
+        home_lat:
+          type: ['number', 'null']
+          format: float
+          description: Home latitude (for EVV aggregator cross-reference)
+        home_lng:
+          type: ['number', 'null']
+          format: float
+          description: Home longitude
+        home_radius:
+          type: ['integer', 'null']
+          description: Geofence radius in meters
+        duration_minutes:
+          type: ['number', 'null']
+          format: float
+          description: Calculated visit duration in minutes (null if not clocked out)
+
+    Webhook:
+      type: object
+      required: [id, url, events, active, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WebhookPayload:
+      type: object
+      required: [event, timestamp, agency_id, data]
+      description: |
+        POST body sent to registered webhook URLs. Signed with HMAC-SHA256
+        in the `X-Guad-Signature` header: `sha256=<hex-digest>`.
+      properties:
+        event:
+          type: string
+          description: Event type (e.g., 'incident.created')
+        timestamp:
+          type: string
+          format: date-time
+          description: When the event occurred (UTC)
+        agency_id:
+          type: string
+          format: uuid
+        data:
+          type: object
+          description: |
+            Event-specific payload. Shape varies by event type:
+            - `incident.created` / `incident.reviewed`: { id, client_id, type, severity, description, occurred_at, location, reported_by }
+            - `note.submitted` / `note.approved`: { id, client_id, note_type, shift, status, author_id, submitted_at }
+            - `coverage.created` / `coverage.filled` / `coverage.unfilled`: { id, home_id, shift, date, reason, filled_by? }
+            - `clock.in` / `clock.out`: { clock_record_id, profile_id, home_id, timestamp, verified, distance_meters }
+            - `client.created`: { id, name, first_name, home_id, active }
+            - `referral.created`: { id, name, source, status, home_id }
+            - `mar.recorded`: { id, client_id, medication_id, status, recorded_by, recorded_at }
+            - `health.flagged`: { id, client_id, entry_type, flagged_vitals, recorded_at }
+
+    # ─── Export Schemas ─────────────────────────────────────────────────────────
+
+    ExportClient:
+      type: object
+      description: Client record shape for /export/clients
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        first_name:
+          type: string
+        active:
+          type: boolean
+        home_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        dob:
+          type: ['string', 'null']
+          format: date
+          description: Only included when include_health=true
+        allergies:
+          type: ['string', 'null']
+          description: Only included when include_health=true
+        conditions:
+          type: ['string', 'null']
+          description: Only included when include_health=true
+        diet:
+          type: ['string', 'null']
+          description: Only included when include_health=true
+        doctor:
+          type: ['string', 'null']
+          description: Only included when include_health=true
+        guardian_name:
+          type: ['string', 'null']
+          description: Only included when include_health=true
+
+    ExportNote:
+      type: object
+      description: Note record shape for /export/notes
+      properties:
+        id:
+          type: string
+          format: uuid
+        client_id:
+          type: string
+          format: uuid
+        note_type:
+          type: string
+        shift:
+          type: string
+        status:
+          type: string
+        content:
+          type: object
+        author_id:
+          type: string
+          format: uuid
+        author_name:
+          type: string
+        lomi_drafted:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ExportIncident:
+      type: object
+      description: Incident record shape for /export/incidents
+      properties:
+        id:
+          type: string
+          format: uuid
+        client_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        severity:
+          type: string
+        description:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        location:
+          type: ['string', 'null']
+        status:
+          type: string
+        author_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      required: [limit, offset, total]
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+          description: Total matching records
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable description (never contains PHI)
+        details:
+          type: object
+          description: Additional error context (validation errors, etc.)
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: BAD_REQUEST
+            message: "'from' date must be before 'to' date"
+
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: UNAUTHORIZED
+            message: Invalid or expired API key
+
+    Forbidden:
+      description: API key does not have the required scope for this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: FORBIDDEN
+            message: API key does not have write access
+
+    NotFound:
+      description: Resource not found or not accessible
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: NOT_FOUND
+            message: Resource not found
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until the rate limit resets
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: RATE_LIMITED
+            message: Rate limit exceeded. Retry after 42 seconds.

@@ -1,0 +1,326 @@
+guad/
+├── src/
+│   ├── lib/
+│   │   ├── server/
+│   │   │   ├── db/
+│   │   │   │   ├── schema.ts                # Drizzle pgTable definitions (source of truth for all types)
+│   │   │   │   ├── index.ts                  # Drizzle client instance (connection + RLS session setup)
+│   │   │   │   └── migrate.ts                # Migration runner (drizzle-kit push/migrate)
+│   │   │   ├── trpc/
+│   │   │   │   ├── router.ts                 # Root appRouter (merges all domain routers)
+│   │   │   │   ├── context.ts                # TRPCContext: userId, agencyId, role, homeIds, medCertified, db
+│   │   │   │   ├── middleware.ts              # authMiddleware, roleMiddleware, auditMiddleware, rateLimitMiddleware
+│   │   │   │   └── routers/
+│   │   │   │       ├── auth.ts               # auth.me, auth.updateProfile
+│   │   │   │       ├── agency.ts             # agency.get, agency.update
+│   │   │   │       ├── home.ts               # home.list, home.get, home.create, home.update
+│   │   │   │       ├── staff.ts              # staff.list, staff.get, staff.invite, staff.update
+│   │   │   │       ├── client.ts             # client.list, client.get, client.create, client.update, client.updateHealth, client.archive
+│   │   │   │       ├── note.ts               # note.create, note.get, note.list, note.update, note.sign, note.approve, note.sendBack
+│   │   │   │       ├── incident.ts           # incident.create, incident.get, incident.list, incident.review, incident.markNotified
+│   │   │   │       ├── mar.ts                # mar.record, mar.recordEffect, mar.list, mar.acknowledge
+│   │   │   │       ├── health.ts             # health.create, health.list, health.acknowledge
+│   │   │   │       ├── goal.ts               # goal.create, goal.update, goal.stop, goal.list, goal.listTemplates, goal.createTemplate
+│   │   │   │       ├── medication.ts         # medication.list, medication.create, medication.update, medication.stop, medication.history
+│   │   │   │       ├── schedule.ts           # schedule.get, schedule.setSlot, schedule.clearSlot, schedule.postOpen, schedule.myShifts
+│   │   │   │       ├── coverage.ts           # coverage.callout, coverage.list, coverage.get, coverage.accept, coverage.decline
+│   │   │   │       ├── clock.ts              # clock.clockIn, clock.clockOut, clock.list, clock.manualEntry, clock.acknowledge, clock.timesheet
+│   │   │   │       ├── message.ts            # message.send, message.list
+│   │   │   │       ├── attendance.ts         # attendance.save, attendance.list
+│   │   │   │       ├── case-note.ts          # caseNote.create, caseNote.list
+│   │   │   │       ├── lomi.ts               # lomi.draft, lomi.summarize, lomi.transcribe
+│   │   │   │       ├── analytics.ts          # analytics.overview, analytics.documentation, analytics.coverage, analytics.care
+│   │   │   │       ├── report.ts             # report.generate, report.status, report.download
+│   │   │   │       ├── intake.ts             # intake.createReferral, intake.listReferrals, intake.getReferral, intake.updateReferral, intake.convertToClient, intake.listRooms, intake.updateRoom
+│   │   │   │       └── notification.ts       # notification.list, notification.markRead, notification.updatePreferences
+│   │   │   ├── services/
+│   │   │   │   ├── auth/
+│   │   │   │   │   ├── index.ts              # getCurrentUser, requireRole, getUsersByHome, updateProfile, deactivateUser, listActiveStaff
+│   │   │   │   │   ├── auth.queries.ts       # Drizzle query helpers for profiles table
+│   │   │   │   │   └── auth.types.ts         # Service-specific types
+│   │   │   │   ├── agency/
+│   │   │   │   │   ├── index.ts              # getAgency, updateAgency, updatePreset, getChartingLabels, provisionAgency
+│   │   │   │   │   ├── agency.queries.ts
+│   │   │   │   │   └── agency.types.ts
+│   │   │   │   ├── charting/
+│   │   │   │   │   ├── index.ts              # createNote, updateNote, signNote, approveNote, returnNote, getNoteWithHistory, getNotesByHomeDay, getPendingReview
+│   │   │   │   │   ├── charting.queries.ts
+│   │   │   │   │   └── charting.types.ts
+│   │   │   │   ├── medication/
+│   │   │   │   │   ├── index.ts              # getMedsDue, recordDose, amendDose, acknowledgeAlert, addMedication, stopMedication, getMarSheet
+│   │   │   │   │   ├── medication.queries.ts
+│   │   │   │   │   └── medication.types.ts
+│   │   │   │   ├── health/
+│   │   │   │   │   ├── index.ts              # createEntry, checkFlags, acknowledgeFlag, getEntriesByClient, getUnacknowledgedFlags
+│   │   │   │   │   ├── health.queries.ts
+│   │   │   │   │   └── health.types.ts
+│   │   │   │   ├── goal/
+│   │   │   │   │   ├── index.ts              # createGoal, stopGoal, getActiveGoals, calculateProgress, getTemplates, createGoalFromTemplate
+│   │   │   │   │   ├── goal.queries.ts
+│   │   │   │   │   └── goal.types.ts
+│   │   │   │   ├── incident/
+│   │   │   │   │   ├── index.ts              # createIncident, reviewIncident, getIncidentsByClient, getOpenIncidents, getNotificationRules
+│   │   │   │   │   ├── incident.queries.ts
+│   │   │   │   │   └── incident.types.ts
+│   │   │   │   ├── attendance/
+│   │   │   │   │   ├── index.ts              # recordAttendance, updateAttendance, getAttendanceByDay, getAttendanceSummary
+│   │   │   │   │   ├── attendance.queries.ts
+│   │   │   │   │   └── attendance.types.ts
+│   │   │   │   ├── schedule/
+│   │   │   │   │   ├── index.ts              # getWeekSchedule, setSlot, removeSlot, processCallout, findCandidates, fillShift
+│   │   │   │   │   ├── schedule.queries.ts
+│   │   │   │   │   └── schedule.types.ts
+│   │   │   │   ├── clock/
+│   │   │   │   │   ├── index.ts              # clockIn, clockOut, verifyLocation, getTimesheets, getMissedPunches, manualOverride, exportPayroll
+│   │   │   │   │   ├── clock.queries.ts
+│   │   │   │   │   └── clock.types.ts
+│   │   │   │   ├── intake/
+│   │   │   │   │   ├── index.ts              # createReferral, updateReferralStatus, listAvailableRooms, assignRoom, matchToHome
+│   │   │   │   │   ├── intake.queries.ts
+│   │   │   │   │   └── intake.types.ts
+│   │   │   │   ├── client/
+│   │   │   │   │   ├── index.ts              # createClient, updateClient, getClientFull, listClientsByHome, updateHealthInfo, addCaseNote, deactivateClient
+│   │   │   │   │   ├── client.queries.ts
+│   │   │   │   │   └── client.types.ts
+│   │   │   │   ├── home/
+│   │   │   │   │   ├── index.ts              # getHome, listHomes, createHome, updateHome, distanceTo (Haversine)
+│   │   │   │   │   ├── home.queries.ts
+│   │   │   │   │   └── home.types.ts
+│   │   │   │   ├── notification/
+│   │   │   │   │   ├── index.ts              # send, sendBatch, sendSms, sendPush, sendEmail, getPreferences, getUnread, checkEscalations
+│   │   │   │   │   ├── notification.queries.ts
+│   │   │   │   │   └── notification.types.ts
+│   │   │   │   ├── message/
+│   │   │   │   │   ├── index.ts              # sendMessage, getMessages, postCoverageAnnouncement
+│   │   │   │   │   ├── message.queries.ts
+│   │   │   │   │   └── message.types.ts
+│   │   │   │   ├── sync/
+│   │   │   │   │   ├── index.ts              # getSyncRules, updateCheckpoint, getCheckpoint, resetSync
+│   │   │   │   │   ├── sync.queries.ts
+│   │   │   │   │   └── sync.types.ts
+│   │   │   │   ├── report/
+│   │   │   │   │   ├── index.ts              # generateReport, exportCsv, exportPdf, computeAnalytics, generateEvvExport
+│   │   │   │   │   ├── report.queries.ts
+│   │   │   │   │   └── report.types.ts
+│   │   │   │   └── audit/
+│   │   │   │       ├── index.ts              # logMutation, logAccess, emitEvent, getAuditTrail, getAuditByUser, getAuditReport
+│   │   │   │       ├── audit.queries.ts
+│   │   │   │       └── audit.types.ts
+│   │   │   ├── ai/
+│   │   │   │   ├── lomi.ts                   # draftNote, transcribeAudio, summarizeDay, suggestGoalTrials (stateless processor)
+│   │   │   │   ├── transcribe.ts             # Azure OpenAI Whisper integration (HIPAA-eligible)
+│   │   │   │   ├── prompts.ts                # Prompt templates for shift/behavior/summary tasks (single source of truth)
+│   │   │   │   └── fallback.ts               # Rules-based offline fallback: sentence classification, vague language detection, incident detection
+│   │   │   └── jobs/
+│   │   │       ├── queue.ts                  # BullMQ queue definitions: ai, scheduling, timekeeping, notifications, reports
+│   │   │       ├── worker.ts                 # Job processor entry point
+│   │   │       └── handlers/
+│   │   │           ├── draft.ts              # DraftJob: async AI note draft generation
+│   │   │           ├── transcribe.ts         # TranscribeJob: async audio transcription
+│   │   │           ├── summarize.ts          # SummarizeJob: daily home summary (cron 07:00)
+│   │   │           ├── coverage-timeout.ts   # CoverageTimeoutJob: escalate unfilled shifts after 60 min
+│   │   │           ├── coverage-reminder.ts  # CoverageReminderJob: re-text non-responsive candidates after 15 min
+│   │   │           ├── missed-punch.ts       # MissedPunchCheckJob: detect missing clock-outs at shift boundaries
+│   │   │           ├── send-notification.ts  # SendNotificationJob: dispatch push/SMS/email per channel
+│   │   │           ├── escalation-check.ts   # EscalationCheckJob: escalate unacknowledged critical notifications (every 5 min)
+│   │   │           ├── digest.ts             # DigestJob: daily supervisor digest email (cron 06:00)
+│   │   │           └── generate-report.ts    # GenerateReportJob: async large report generation
+│   │   ├── components/
+│   │   │   ├── ui/
+│   │   │   │   ├── Button.svelte             # Primary/secondary/text button variants
+│   │   │   │   ├── Field.svelte              # Label + input with optional unit suffix, error state
+│   │   │   │   ├── Sheet.svelte              # Bottom sheet (mobile) / modal dialog (desktop), scrim, focus trap
+│   │   │   │   ├── Pill.svelte               # Status chip: ok | bad | due | info | mute | warn
+│   │   │   │   ├── CardList.svelte           # Vertical list of tappable row buttons
+│   │   │   │   ├── Callout.svelte            # Colored banner: warn | info | bad
+│   │   │   │   ├── ChoiceGroup.svelte        # Wrap-flow single-select toggle buttons, aria-pressed
+│   │   │   │   ├── SegmentedControl.svelte   # Horizontal segmented button group (vitals/seizure/illness/visit)
+│   │   │   │   ├── Avatar.svelte             # Circle with initials, sm | md | lg
+│   │   │   │   ├── ProgressBar.svelte        # Horizontal bar: done/total fractional completion
+│   │   │   │   ├── SyncIndicator.svelte      # Sync dot: synced (green) | pending (amber) | offline (hidden)
+│   │   │   │   ├── LoadingDots.svelte         # Three-dot fade animation (Lomi thinking state)
+│   │   │   │   └── SuccessCheck.svelte        # Animated circle + checkmark for success screens
+│   │   │   ├── charting/
+│   │   │   │   ├── NoteCompose.svelte        # Voice recording + transcription screen (Lomi orb, waveform, transcript)
+│   │   │   │   ├── NoteReview.svelte         # Structured draft review: sections, goals, flags, incident detection
+│   │   │   │   ├── NoteSection.svelte        # Label + auto-growing textarea with optional flag highlighting
+│   │   │   │   ├── GoalPicker.svelte         # Goal trial recorder: level buttons, trial display, not-attempted toggle
+│   │   │   │   ├── FlagCard.svelte           # Vague language warning: phrase, tip, Fix it / Keep as is
+│   │   │   │   ├── IncidentDetection.svelte  # AI incident detection callout: File report / Not an incident
+│   │   │   │   ├── SignSheet.svelte          # Sign confirmation bottom sheet: attestation checkbox, sign button
+│   │   │   │   └── SupervisorComment.svelte  # Red-tinted banner for returned notes
+│   │   │   ├── mar/
+│   │   │   │   ├── MARList.svelte            # Full MAR view: scheduled + PRN sections for one client
+│   │   │   │   ├── DoseCard.svelte           # Single medication card: name, dose, route, time, status, actions
+│   │   │   │   ├── ReasonSheet.svelte        # Refused/Held reason bottom sheet
+│   │   │   │   ├── PRNSheet.svelte           # PRN administration bottom sheet
+│   │   │   │   └── PRNEffectSheet.svelte     # PRN effect recording bottom sheet
+│   │   │   ├── health/
+│   │   │   │   ├── HealthEntry.svelte        # Health entry screen: segmented control (vitals/seizure/illness/visit)
+│   │   │   │   ├── VitalForm.svelte          # BP, pulse, temp, weight with out-of-range inline alerts
+│   │   │   │   ├── SeizureForm.svelte        # Start time, duration, description, post-ictal
+│   │   │   │   ├── IllnessForm.svelte        # Symptoms, onset, contagion risk, staff action
+│   │   │   │   ├── VisitForm.svelte          # Date, provider, reason, outcome
+│   │   │   │   └── HealthList.svelte         # Recent health entries with alert badges
+│   │   │   ├── incident/
+│   │   │   │   ├── IncidentWizard.svelte     # 3-step incident report wizard container
+│   │   │   │   ├── IncidentStep1.svelte      # What happened: type, time, location, description, antecedent
+│   │   │   │   ├── IncidentStep2.svelte      # Assessment: injury, staff action, medical followup, witnesses
+│   │   │   │   ├── IncidentStep3.svelte      # Severity + notification checklist (dynamic by severity/type)
+│   │   │   │   └── IncidentDetail.svelte     # Read-only incident view + supervisor review actions
+│   │   │   ├── schedule/
+│   │   │   │   ├── WeekGrid.svelte           # 7-day x 3-shift visual grid (scrollable on mobile)
+│   │   │   │   ├── SlotSheet.svelte          # Slot assignment bottom sheet: staff dropdown, post to Lomi, remove
+│   │   │   │   ├── CoverageCard.svelte       # Coverage event timeline card: steps, candidates, status
+│   │   │   │   ├── CoverageOffer.svelte      # Caregiver-facing coverage offer card (I'll take it / Not this time)
+│   │   │   │   └── CalloutSheet.svelte       # Caregiver callout confirmation bottom sheet
+│   │   │   ├── intake/
+│   │   │   │   ├── ReferralList.svelte       # Referral pipeline list with status filters
+│   │   │   │   ├── ReferralForm.svelte       # Create/edit referral form
+│   │   │   │   ├── ReferralDetail.svelte     # Single referral with status progression
+│   │   │   │   ├── RoomGrid.svelte           # Room availability across homes (open rooms at a glance)
+│   │   │   │   └── ConvertToClient.svelte    # Referral-to-client conversion form
+│   │   │   ├── dashboard/
+│   │   │   │   ├── Overview.svelte           # Supervisor landing: greeting, Lomi summary, KPI stats, attention list
+│   │   │   │   ├── KPICards.svelte           # 4-card stat grid: notes in, open shifts, open incidents, doses not recorded
+│   │   │   │   ├── AttentionList.svelte      # Prioritized attention items: coverage > incidents > health > meds > notes > clock
+│   │   │   │   ├── LomiSummary.svelte        # Lomi daily summary card: lemon icon, 2-4 sentence summary, refresh button
+│   │   │   │   ├── NoteReviewList.svelte     # Split-pane note review: list on left, detail on right
+│   │   │   │   ├── IncidentList.svelte       # Split-pane incident list with review actions
+│   │   │   │   └── AnalyticsView.svelte      # Charts: coverage trends, documentation metrics, care analytics
+│   │   │   ├── people/
+│   │   │   │   ├── PersonList.svelte         # Client list with home filter and active toggle
+│   │   │   │   ├── PersonDetail.svelte       # Client hub: tabs for overview, goals, meds, attendance, case notes
+│   │   │   │   └── StaffList.svelte          # Staff management: role, homes, med certification
+│   │   │   ├── messages/
+│   │   │   │   ├── MessageList.svelte        # Chronological message list: own (right), others (left), Lomi (yellow)
+│   │   │   │   └── MessageComposer.svelte    # Sticky-bottom text input + send button
+│   │   │   └── layout/
+│   │   │       ├── AppBar.svelte             # Top bar: back button, title, subtitle, optional actions
+│   │   │       ├── CaregiverShell.svelte     # Mobile layout: content area + 4-tab bottom dock + Lomi button
+│   │   │       ├── SupervisorShell.svelte    # Desktop layout: sidebar (home selector, nav, user) + main area
+│   │   │       ├── Dock.svelte               # Bottom navigation: Today, Notes, Shifts, Me + centered Talk to Lomi
+│   │   │       ├── Sidebar.svelte            # Desktop sidebar: agency wordmark, home selector, nav links with badges
+│   │   │       ├── SplitPane.svelte          # Two-column list+detail layout (desktop >=1024px)
+│   │   │       ├── LomiOrb.svelte            # Animated lemon SVG: two concentric pulsing rings, live/idle modes
+│   │   │       └── Waveform.svelte           # 10-bar CSS-animated voice visualization
+│   │   ├── config/
+│   │   │   └── charting-preset.ts            # getLabels(preset): label map for therap vs default terminology
+│   │   ├── stores/
+│   │   │   ├── auth.ts                       # Auth state: Supabase session, current user profile, role
+│   │   │   ├── sync.ts                       # PowerSync connection, reactive queries, sync status
+│   │   │   ├── ui.ts                         # UI state: active tab, open sheets, selected home
+│   │   │   └── preset.ts                     # Reactive charting preset labels derived from agency config
+│   │   ├── utils/
+│   │   │   ├── date.ts                       # Date formatting, day keys (YYYY-MM-DD), shift time boundaries
+│   │   │   ├── geo.ts                        # Haversine distance, location request helpers
+│   │   │   ├── vitals.ts                     # Vital limit checks: tempHi 100.4, tempLo 95, pulseHi 100, pulseLo 50, sysHi 140, sysLo 90, diaHi 90, diaLo 60
+│   │   │   └── eligibility.ts               # Coverage eligibility engine: trained, available, not over hours, nearby
+│   │   └── types/
+│   │       └── index.ts                      # Shared TypeScript types (InferSelectModel/InferInsertModel from schema)
+│   ├── routes/
+│   │   ├── (auth)/
+│   │   │   ├── login/+page.svelte            # Email/password login, magic link option
+│   │   │   └── setup/+page.svelte            # First-run agency setup: name, first home, admin profile
+│   │   ├── (app)/
+│   │   │   ├── +layout.svelte                # Auth guard, PowerSync init, nav shell (caregiver vs supervisor)
+│   │   │   ├── +layout.server.ts             # Session validation, agency/profile loading
+│   │   │   ├── today/+page.svelte            # Caregiver home screen: greeting, progress, coverage offers, people list
+│   │   │   ├── person/
+│   │   │   │   └── [id]/+page.svelte         # Person detail hub: today section, record section, about section
+│   │   │   ├── note/
+│   │   │   │   ├── [id]/+page.svelte         # Note compose/review (handles create, edit, returned states)
+│   │   │   │   └── compose/+page.svelte      # Voice-first note creation with Lomi orb
+│   │   │   ├── schedule/+page.svelte         # Weekly schedule grid, slot assignment, coverage activity
+│   │   │   ├── dashboard/+page.svelte        # Supervisor overview: Lomi summary, KPIs, attention list
+│   │   │   ├── people/+page.svelte           # Client and staff management
+│   │   │   ├── incidents/+page.svelte        # Incident list with severity filter, split-pane on desktop
+│   │   │   ├── medications/+page.svelte      # Cross-client MAR view for supervisors
+│   │   │   ├── health/+page.svelte           # Health entries with alert badges, supervisor acknowledgment
+│   │   │   ├── messages/+page.svelte         # Team message board (home-scoped)
+│   │   │   ├── analytics/+page.svelte        # Coverage, documentation, and care trend charts
+│   │   │   ├── reports/+page.svelte          # Report generation and download (CSV/PDF)
+│   │   │   ├── intake/+page.svelte           # Referral pipeline, room availability, client matching
+│   │   │   └── settings/+page.svelte         # Agency settings, staff management, home geofencing
+│   │   └── api/
+│   │       ├── trpc/[...path]/+server.ts     # tRPC handler (all internal frontend-to-backend communication)
+│   │       └── v1/                           # External OpenAPI 3.1 routes (EVV, reports, exports, webhooks)
+│   │           ├── evv/
+│   │           │   ├── visits/+server.ts      # GET /api/v1/evv/visits, GET /api/v1/evv/visits/[visitId]
+│   │           │   └── summary/+server.ts     # GET /api/v1/evv/summary
+│   │           ├── reports/
+│   │           │   └── [type]/+server.ts      # POST generate, GET status, GET download
+│   │           ├── export/
+│   │           │   └── [type]/+server.ts      # GET /api/v1/export/[type] (bulk CSV/JSON)
+│   │           └── webhooks/+server.ts        # CRUD + test + deliveries for webhook subscriptions
+│   ├── hooks.server.ts                       # Supabase Auth session resolution, request logging, CORS, CSP headers
+│   ├── hooks.client.ts                       # PowerSync init, service worker registration, error boundary
+│   └── app.html                              # HTML shell with CSP meta, manifest link, theme-color
+├── .specify/                                 # Architecture specs (this directory)
+│   ├── constitution.md                       # Non-negotiable engineering principles
+│   ├── schema.ts                             # Drizzle pgTable definitions (30 tables, source of truth)
+│   ├── services.md                           # Service boundaries, data ownership, dependency graph, BullMQ registry
+│   ├── trpc-router.md                        # Full tRPC procedure specification (20 routers, input/output types)
+│   ├── charting-ux.md                        # Screen specs, voice-to-note flow, component catalog, accessibility
+│   ├── ai-pipeline.md                        # Lomi AI: draft/transcribe/summarize, prompts, fallback, HIPAA compliance
+│   ├── security.md                           # Threat model, auth, PHI inventory, encryption, breach response, BAA matrix
+│   ├── rls.sql                               # Row-Level Security policies for all 30 tables
+│   ├── openapi.yaml                          # External API spec: EVV, reports, exports, webhooks
+│   ├── notifications.md                      # Notification types, channels, escalation engine, preferences
+│   ├── offline-sync.md                       # PowerSync sync rules, conflict resolution, data lifecycle
+│   ├── folder-map.txt                        # This file
+│   ├── AGENTS.md                             # Coding agent instructions (any AI tool)
+│   └── CLAUDE.md                             # Claude Code-specific instructions
+├── supabase/
+│   ├── migrations/                           # SQL migrations generated by Drizzle (never hand-edit)
+│   ├── seed.sql                              # Development seed data (demo agency, homes, staff, clients)
+│   └── config.toml                           # Supabase local dev config (auth, storage, functions)
+├── drizzle.config.ts                         # Drizzle Kit config: schema path, connection, migration output
+├── tests/
+│   ├── unit/
+│   │   ├── services/                         # Unit tests for each service (business logic, pure functions)
+│   │   │   ├── charting.test.ts
+│   │   │   ├── medication.test.ts
+│   │   │   ├── health.test.ts
+│   │   │   ├── goal.test.ts
+│   │   │   ├── incident.test.ts
+│   │   │   ├── schedule.test.ts
+│   │   │   ├── clock.test.ts
+│   │   │   ├── intake.test.ts
+│   │   │   └── audit.test.ts
+│   │   ├── utils/                            # Unit tests for utility functions
+│   │   │   ├── date.test.ts
+│   │   │   ├── geo.test.ts
+│   │   │   ├── vitals.test.ts
+│   │   │   └── eligibility.test.ts
+│   │   └── ai/                               # Unit tests for prompt building, fallback logic
+│   │       ├── prompts.test.ts
+│   │       └── fallback.test.ts
+│   ├── integration/
+│   │   ├── trpc/                             # Integration tests for tRPC procedures (test database)
+│   │   │   ├── note.test.ts
+│   │   │   ├── mar.test.ts
+│   │   │   ├── incident.test.ts
+│   │   │   ├── schedule.test.ts
+│   │   │   ├── clock.test.ts
+│   │   │   └── intake.test.ts
+│   │   └── rls/                              # RLS policy tests (verify tenant isolation)
+│   │       └── rls.test.ts
+│   └── e2e/
+│       ├── note-flow.test.ts                 # Create note -> sign -> approve (full lifecycle)
+│       ├── mar-flow.test.ts                  # Record dose -> refuse with reason -> supervisor acknowledge
+│       ├── incident-flow.test.ts             # File incident -> review -> mark notified
+│       ├── coverage-flow.test.ts             # Callout -> candidate SMS -> accept -> schedule update
+│       └── clock-flow.test.ts                # Clock in (verified) -> clock out -> timesheet
+├── static/
+│   ├── manifest.json                         # PWA manifest: name, icons, theme, display standalone
+│   ├── sw.js                                 # Service worker: app shell cache, offline navigation, FCM push registration
+│   ├── icons/                                # PWA icons (192x192, 512x512, maskable)
+│   └── lomi.svg                              # Lomi lemon SVG asset
+├── svelte.config.js                          # SvelteKit config: adapter, preprocess, alias ($lib)
+├── vite.config.ts                            # Vite config: vitest, PowerSync OPFS worker, WASM
+├── tsconfig.json                             # TypeScript config: strict, paths
+├── package.json                              # Dependencies, scripts (dev, build, test, db:generate, db:push, lint)
+├── .env.example                              # Environment variable template (no secrets)
+├── AGENTS.md                                 # Symlink or copy of .specify/AGENTS.md (project root for agent discovery)
+└── CLAUDE.md                                 # Symlink or copy of .specify/CLAUDE.md (project root for Claude Code)

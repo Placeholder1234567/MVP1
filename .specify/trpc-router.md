@@ -1,0 +1,305 @@
+# tRPC Router Specification
+
+## Overview
+
+tRPC provides end-to-end TypeScript type safety between the SvelteKit frontend and server. All internal application communication uses tRPC. External integrations (state reporting, EVV, data exports) use the separate OpenAPI 3.1 spec. No internal UI code calls OpenAPI endpoints.
+
+tRPC procedures are organized into domain routers aligned with the four product pillars (Care Records, Scheduling, Timekeeping, Client Intake) plus cross-cutting concerns (auth, agency, analytics, Lomi AI).
+
+## Context Shape
+
+```typescript
+interface TRPCContext {
+  userId: string;       // profiles.id (UUID)
+  agencyId: string;     // agencies.id (UUID) — injected into every query via RLS
+  supabaseUid: string;  // profiles.supabase_uid
+  role: 'caregiver' | 'supervisor' | 'admin';
+  homeIds: string[];    // profiles.home_ids — homes the user is assigned to
+  medCertified: boolean;
+  db: DrizzleClient;    // Drizzle ORM instance (with RLS session set)
+  agency?: {            // Populated by requireFeature middleware after agency lookup
+    subscriptionTier: string;
+    enabledFeatures: string[];
+  };
+}
+```
+
+## Middleware Stack
+
+### 1. authMiddleware
+
+Applied to every procedure. Extracts the Supabase JWT from the `Authorization` header, verifies it, loads the corresponding `profiles` row, and attaches `userId`, `agencyId`, `supabaseUid`, `role`, `homeIds`, and `medCertified` to context. Rejects with `UNAUTHORIZED` if the token is missing, expired, or the profile is `active = false`.
+
+### 2. roleMiddleware(minRole)
+
+A factory that returns middleware enforcing a minimum role level. Role hierarchy: `caregiver < supervisor < admin`. Rejects with `FORBIDDEN` if the user's role is below `minRole`. Used as `.use(roleMiddleware('supervisor'))` on procedures that require elevated access.
+
+### 3. auditMiddleware
+
+Applied to all mutations. After the mutation executes, inserts a row into `audit_log` with: `table_name`, `record_id`, `action` (INSERT/UPDATE/DELETE), `old_values`, `new_values`, `performed_by` (userId), `ip_address`, and `user_agent`. Runs in the same transaction as the mutation.
+
+### 4. rateLimitMiddleware(limit, windowMs)
+
+Applied to AI/transcription endpoints. Uses a sliding-window counter per `userId` stored in Redis. Configured limits: 10 requests per hour for `lomi.draft`, 5 per hour for `lomi.summarize`, 20 per hour for `lomi.transcribe`. Rejects with `TOO_MANY_REQUESTS` and includes `Retry-After` in the error metadata.
+
+### 5. requireFeature(feature)
+
+A factory that returns middleware enforcing feature entitlement. Loads the agency's `subscription_tier` and `enabled_features`, caches them on context as `ctx.agency`, then checks whether the requested feature flag is included in the agency's tier or overrides. Rejects with `FORBIDDEN` if the feature is not available. Used as `.use(requireFeature('charting'))` on procedures gated by subscription tier.
+
+**Middleware ordering:** auth -> requireFeature -> role -> audit.
+
+See `entitlements.md` for the full feature registry and tier-to-feature mapping.
+
+---
+
+## Router Tree
+
+### auth
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `auth.me` | query | none | `{ id, agencyId, email, phone, name, initials, role, homeIds, medCertified, mfaEnabled, avatarUrl, active, createdAt }` | caregiver | Returns the authenticated user's profile. Used on app init to hydrate the client-side user store. |
+| `auth.updateProfile` | mutation | `{ name?: string, phone?: string, avatarUrl?: string }` | `{ id, name, phone, avatarUrl, updatedAt }` | caregiver | Updates the caller's own profile. Only the three listed fields are editable by the user. Role, homeIds, and medCertified are admin-only (see `staff` procedures). |
+
+### agency
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `agency.get` | query | none | `{ id, name, slug, chartingPreset, settings, subscriptionTier, enabledFeatures, createdAt, updatedAt }` | caregiver | Returns the caller's agency record. Settings includes notification defaults, shift times, and feature flags. `subscriptionTier` defaults to `'starter'` when null. `enabledFeatures` is an array of per-agency feature flag overrides (see entitlements.md). |
+| `agency.update` | mutation | `{ name?: string, chartingPreset?: 'therap' \| 'default', settings?: jsonb }` | `{ id, name, chartingPreset, settings, updatedAt }` | admin | Updates agency-level configuration. Changing `chartingPreset` affects only UI labels and form ordering, never schema or API. |
+
+### home
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `home.list` | query | none | `Array<{ id, name, address, lat, lng, radius, createdAt }>` | caregiver | Returns homes the caller has access to. Caregivers see only homes in their `homeIds`; supervisors and admins see all agency homes. |
+| `home.get` | query | `{ id: uuid }` | `{ id, name, address, lat, lng, radius, createdAt, updatedAt }` | caregiver | Returns a single home. Rejects with `NOT_FOUND` if the home does not exist or is outside the caller's access. |
+| `home.create` | mutation | `{ name: string, address?: string, lat?: number, lng?: number, radius?: number }` | `{ id, name, address, lat, lng, radius, createdAt }` | admin | Creates a new home. `radius` defaults to 150 meters (geofence for clock-in verification). |
+| `home.update` | mutation | `{ id: uuid, name?: string, address?: string, lat?: number, lng?: number, radius?: number }` | `{ id, name, address, lat, lng, radius, updatedAt }` | admin | Updates home details. Changing `lat`/`lng`/`radius` affects future clock-in geofence validation. |
+
+> **Note:** There is no `home.delete` or `home.archive` procedure in v1. The `homes` schema lacks an `active` column. If an agency closes a home, it should be handled through a support process. Home archival is deferred to a future release.
+
+### staff
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `staff.list` | query | `{ homeId?: uuid, role?: user_role, active?: boolean }` | `Array<{ id, name, email, phone, initials, role, homeIds, medCertified, active }>` | supervisor | Lists staff members. Filterable by home assignment, role, and active status. |
+| `staff.get` | query | `{ id: uuid }` | `{ id, name, email, phone, initials, role, homeIds, medCertified, mfaEnabled, active, createdAt }` | supervisor | Returns a single staff profile with full details. |
+| `staff.invite` | mutation | `{ email: string, name: string, role: user_role, homeIds: uuid[], medCertified?: boolean }` | `{ id, email, name, role }` | admin | Creates a Supabase Auth user and a profiles row. Sends an email invitation via SES. |
+| `staff.update` | mutation | `{ id: uuid, role?: user_role, homeIds?: uuid[], medCertified?: boolean, active?: boolean }` | `{ id, role, homeIds, medCertified, active, updatedAt }` | admin | Updates staff role, home assignments, med certification, or active status. Deactivating a staff member does not delete their data. |
+
+### client
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `client.list` | query | `{ homeId?: uuid, active?: boolean }` | `Array<{ id, name, firstName, initials, homeId, active }>` | caregiver | Returns clients. Caregivers see only clients in their assigned homes. Supervisors/admins see all agency clients. |
+| `client.get` | query | `{ id: uuid }` | `{ id, name, firstName, initials, homeId, info, active, healthInfo: { allergies, conditions, diet, doctor, guardian, dob }, goals: Array<Goal>, medications: Array<Medication> }` | caregiver | Returns a full client record with nested health info, active goals, and active medications. Nested data is feature-gated: `healthInfo` requires the `charting` feature, `goals` requires `goals`, `medications` requires `mar`. For agencies without these features (e.g., Starter tier), these fields return `null` or empty arrays. |
+| `client.create` | mutation | `{ name: string, firstName?: string, homeId: uuid, info?: string, healthInfo?: { allergies?, conditions?, diet?, doctor?, guardian?, dob? } }` | `{ id, name, homeId, createdAt }` | supervisor | Creates a client and associated `client_health_info` row in a single transaction. |
+| `client.update` | mutation | `{ id: uuid, name?: string, firstName?: string, homeId?: uuid, info?: string, active?: boolean }` | `{ id, name, homeId, active, updatedAt }` | supervisor | Updates client basic info. Moving a client to a different home (changing `homeId`) is logged in audit. |
+| `client.updateHealth` | mutation | `{ clientId: uuid, allergies?: string, conditions?: string, diet?: string, doctor?: string, guardian?: string, dob?: string }` | `{ id, clientId, allergies, conditions, diet, doctor, guardian, dob, updatedAt }` | supervisor | Updates the `client_health_info` record for a client. |
+| `client.archive` | mutation | `{ id: uuid }` | `{ id, active: false, updatedAt }` | admin | Sets `active = false`. Does not delete data. Archived clients are excluded from default list views. |
+
+### note
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `note.create` | mutation | `{ clientId: uuid, homeId: uuid, day?: string, type: 'shift' \| 'behavior', content: jsonb, goals?: Array<{ goalId: uuid, trials: string[], notAttempted?: boolean, reason?: string }>, lomiDrafted?: boolean }` | `{ id, status: 'draft', createdAt }` | caregiver | Creates a note in `draft` status. `day` is an ISO date string; defaults to today if omitted. Day is immutable after creation (resubmissions via note.update preserve the original day). If `lomiDrafted` is true, the note is flagged as AI-generated. Also inserts `note_goals` rows and a `note_history` entry (action: 'created') in a single transaction. Content is a JSONB object with keys like `activities`, `meals`, `mood`, `health` for shift notes. |
+| `note.get` | query | `{ id: uuid }` | `{ id, clientId, homeId, authorId, authorName, day, type, content, status, supervisorComment, lomiDrafted, goals: Array<NoteGoal>, history: Array<NoteHistory>, createdAt, updatedAt }` | caregiver | Returns a full note with nested goal data and history timeline. |
+| `note.list` | query | `{ homeId?: uuid, clientId?: uuid, day?: string, status?: note_status, authorId?: uuid, limit?: number, offset?: number }` | `Array<{ id, clientId, clientName, authorName, day, type, status, lomiDrafted, createdAt }>` | caregiver | Paginated, filterable note list. Caregivers see notes from their assigned homes only. |
+| `note.update` | mutation | `{ id: uuid, content?: jsonb, goals?: Array<{ goalId: uuid, trials: string[], notAttempted?: boolean, reason?: string }> }` | `{ id, content, updatedAt }` | caregiver | Updates note content and goal data. Only the original author can update, and only while status is `draft` or `returned`. Inserts a `note_history` entry (action: 'edited'). |
+| `note.sign` | mutation | `{ id: uuid }` | `{ id, status: 'submitted', updatedAt }` | caregiver | Transitions the note from `draft` to `submitted`. Only the author can sign. This is the human-signature step -- the client must confirm intent before calling this. Inserts a `note_history` entry (action: 'signed'). |
+| `note.approve` | mutation | `{ id: uuid }` | `{ id, status: 'approved', updatedAt }` | supervisor | Approves a submitted note. Inserts a `note_history` entry (action: 'approved'). |
+| `note.sendBack` | mutation | `{ id: uuid, comment: string }` | `{ id, status: 'returned', supervisorComment, updatedAt }` | supervisor | Returns a submitted note to the author with a comment explaining what needs correction. Inserts a `note_history` entry (action: 'returned'). |
+
+### incident
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `incident.create` | mutation | `{ clientId: uuid, type: incident_type, severity: incident_severity, occurredAt: timestamp, location?: string, description: string, antecedent?: string, injured?: string, injuryDetail?: string, staffAction?: string, medicalFollowup?: string, witnesses?: string, notifiedParties?: string[] }` | `{ id, status: 'open', createdAt }` | caregiver | Creates an incident report. `type` is one of: Seizure, Medication error, Injury, Fall, Left without staff, Behavior with harm, Property damage, Other. High-severity incidents trigger a push notification to all supervisors of the home. |
+| `incident.get` | query | `{ id: uuid }` | Full incident record with all fields | caregiver | Returns a single incident report. |
+| `incident.list` | query | `{ homeId?: uuid, clientId?: uuid, status?: string, severity?: incident_severity, limit?: number, offset?: number }` | `Array<{ id, clientId, clientName, type, severity, occurredAt, status, authorName, createdAt }>` | caregiver | Paginated incident list. Filterable by home, client, status, and severity. Incidents can be filtered directly by `home_id` since the `incidents` table has a `home_id` column (FK to homes). |
+| `incident.review` | mutation | `{ id: uuid, followupNotes: string }` | `{ id, followupNotes, status: 'reviewed', updatedAt }` | supervisor | Adds supervisor review notes and changes status to 'reviewed'. |
+| `incident.markNotified` | mutation | `{ id: uuid, party: string }` | `{ id, notifiedParties, updatedAt }` | supervisor | Appends a party to the `notified_parties` array (e.g., 'guardian', 'case manager', 'state'). |
+
+### mar (Medication Administration Record)
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `mar.record` | mutation | `{ clientId: uuid, medicationId: uuid, day: string, status: 'given' \| 'refused' \| 'held', reason?: string, isPrn?: boolean }` | `{ id, clientId, medicationId, day, status, recordedAt, recordedByName, createdAt }` | caregiver | Records a medication administration. `reason` is required when status is `refused` or `held`. For non-PRN meds, enforces the unique constraint on (client, medication, day). Once recorded as `given`, this entry is irrevocable per constitution -- corrections require a new amend entry. Caller must be `medCertified`. |
+| `mar.recordEffect` | mutation | `{ id: uuid, effect: string }` | `{ id, effect, updatedAt }` | caregiver | Records the observed effect of a PRN medication after administration. Only valid on records where `isPrn = true`. |
+| `mar.list` | query | `{ clientId: uuid, day?: string, dateRange?: { from: string, to: string } }` | `Array<{ id, clientId, medicationId, medicationName, dose, route, scheduledTime, day, status, recordedAt, recordedByName, reason, effect, isPrn, acknowledged }>` | caregiver | Returns MAR entries with joined medication details. Default view is today's records for a client. |
+| `mar.acknowledge` | mutation | `{ id: uuid }` | `{ id, acknowledged: true, updatedAt }` | supervisor | Supervisor acknowledgment of a MAR entry, especially for refused/held entries. |
+
+### health
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `health.create` | mutation | `{ clientId: uuid, kind: 'vitals' \| 'seizure' \| 'illness' \| 'appointment', data: jsonb, recordedAt?: timestamp }` | `{ id, clientId, kind, data, recordedAt, createdAt }` | caregiver | Records a health entry. `data` shape varies by kind: vitals = `{ temp, pulse, systolic, diastolic, respiration, oxygen, weight }`, seizure = `{ duration, type, triggers, postIctal }`, illness = `{ symptoms, onset, actions }`, appointment = `{ provider, reason, outcome, nextVisit }`. Vitals outside thresholds (temp >= 100.4, pulse < 50 or >= 100, systolic >= 140, etc.) auto-populate the `flags` array with the out-of-range metric names. |
+| `health.list` | query | `{ clientId?: uuid, homeId?: uuid, kind?: health_entry_kind, dateRange?: { from: string, to: string }, limit?: number, offset?: number }` | `Array<{ id, clientId, clientName, kind, data, recordedAt, recordedByName, flags, acknowledged }>` | caregiver | Paginated health entries. Entries with non-empty `flags` are surfaced first. |
+| `health.acknowledge` | mutation | `{ id: uuid }` | `{ id, acknowledged: true, updatedAt }` | supervisor | Supervisor acknowledgment of a flagged health entry. |
+
+### goal
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `goal.create` | mutation | `{ clientId: uuid, area: string, text: string, steps?: string[], frequency?: string, target?: string, startedAt?: timestamp }` | `{ id, clientId, area, text, steps, frequency, target, startedAt, createdAt }` | supervisor | Creates an ISP goal for a client. `area` is a free-text category (e.g., 'Daily Living', 'Social Skills', 'Health'). |
+| `goal.update` | mutation | `{ id: uuid, area?: string, text?: string, steps?: string[], frequency?: string, target?: string }` | `{ id, area, text, steps, frequency, target, updatedAt }` | supervisor | Updates goal details. Cannot update a stopped goal. |
+| `goal.stop` | mutation | `{ id: uuid }` | `{ id, stoppedAt, updatedAt }` | supervisor | Sets `stopped_at` to now. Stopped goals are excluded from active note forms but remain visible in historical records. |
+| `goal.list` | query | `{ clientId: uuid, includeStopped?: boolean }` | `Array<{ id, area, text, steps, frequency, target, startedAt, stoppedAt }>` | caregiver | Returns goals for a client. Defaults to active goals only. |
+| `goal.listTemplates` | query | `{ area?: string }` | `Array<{ id, area, text, steps, isDefault }>` | supervisor | Returns goal templates for the agency. Templates with `isDefault = true` are system-provided; others are agency-created. |
+| `goal.createTemplate` | mutation | `{ area: string, text: string, steps?: string[] }` | `{ id, area, text, steps, isDefault: false, createdAt }` | supervisor | Creates an agency-specific goal template. |
+
+### medication
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `medication.list` | query | `{ clientId: uuid, includeStopped?: boolean }` | `Array<{ id, name, dose, route, scheduledTime, prnInstructions, notes, startedAt, stoppedAt }>` | caregiver | Returns medications for a client. Defaults to active (not stopped) medications only. |
+| `medication.create` | mutation | `{ clientId: uuid, name: string, dose?: string, route?: string, scheduledTime?: string, prnInstructions?: string, notes?: string, startedAt?: timestamp }` | `{ id, name, dose, route, scheduledTime, createdAt }` | supervisor | Adds a new medication. Also inserts a `medication_history` entry (action: 'added'). |
+| `medication.update` | mutation | `{ id: uuid, name?: string, dose?: string, route?: string, scheduledTime?: string, prnInstructions?: string, notes?: string }` | `{ id, name, dose, updatedAt }` | supervisor | Updates medication details. Inserts a `medication_history` entry (action: 'updated') with before/after values. |
+| `medication.stop` | mutation | `{ id: uuid }` | `{ id, stoppedAt, updatedAt }` | supervisor | Sets `stopped_at` to now. Inserts a `medication_history` entry (action: 'stopped'). Stopped medications no longer appear on the daily MAR. |
+| `medication.history` | query | `{ medicationId: uuid }` | `Array<{ id, action, changedBy, changedByName, changedAt }>` | supervisor | Returns the change history for a medication. |
+
+### schedule
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `schedule.get` | query | `{ homeId: uuid, weekStart: string }` | `{ slots: Array<{ id, day, shift, assignedTo, assignedToName, status, viaLomi }> }` | caregiver | Returns the week's schedule for a home (7 days x 3 shifts). `weekStart` is an ISO date string (Monday). Caregivers see the full schedule for homes they are assigned to. |
+| `schedule.setSlot` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on', profileId: uuid }` | `{ id, day, shift, assignedTo, status: 'filled', updatedAt }` | supervisor | Assigns a caregiver to a shift slot. Upserts into `schedule_slots` using the unique index on (agency_id, day, shift, home_id, assigned_to). Validates that the profile is assigned to the home and is active. |
+| `schedule.clearSlot` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on' }` | `{ id, status: 'open', updatedAt }` | supervisor | Removes the assigned caregiver from a slot, setting status back to 'open'. |
+| `schedule.postOpen` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on' }` | `{ id, status: 'open', updatedAt }` | supervisor | Marks a slot as open and triggers Lomi's coverage workflow: enqueues a BullMQ job that identifies eligible caregivers (trained for the home, not already scheduled, within distance) and sends SMS offers via Twilio. |
+| `schedule.myShifts` | query | `{ weekStart?: string, weeks?: number }` | `Array<{ id, homeId, homeName, day, shift, status }>` | caregiver | Returns the caller's own scheduled shifts. Defaults to current week, up to 4 weeks ahead. |
+
+### coverage
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `coverage.callout` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on', reason?: string }` | `{ id, status: 'searching', createdAt }` | caregiver | Caregiver calls out from a shift. Only the assigned caregiver can call out from their own shift. Creates a `coverage_requests` row, clears the schedule slot, and enqueues Lomi's coverage search (BullMQ job). Inserts `coverage_steps` entries as the search progresses. |
+| `coverage.list` | query | `{ homeId?: uuid, status?: coverage_status, day?: string, limit?: number, offset?: number }` | `Array<{ id, homeId, homeName, day, shift, calledOutByName, reason, status, filledByName, createdAt }>` | caregiver | Lists coverage requests. Caregivers see only requests for their homes. Supervisors see all. |
+| `coverage.get` | query | `{ id: uuid }` | Full coverage request with `candidates: Array<{ profileName, eligible, eligibilityReason, reply, repliedAt }>` and `steps: Array<{ description, occurredAt }>` | supervisor | Returns a coverage request with full candidate and step audit trail. |
+| `coverage.accept` | mutation | `{ id: uuid }` | `{ id, status: 'filled', filledBy, updatedAt }` | caregiver | Caregiver accepts an offered shift. Must be one of the eligible candidates. Updates the `coverage_requests` status to 'filled', updates the `schedule_slots` entry with the new assignment (marked `viaLomi = true`), and sends notifications to the home supervisor and the family (if configured). |
+| `coverage.decline` | mutation | `{ id: uuid }` | `{ candidateId, reply: 'declined', repliedAt }` | caregiver | Caregiver declines an offered shift. Updates their `coverage_candidates` row. If all candidates have declined, the coverage request status moves to 'unfilled' and the supervisor is notified. |
+
+### clock
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `clock.clockIn` | mutation | `{ homeId: uuid, lat?: number, lng?: number }` | `{ id, homeId, clockInAt, verified, distanceMeters }` | caregiver | Records a clock-in. If `lat`/`lng` are provided, calculates distance from the home's coordinates using the Haversine formula. GPS accuracy is used transiently for distance calculation but is not persisted (the `clock_records` schema stores only `distance_meters`). `verified` is set to `true` if `distance_meters <= home.radius` (default 150m). If location is unavailable (offline), `verified` remains `false` and must be manually acknowledged by a supervisor. Only one active (no clock-out) record per caregiver allowed. |
+| `clock.clockOut` | mutation | `{ lat?: number, lng?: number }` | `{ id, clockOutAt, updatedAt }` | caregiver | Closes the caller's active clock record. Optionally captures clock-out location for EVV compliance. Rejects with `NOT_FOUND` if no active clock-in exists. |
+| `clock.list` | query | `{ homeId?: uuid, profileId?: uuid, dateRange?: { from: string, to: string }, verified?: boolean, limit?: number, offset?: number }` | `Array<{ id, profileId, profileName, homeId, homeName, clockInAt, clockOutAt, verified, manualOverride, distanceMeters, acknowledged }>` | caregiver | Paginated clock records. Caregivers see only their own records. Supervisors see all records for their homes. Filterable by verification status to find missed/failed punches. |
+| `clock.manualEntry` | mutation | `{ profileId: uuid, homeId: uuid, clockInAt: timestamp, clockOutAt: timestamp }` | `{ id, manualOverride: true, acknowledged: false, createdAt }` | supervisor | Creates a manual clock entry for missed punches. Marked as `manual_override = true` and requires separate acknowledgment. The reason for the manual entry is captured in `audit_log` metadata via `auditMiddleware`, not as a field on `clock_records`. |
+| `clock.acknowledge` | mutation | `{ id: uuid }` | `{ id, acknowledged: true, updatedAt }` | supervisor | Acknowledges a manual or unverified clock entry for payroll purposes. |
+| `clock.timesheet` | query | `{ profileId?: uuid, homeId?: uuid, dateRange: { from: string, to: string } }` | `{ entries: Array<ClockRecord>, totalHours: number, verifiedHours: number, unverifiedHours: number, manualHours: number }` | supervisor | Aggregated timesheet view. Breaks down hours by verification status. Used for payroll export. |
+
+### message
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `message.send` | mutation | `{ homeId: uuid, text: string }` | `{ id, homeId, fromName, body, sentAt }` | caregiver | Sends a message to the home's message board. The `from_name` is auto-populated from the caller's profile. Messages are broadcast via Supabase Realtime to connected clients in the same home. |
+| `message.list` | query | `{ homeId: uuid, limit?: number, before?: timestamp }` | `Array<{ id, fromName, body, sentAt }>` | caregiver | Returns messages for a home, ordered by `sent_at` descending. Cursor-based pagination using `before` timestamp. |
+
+### attendance
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `attendance.save` | mutation | `{ clientId: uuid, day: string, services: string[] }` | `{ id, clientId, day, services, recordedAt }` | caregiver | Records or updates daily attendance/services for a client. Services are from the domain constant list (In-home support, Day program, Community outing, etc.). Upserts on (client_id, day). Note: this requires a unique constraint on (client_id, day) in the schema; the current schema.ts uses a non-unique index which should be changed to `uniqueIndex`. |
+| `attendance.list` | query | `{ clientId?: uuid, homeId?: uuid, dateRange?: { from: string, to: string } }` | `Array<{ id, clientId, clientName, day, services, recordedAt, recordedByName }>` | caregiver | Lists attendance records. Used for daily program billing and service verification. |
+
+### caseNote
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `caseNote.create` | mutation | `{ clientId: uuid, body: string }` | `{ id, clientId, authorName, body, createdAt }` | supervisor | Creates a case management note (distinct from shift/behavior notes). Used for care coordination, ISP meetings, family communication logs. |
+| `caseNote.list` | query | `{ clientId: uuid, limit?: number, offset?: number }` | `Array<{ id, authorName, body, createdAt }>` | supervisor | Returns case notes for a client, newest first. |
+
+### lomi
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `lomi.draft` | mutation | `{ clientId: uuid, type: 'shift' \| 'behavior', prompt: string, goals?: Array<{ id: uuid, text: string }>, behaviors?: string[] }` | `{ content: jsonb, goals?: Array<{ goalId: uuid, trials: string[] }> }` | caregiver | Sends structured input to AWS Bedrock Claude to generate a note draft. The prompt includes the client's active goals and known behaviors for context. The response is a `content` JSONB object matching the note schema. Output is always labeled as AI-generated. Rate-limited: 10 drafts/hour per user. |
+| `lomi.summarize` | mutation | `{ homeId: uuid, day?: string }` | `{ summary: string, highlights: Array<{ type: string, detail: string }> }` | supervisor | Generates a daily summary for a home: notes submitted, incidents reported, MAR completeness, missed clock-ins. Uses Bedrock Claude. Rate-limited: 5 summaries/hour per user. |
+| `lomi.transcribe` | mutation | `{ audio: string, mimeType: string }` | `{ text: string, durationMs: number }` | caregiver | Sends audio (base64-encoded) to Azure OpenAI Whisper for transcription. Returns plain text. Used to dictate note content on mobile. Max 5 minutes of audio per request. Rate-limited: 20 transcriptions/hour per user. `mimeType` must be one of: `audio/webm`, `audio/mp4`, `audio/wav`. |
+
+### analytics
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `analytics.overview` | query | `{ homeId?: uuid, dateRange?: { from: string, to: string } }` | `{ notesCount, notesApproved, notesPending, incidentCount, incidentsBySeverity, marCompletionRate, clockVerificationRate, coverageFillRate }` | supervisor | Dashboard overview metrics. If `homeId` is omitted, returns agency-wide aggregates. |
+| `analytics.documentation` | query | `{ homeId?: uuid, dateRange?: { from: string, to: string } }` | `{ notesByDay: Array<{ day, count, approved, pending }>, avgApprovalTimeHours: number, lomiDraftRate: number, returnRate: number }` | supervisor | Documentation completeness and quality metrics over time. |
+| `analytics.coverage` | query | `{ homeId?: uuid, weeks?: number }` | `{ calloutsByWeek: Array<{ week, count }>, fillRate: number, avgFillTimeMinutes: number, topCalloutReasons: Array<{ reason, count }> }` | supervisor | Shift coverage analytics. Shows callout trends, fill rates, and common callout reasons. |
+| `analytics.care` | query | `{ homeId?: uuid, clientId?: uuid, dateRange?: { from: string, to: string } }` | `{ goalProgress: Array<{ goalId, text, trialsCount, completionRate }>, vitalsAlerts: number, seizureCount: number, incidentTrend: Array<{ week, count }> }` | supervisor | Clinical care metrics. Goal tracking progress, vitals alerts, and incident trends. |
+
+### report
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `report.generate` | mutation | `{ type: 'incidents' \| 'notes' \| 'mar' \| 'goals' \| 'attendance' \| 'timesheets' \| 'audit', homeId?: uuid, clientId?: uuid, dateRange: { from: string, to: string }, format?: 'csv' \| 'pdf' }` | `{ reportId: uuid, status: 'queued' }` | supervisor | Enqueues a report generation job via BullMQ. Returns immediately with a report ID. Reports are generated asynchronously and stored temporarily (24h TTL). |
+| `report.status` | query | `{ reportId: uuid }` | `{ reportId, status: 'queued' \| 'processing' \| 'ready' \| 'failed', readyAt?: timestamp }` | supervisor | Polls report generation status. |
+| `report.download` | query | `{ reportId: uuid }` | Binary stream (CSV or PDF) | supervisor | Downloads a completed report. Returns the file as a streaming response with appropriate content-type headers. Rejects if status is not 'ready' or if the report has expired. |
+
+### intake
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `intake.createReferral` | mutation | `{ contactName?: string, contactPhone?: string, contactEmail?: string, clientName?: string, source?: string, notes?: string }` | `{ id, status: 'inquiry', createdAt }` | supervisor | Creates a new referral/inquiry record. `source` tracks where the referral came from (e.g., 'case manager', 'family', 'state agency'). Note: `notes` is free-text but the schema column is `jsonb`; the implementation should store it as a JSON-wrapped string or the schema column should be changed to `text`. |
+| `intake.listReferrals` | query | `{ status?: string, limit?: number, offset?: number }` | `Array<{ id, contactName, clientName, source, status, assignedHomeName, createdAt }>` | supervisor | Lists referrals with optional status filter. Statuses: 'inquiry', 'touring', 'accepted', 'waitlist', 'declined', 'placed' (per referral_status enum in schema.ts). |
+| `intake.getReferral` | query | `{ id: uuid }` | Full referral record with all fields | supervisor | Returns a single referral with full details. |
+| `intake.updateReferral` | mutation | `{ id: uuid, status?: string, assignedHomeId?: uuid, contactName?: string, contactPhone?: string, contactEmail?: string, notes?: string }` | `{ id, status, assignedHomeId, updatedAt }` | supervisor | Updates referral status and details. Status must be one of: 'inquiry', 'touring', 'accepted', 'waitlist', 'declined', 'placed'. When status changes to 'accepted', the referral can be converted to a client record. |
+| `intake.convertToClient` | mutation | `{ referralId: uuid, homeId: uuid, name: string, firstName?: string, roomId?: uuid }` | `{ clientId: uuid, referralId: uuid }` | supervisor | Converts an accepted referral into a client record. Optionally assigns a room. Updates the referral status to 'placed'. Creates the client and client_health_info rows. |
+| `intake.listRooms` | query | `{ homeId?: uuid, status?: 'available' \| 'occupied' \| 'reserved' }` | `Array<{ id, homeId, homeName, name, capacity, occupiedByName, status }>` | supervisor | Returns room availability across homes. Used to quickly see open beds. |
+| `intake.updateRoom` | mutation | `{ id: uuid, status?: string, occupiedBy?: uuid \| null }` | `{ id, status, occupiedBy, updatedAt }` | supervisor | Updates room status and occupancy. Setting `occupiedBy` to a client ID marks the room as occupied. Setting to `null` frees it. |
+
+### notification
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `notification.list` | query | `{ unreadOnly?: boolean, limit?: number, offset?: number }` | `Array<{ id, type, title, body, channel, status, sentAt, readAt, referenceId, referenceType }>` | caregiver | Returns the caller's notifications, newest first. |
+| `notification.markRead` | mutation | `{ ids: uuid[] }` | `{ updated: number }` | caregiver | Marks one or more notifications as read. |
+| `notification.updatePreferences` | mutation | `{ preferences: Array<{ notificationType: NotificationType, pushEnabled?: boolean, smsEnabled?: boolean, emailEnabled?: boolean }> }` | `{ updated: number }` | caregiver | Updates notification channel preferences. `notificationType` must be one of the 18 canonical types defined in notifications.md: `coverage_offer`, `coverage_accepted`, `coverage_unfilled`, `note_submitted`, `note_approved`, `note_sent_back`, `med_refusal`, `med_due_reminder`, `health_alert`, `incident_reported`, `incident_high_severity`, `incident_review_needed`, `shift_reminder`, `clock_anomaly`, `clock_missed`, `daily_summary`, `referral_status_change`, `system_maintenance`. Mandatory notification types (med_refusal, health_alert, incident_reported, incident_high_severity, coverage_unfilled) cannot be fully disabled. |
+
+> **Note:** Notification preferences are read from the local PowerSync database rather than via a dedicated tRPC query. The `notification_preferences` table syncs to the client for the authenticated user's profile, so a `notification.getPreferences` query is not needed.
+
+### audit
+
+| Procedure | Type | Input | Output | Min Role | Feature Gate | Description |
+|---|---|---|---|---|---|---|
+| `audit.list` | query | `{ dateRange?: { from: string, to: string }, tableName?: string, recordId?: uuid, performedBy?: uuid, action?: 'INSERT' \| 'UPDATE' \| 'DELETE', limit?: number, offset?: number }` | `Array<{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }>` | admin | audit_log | Returns paginated audit log entries. Filterable by date range, entity (table + record), actor, and action type. |
+| `audit.get` | query | `{ id: uuid }` | `{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }` | admin | audit_log | Returns a single audit log entry by ID. |
+
+---
+
+## Error Codes
+
+All tRPC errors use standard tRPC error codes with additional `cause` metadata:
+
+| Code | Usage |
+|---|---|
+| `UNAUTHORIZED` | Missing or invalid Supabase JWT |
+| `FORBIDDEN` | Insufficient role or accessing data outside assigned homes |
+| `NOT_FOUND` | Record does not exist or is outside the caller's tenant/home scope |
+| `BAD_REQUEST` | Input validation failure (Zod) or business rule violation |
+| `CONFLICT` | Duplicate record (e.g., MAR already recorded for this med/day) |
+| `TOO_MANY_REQUESTS` | Rate limit exceeded on AI/transcription endpoints |
+| `INTERNAL_SERVER_ERROR` | Unhandled server error (no PHI in error message) |
+
+## Subscription (Realtime)
+
+tRPC subscriptions are not used. Realtime updates flow through Supabase Realtime channels:
+
+- `home:{homeId}:messages` -- new messages in a home
+- `home:{homeId}:schedule` -- schedule slot changes
+- `home:{homeId}:coverage` -- coverage request status updates
+- `agency:{agencyId}:notifications:{profileId}` -- per-user notification delivery
+
+The SvelteKit client subscribes to these channels on mount and updates local stores. PowerSync handles offline queueing and sync for all table data.
+
+> **Note on events table:** The `events` table (schema.ts) stores domain events (e.g., `note.submitted`, `shift.filled`, `incident.created`) and is written server-side by the Audit Service's `emitEvent()` function. It has no corresponding tRPC procedures. Events are consumed exclusively via Supabase Realtime subscriptions, not queried through tRPC.
+
+## Pagination Convention
+
+List queries that can return large result sets accept `limit` (default 50, max 200) and `offset` (default 0). Responses include the array of items directly. The client tracks whether more items exist by checking if `items.length === limit`.
+
+Exception: `message.list` uses cursor-based pagination (`before` timestamp) for efficient real-time message loading.
+
+## Offline Behavior
+
+All mutations are designed to be idempotent where possible (upserts on natural keys, UUID primary keys generated client-side). When the app is offline, PowerSync queues mutations locally. On reconnect, queued mutations replay through tRPC in order. The server resolves conflicts using last-write-wins with server timestamps, except for MAR records (which use the unique constraint to reject true duplicates).
