@@ -156,9 +156,11 @@ Reference these when implementing validation, forms, and business logic:
 - **Shifts:** AM (07:00-15:00), PM (15:00-23:00), ON (23:00-07:00)
 - **Prompt levels (ISP goals):** Independent, Verbal prompt, Gestural prompt, Model, Partial physical, Full physical, Refused
 - **Services (attendance):** In-home support, Day program, Community outing, etc.
-- **Vital limits:** tempHi 100.4, tempLo 95, pulseHi 100, pulseLo 50, sysHi 140, sysLo 90, diaHi 90, diaLo 60
-- **Incident types:** Seizure, Medication error, Injury, Fall, Elopement, Left without staff, Property damage, Behavioral, Other
-- **Incident severity:** low, medium, high
+- **Vital limits:** tempHi 100.4, tempLo 95, pulseHi 100, pulseLo 50, sysHi 140, sysLo 90, diaHi 90, diaLo 60. Operators: temp, systolic and diastolic flag at `>=` the high limit; pulse flags at `> 100` (tachycardia is defined as over 100); all lows flag at `<`.
+- **Shift notes:** one per person per shift (am, pm, on). `notes.day` is the shift's start date, so an overnight note written at 2am belongs to the previous day.
+- **Medications:** `scheduled_times` is an array; each dose slot gets its own MAR record.
+- **Incident types:** Fall, Injury, Seizure, Medication error, Left without staff, Behavior with harm, Property damage, Other (matches `incident_type` in schema.ts)
+- **Incident severity:** Low, Medium, High (title case, matches `incident_severity` in schema.ts)
 - **Note statuses:** draft -> submitted -> approved | returned
 - **Coverage statuses:** searching -> filled | unfilled
 - **MAR statuses:** given, refused, held (given is irrevocable)

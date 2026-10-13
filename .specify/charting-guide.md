@@ -116,7 +116,9 @@ Multi-step wizard, similar to Guad's 3-step incident flow. Same structure: What 
 | Configurable note types per agency | All 6 | **GAP — Guad has fixed categories** |
 | CSV import for migration | Most | **GAP — Guad has no import** |
 
-### What Sets Guad Apart (No Competitor Has These)
+### What Sets Guad Apart
+
+> **Unverified claim.** Based on research from training data up to May 2025 (see the methodology note in competitive-research.md), not a live market check. competitive-research.md itself lists Remarkable Health as offering voice-to-text documentation, and general home-care scheduling tools already auto-offer open shifts. Verify with current sources before using "nobody else does this" in sales or investor material.
 
 | Feature | Guad | Closest Competitor |
 |---------|------|-------------------|
@@ -210,8 +212,10 @@ ISP Goals — 3 of 5 on track
 In the client health setup (office view), let supervisors set thresholds:
 - BP systolic: alert if >= 140 or < 90
 - BP diastolic: alert if >= 90 or < 60
-- Pulse: alert if >= 100 or < 60
-- Temp: alert if >= 100.4°F or < 96.8°F
+- Pulse: alert if > 100 or < 50
+- Temp: alert if >= 100.4°F or < 95°F
+
+(These defaults match the domain constants in AGENTS.md and `vitalFlags()`. The point of this section is that a nurse can set **per-person** thresholds; the defaults themselves stay the same everywhere.)
 - Weight: alert if change >= 5 lb from baseline
 - Blood glucose: alert if >= 250 or < 70
 
@@ -398,5 +402,5 @@ After matching familiarity, the demo moment is:
 | **4** | CSV import wizard + Therap column presets | Medium | High — enables migration |
 | **5** | Reporting & PDF/CSV export | Medium | Medium — required for ISP meetings |
 | **6** | Fatal Five dashboard (rule-based, then AI) | Medium | High — matches Therap's AI, differentiator |
-| **7** | Configurable note templates per agency | Medium | Medium — every competitor has this |
+| **7** | ~~Configurable note templates per agency~~ | Post-v1 | Out of scope for v1 (prd.md non-goal 7). Revisit after launch. |
 | **8** | Free-text mode toggle for shift notes | Small | Low-Med — accommodates Therap muscle memory |

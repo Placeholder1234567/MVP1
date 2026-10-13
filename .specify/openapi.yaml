@@ -19,7 +19,7 @@ info:
     every API access with the API key identifier, timestamp, endpoint, and parameters.
 
     ## Rate Limits
-    Default: 30 requests per minute per API key. Bulk export endpoints: 10 requests per hour.
+    Default: 30 requests per minute per API key. Bulk export (`/export/{type}`): 60 requests per hour, up to 1,000 records per page.
     Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) are
     included in every response.
   contact:
@@ -383,7 +383,8 @@ paths:
       summary: Bulk data export
       description: |
         Exports agency data in CSV or JSON format. Intended for data warehouse ingestion,
-        backup, and migration. Rate limited to 10 requests per hour.
+        backup, and migration. Rate limited to 60 requests per hour; pages of up to 1,000
+        records (`limit` max 1000 on this endpoint), so ~9,000 notes take about 9 requests.
 
         Supported types:
         - `clients` — Client demographics (no PHI health details in default export; use `include_health=true`)
@@ -451,7 +452,7 @@ paths:
             Incremental export — return only records updated after this timestamp. Useful for delta syncs.
             When both from/to and since are provided, results must satisfy both constraints (intersection).
             For delta syncs, use since alone and omit from/to.
-        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/ExportLimit'
         - $ref: '#/components/parameters/Offset'
       responses:
         '200':
@@ -556,7 +557,12 @@ paths:
                 url:
                   type: string
                   format: uri
-                  description: HTTPS endpoint to receive POST callbacks
+                  description: |
+                    HTTPS endpoint to receive POST callbacks. To prevent SSRF, the server
+                    resolves the hostname and rejects private, loopback, link-local and cloud
+                    metadata addresses (e.g. 10.0.0.0/8, 127.0.0.0/8, 169.254.169.254, ::1, fc00::/7),
+                    re-checks on every delivery (DNS can change), follows no redirects, and
+                    times out after 5 seconds.
                 events:
                   type: array
                   items:
@@ -722,7 +728,7 @@ paths:
       operationId: testWebhook
       tags: [Webhooks]
       summary: Send a test event
-      description: Sends a test payload to the webhook URL to verify connectivity and signature validation.
+      description: Sends a test payload to the webhook URL to verify connectivity and signature validation. Applies the same SSRF checks as delivery (see createWebhook).
       parameters:
         - name: webhookId
           in: path
@@ -854,6 +860,16 @@ components:
         default: 100
       description: Maximum number of records to return
 
+    ExportLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 1000
+      description: Maximum number of records per page for bulk export
+
     Offset:
       name: offset
       in: query
@@ -976,15 +992,18 @@ components:
         data:
           type: object
           description: |
-            Event-specific payload. Shape varies by event type:
-            - `incident.created` / `incident.reviewed`: { id, client_id, type, severity, description, occurred_at, location, reported_by }
-            - `note.submitted` / `note.approved`: { id, client_id, note_type, shift, status, author_id, submitted_at }
-            - `coverage.created` / `coverage.filled` / `coverage.unfilled`: { id, home_id, shift, date, reason, filled_by? }
+            Event-specific payload. Webhooks carry **IDs and status only, never PHI**
+            (no names, descriptions, medications or vitals). Receivers fetch details
+            through the authenticated API (/export) if they need them, so PHI only
+            moves on calls that are authorized and audited.
+            - `incident.created` / `incident.reviewed`: { id, client_id, home_id, severity, status, occurred_at }
+            - `note.submitted` / `note.approved`: { id, client_id, home_id, note_type, shift, status, author_id, submitted_at }
+            - `coverage.created` / `coverage.filled` / `coverage.unfilled`: { id, home_id, shift, date, filled_by? }
             - `clock.in` / `clock.out`: { clock_record_id, profile_id, home_id, timestamp, verified, distance_meters }
-            - `client.created`: { id, name, first_name, home_id, active }
-            - `referral.created`: { id, name, source, status, home_id }
+            - `client.created`: { id, home_id, active }
+            - `referral.created`: { id, status, home_id }
             - `mar.recorded`: { id, client_id, medication_id, status, recorded_by, recorded_at }
-            - `health.flagged`: { id, client_id, entry_type, flagged_vitals, recorded_at }
+            - `health.flagged`: { id, client_id, entry_type, recorded_at }
 
     # ─── Export Schemas ─────────────────────────────────────────────────────────
 

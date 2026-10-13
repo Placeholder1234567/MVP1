@@ -765,11 +765,13 @@ SvelteKit 2 + Svelte 5 runes + Supabase + tRPC = easy to extend. (Note: Guad ref
 
 4. **Incident Reports (GER equivalent)**
    - Structured form with event types, severity, multiple individuals
-   - Photo/video attachment
+   - Photo/video attachment (post-v1: prd.md non-goal 9 excludes attachments from v1)
    - Automated notification routing by severity
    - Investigation/resolution workflow
 
 ### Differentiation Features to Emphasize
+
+> **Unverified claim.** Based on research from training data up to May 2025 (see the methodology note in competitive-research.md), not a live market check. competitive-research.md itself lists Remarkable Health as offering voice-to-text documentation, and general home-care scheduling tools already auto-offer open shifts. Verify with current sources before using "nobody else does this" in sales or investor material.
 
 5. **Voice-to-Note as Hero Feature**
    - DSPs currently spend 30-60+ min/shift on documentation

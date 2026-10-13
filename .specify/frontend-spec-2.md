@@ -547,7 +547,7 @@ Goal scoring is embedded within the note review screen (section 3.2 Step 4), not
 |---------|------|
 | Safety callout | `.callout.warn` (lemon-2 bg, lemon-line border). Info icon (20px). "Check the right person, medication, dose, time and route against the label before giving." Always visible, never dismissible. |
 | Section header: "Scheduled today" | `.section-h`, 15px/600 |
-| Medication cards | One `.cv-card` per scheduled medication, sorted by time (earliest first). Gap 18px between cards. |
+| Medication cards | One `.cv-card` per scheduled **dose slot**, sorted by time (earliest first). A twice-daily medication shows two cards (e.g. 8:00am and 8:00pm), each recorded separately. Gap 18px between cards. |
 | Section header: "As needed" | `.section-h`, shown only if PRN medications exist |
 | PRN cards | One `.cv-card` per PRN medication |
 
@@ -581,7 +581,7 @@ Goal scoring is embedded within the note review screen (section 3.2 Step 4), not
 +--------------------------------------+
 ```
 
-- Status pill: `.pill.ok` for Given, `.pill.bad` for Refused/Held
+- Status pill: `.pill.ok` for Given, `.pill.bad` for Refused, `.pill.warn` (amber) for Held. Held is a clinical decision and must look different from a refusal (frontend-spec-1.md §2.1.5).
 - Recorded info: 14px `var(--muted)`, timestamp + recorder name + reason (if refused/held)
 - No action buttons
 
@@ -1207,7 +1207,7 @@ On blur: if value is out of range, field border turns `var(--bad)`, helper text 
 
 **Tab styling:**
 
-- Inactive: color `var(--faint)` (#8B89AA -> darken to #706E94 for WCAG AA), 12px/600
+- Inactive: color `var(--faint)` (#8B89AA -> darken to #706E96 for WCAG AA, 4.70:1), 12px/600
 - Active: color `var(--blue)` (#2F3ED8), `aria-current="page"`
 - Notification dot (`.dot`): 9px circle, bg `var(--bad)`, positioned `top: 6px; left: calc(50% + 8px)`, border 2px solid `var(--card)` (creates visual separation)
 - No haptic feedback in current prototype; add `navigator.vibrate(10)` on tab switch where supported
@@ -1465,10 +1465,11 @@ Each section of the note card (`.cv-card.cv-note`) contains:
 
 **AI-drafted indicator:**
 
-- Current prototype: the app bar title says "Review Lomi's draft" when `fromLomi` is true
-- The note card itself has no per-section AI indicator -- text appears as the DSP's own content
-- The audit trail (visible only to supervisors, at the bottom of the note detail) records: "Drafted with Lomi, reviewed and signed" vs "Written and signed"
-- Design rationale: once the DSP signs the attestation, the note is theirs. Per-section "AI drafted" badges would undermine ownership
+- The constitution (principle 5) requires AI output to be visibly labeled, so the label is always shown, quietly:
+  - Caregiver review screen: app bar title "Review Lomi's draft" plus a small lemon "Drafted with Lomi" chip under the title. No per-section badges.
+  - Supervisor note detail and note list: the same "Drafted with Lomi" chip next to the status pill, driven by `notes.lomi_drafted`.
+  - Audit trail: "Drafted with Lomi, reviewed and signed" vs "Written and signed".
+- The label marks the note as AI-assisted, not the caregiver as less responsible. They still attest that the content is accurate, so the note is theirs once signed.
 
 **Ghost text pattern (future enhancement):**
 
@@ -1668,16 +1669,15 @@ Total time: 3 minutes. Lomi appears as a 40px lemon in the corner of each step w
 | Condition | Voice recording | Transcription | AI structuring | Goal scoring | Signing |
 |-----------|----------------|--------------|----------------|-------------|---------|
 | Full connectivity | MediaRecorder | Whisper API | Lomi API (Claude) | Local | Local + sync |
-| Offline, SpeechRecognition available | MediaRecorder | Browser SpeechRecognition (Web Speech API) | Rules-based (`rules()` function) | Local | Local + sync |
-| Offline, no SpeechRecognition | Not available | Not available | Rules-based if text entered | Local | Local + sync |
+| Offline | Records locally, transcribed on reconnect | Not available | Rules-based if text entered | Local | Local + sync |
 | API error | MediaRecorder works | Whisper fails -> fallback to typing | Rules-based fallback | Local | Local + sync |
 
 **Offline voice behavior:**
 
 - Mic recording still works offline (MediaRecorder is browser-native)
 - Transcription fails (Whisper API unreachable)
-- Fallback 1 (Rebuild target -- not in MVP): Use browser's `SpeechRecognition` API if available (check `window.SpeechRecognition || window.webkitSpeechRecognition`). Note: offline-sync.md does not list this fallback; if implemented, update offline-sync.md's "Voice transcription" row accordingly.
-- Fallback 2: If SpeechRecognition unavailable or not planned for MVP, show text input prominently: "Type your note -- voice is available when you're online." (matches offline-sync.md: "DSP types manually")
+- **Do not use the browser's `SpeechRecognition` / `webkitSpeechRecognition` API.** In Chrome it streams audio to Google's servers (not covered by a BAA, so a PHI leak), and it doesn't work offline anyway.
+- Offline: keep the recording on the device (encrypted local DB) and transcribe it when back online, and show the text input prominently: "Type your note, or keep your recording and Lomi will transcribe it when you're back online." (matches offline-sync.md: "DSP types manually")
 - The "Speak" button is hidden (not disabled with error) when voice is completely unavailable
 
 **Offline AI structuring:**
@@ -1927,6 +1927,8 @@ The UI communicates mode availability clearly. Disabled mic buttons show a cross
 
 ### 8.1 Sync Status Indicator
 
+> **This is the canonical sync indicator spec.** offline-sync.md §9, charting-ux.md and frontend-spec-3.md §5.7 reference it.
+
 **Position:** Top-right area of the home bar, inline with messages icon and user avatar. Small ambient indicator that does not demand attention.
 
 **States:**
@@ -2028,56 +2030,27 @@ Extended offline (banner):
 
 ### 8.3 Conflict Resolution UI
 
-**Strategy:** Server-authoritative, last-write-wins using server timestamps (via PowerSync). Most conflicts are resolved automatically without user intervention.
+**Strategy:** Server-authoritative, last-write-wins (offline-sync.md §5). There is no "keep mine / keep other" chooser: PowerSync applies the server state, and a custom merge UI would contradict the sync model and invite errors in clinical records.
 
-**When user intervention is needed:**
+**What the user sees instead:**
 
-Conflicts that require user attention are rare but possible when two devices edit the same record while both are offline.
+| Situation | UI |
+|---|---|
+| A draft the DSP was editing was changed on another device | Toast: "This note was updated on another device." The DSP's overwritten text is kept in memory for the session, behind a "Restore my version" link on the note. Restoring it is an ordinary edit, so it syncs and is audited like any other. |
+| Note was returned or approved by a supervisor while the DSP edited offline | Toast: "Your supervisor already [returned / approved] this note." Returned notes open with the supervisor's comment; approved notes are read-only. |
+| Same medication dose recorded on two devices | Toast: "[Name] also recorded this dose. Your supervisor has been alerted." (kept as a conflict record) |
+| Write permanently rejected | Red banner: "[n] change(s) could not be saved. Tap to review." (offline-sync.md §6) |
 
-**Conflict resolution bottom sheet:**
+**Per-record-type rules:**
 
-```
-+--------------------------------------+
-|            [grab handle]             |
-|                                      |
-| This note was also updated on        |
-| another device.                      |
-|                                      |
-| Your version (this device)           |
-| Saved at 2:14pm by Aisha            |
-| +----------------------------------+ |
-| | Activities: Marcus had a good... | |
-| +----------------------------------+ |
-|                                      |
-| Other version (another device)       |
-| Saved at 2:18pm by Aisha            |
-| +----------------------------------+ |
-| | Activities: Marcus participated..| |
-| +----------------------------------+ |
-|                                      |
-| [ Keep mine                      ]  |
-| [ Keep other                     ]  |
-| [ Keep both (create amendment)   ]  |
-+--------------------------------------+
-```
-
-- Title: plain language, no technical jargon
-- Both versions shown with timestamps and author names
-- Three options: "Keep mine" / "Keep other" / "Keep both (create amendment)"
-- "Keep both" creates an amendment record referencing the original
-
-**Per-record-type conflict rules:**
-
-| Record type | Resolution strategy | User UI |
-|-------------|-------------------|---------|
-| Shift notes | Last-write-wins (editable until approved) | Conflict sheet if both versions differ substantially |
-| MAR entries | Server always wins | No conflict possible -- `given` entries are irrevocable. If duplicate attempted, server rejects silently, local record removed. |
-| Health entries | Append-only (both kept) | No conflict -- each entry is a new record |
-| Incident reports | Append-only (both kept) | No conflict |
-| Clock records | Server wins | If mismatch, supervisor review flag added |
-| Messages | Append-only | No conflict |
+| Record type | Resolution | User UI |
+|-------------|-----------|---------|
+| Shift notes | Last-write-wins while draft/returned | Toast + "Restore my version" |
+| MAR entries | Duplicate dose slot kept as conflict record + supervisor alert | Toast |
+| Health entries, incidents, messages | Append-only (both kept) | None |
+| Attendance | Service lists merged | None |
+| Clock records | Server wins; verification computed server-side | Supervisor review flag if mismatch |
 | Person profiles | Last-write-wins | Supervisor notified of conflicting edits |
-| Goal scoring (trials) | Append-only within a note | No conflict -- trials within a note are part of the note record |
 
 ---
 
@@ -2282,8 +2255,8 @@ These 5 CSS additions work with the current innerHTML rendering and should be ad
 | # | Fix | File | Impact |
 |---|-----|------|--------|
 | 1 | Enable dark mode: remove `max-width:0px` trick from line 9 media query | `styles.css` | Overnight DSPs (11pm-7am shifts) |
-| 2 | Fix `--faint` contrast: `#8B89AA` -> `#706E94` (4.6:1 ratio, passes WCAG AA) | `styles.css` line 3 | Section 508 compliance |
-| 3 | Remove `.btn.lemon` class (2.1:1 contrast, violates lemon-for-Lomi-only rule) | `styles.css` line 87 | Accessibility + brand consistency |
+| 2 | Fix `--faint` contrast: `#8B89AA` -> `#706E96` (4.70:1, passes WCAG AA) | `styles.css` line 3 | Section 508 compliance |
+| 3 | Restrict `.btn.lemon` to Lomi elements (its contrast is 11.53:1 and passes AAA; the restriction is for brand consistency, not accessibility) | `styles.css` line 87 | Brand consistency |
 | 4 | Add auto-save drafts: debounced 500ms save to PowerSync local DB on every input event | `app-main.js` | #1 missing feature (DSPs interrupted every 3-7 min) |
 | 5 | Increase `.levels button` min-height 36px -> 44px | `styles.css` line 139 | WCAG touch target compliance |
 | 6 | Increase `.btn.sm` min-height 42px -> 44px | `styles.css` line 88 | WCAG touch target compliance |
