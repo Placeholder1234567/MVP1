@@ -35,7 +35,7 @@ Update `notifications.sent_at`
 ### Design Principles
 
 - **One row per channel.** When a notification is sent via multiple channels (e.g., push + SMS), one `notifications` row is created per channel. This enables per-channel status tracking (`sent_at`, `read_at`, `status`). The escalation engine checks `read_at` on any row matching the same `(type, reference_id, profile_id)` tuple to determine acknowledgment.
-- **PHI safety first.** SMS and email bodies never contain client names, DOBs, diagnoses, medications, or clinical content. Push notifications may include limited clinical context because they are delivered to an authenticated device session.
+- **PHI safety first.** SMS, email and push bodies never contain client names, DOBs, diagnoses, medications, incident types or other clinical content. Push goes through Firebase Cloud Messaging (and Apple's push service on iOS), which are not BAA-covered, and lock screens are visible to anyone nearby. Push payloads therefore carry only a generic title, the notification ID and a deep link; the app fetches details after the user opens it and signs in.
 - **Reference by ID.** Job payloads carry record IDs, not PHI. Workers fetch needed data from Postgres at execution time. This keeps Redis free of protected health information.
 - **Escalation by default.** High-priority notifications that go unacknowledged trigger automatic escalation via BullMQ delayed jobs.
 - **User control with guardrails.** Users can customize channel preferences per notification type, but mandatory notifications (incidents, med refusals, high-severity alerts) cannot be disabled.
@@ -54,7 +54,7 @@ Update `notifications.sent_at`
 | **Channels** | Push (primary) + SMS (primary) |
 | **Priority** | High |
 | **Template (Push)** | `"Coverage needed: {shiftLabel} shift at {homeName} on {dayFormatted}. Tap to accept or decline."` |
-| **Template (SMS)** | `"Guad: Can you cover {shiftLabel} at {homeName} on {dayFormatted}? Reply YES or NO."` |
+| **Template (SMS)** | `"Guad: Can you cover {shiftLabel} at {homeName} on {dayFormatted}? Reply YES {code} or NO {code}."` |
 | **PHI Safety** | Safe on all channels. Contains only home name, shift, and date -- no client info. |
 | **Deep Link** | `/coverage/{coverageRequestId}` |
 | **Escalation** | If no reply after 15 min, send reminder SMS. Re-offering to the next batch at 30 min is handled by the Schedule Service via `CoverageTimeoutJob`, not the notification escalation engine. Max 3 coverage rounds before marking `coverage_unfilled`. |
@@ -143,6 +143,20 @@ Update `notifications.sent_at`
 | **Deep Link** | `/mar/{marRecordId}` |
 | **Escalation** | Push at 0 min. If `acknowledged = false` after 1 hr, SMS to supervisor. If still unacknowledged after 2 hr, SMS to agency admin. |
 
+### 2.7a med_possible_double_dose
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | `sync.upload` finds a second MAR record for the same dose slot (client, medication, day, scheduled time), usually from two devices recording offline. The second record is kept with `conflict_with` set (offline-sync.md §5). |
+| **Recipients** | All supervisors for the client's home + the agency nurse role if configured |
+| **Channels** | Push (immediate) + SMS (immediate) |
+| **Priority** | Urgent |
+| **Template (Push)** | `"URGENT: A medication may have been given twice at {homeName}. Review now."` |
+| **Template (SMS)** | `"Guad URGENT: Possible double medication dose at {homeName}. Review in the app now."` |
+| **PHI Safety** | No client name, medication name, dose or time in push or SMS. |
+| **Deep Link** | `/mar/{marRecordId}` |
+| **Escalation** | If not read within 15 min, SMS to agency admin. |
+
 ### 2.8 med_due_reminder
 
 | Field | Value |
@@ -179,9 +193,9 @@ Update `notifications.sent_at`
 | **Recipients** | All supervisors for the incident's home |
 | **Channels** | Push (primary). SMS fallback if push permission is denied (mandatory notification). |
 | **Priority** | High |
-| **Template (Push)** | `"New {incidentType} incident reported at {homeName}. Tap to review."` |
+| **Template (Push)** | `"New incident reported at {homeName}. Tap to review."` |
 | **Template (SMS)** | `"Guad: New incident reported at {homeName}. Please review in the app."` (used only for push-denied fallback; incident type is omitted from SMS for PHI safety in small homes) |
-| **PHI Safety** | Incident type (e.g., "Fall", "Seizure") is acceptable in push because it describes an event category, not a specific client. Client name is NEVER included. |
+| **PHI Safety** | No incident type, client name or details in push or SMS. In a small home, "Seizure at Oak House" can identify the person. Details are shown only in the app. |
 | **Deep Link** | `/incidents/{incidentId}` |
 | **Escalation** | Severity-based. Low/medium: push only, no escalation. High: triggers `incident_high_severity` flow. |
 
@@ -193,9 +207,9 @@ Update `notifications.sent_at`
 | **Recipients** | All supervisors for the home + agency admin |
 | **Channels** | Push + SMS (both immediate) |
 | **Priority** | Urgent |
-| **Template (Push)** | `"URGENT: High-severity {incidentType} incident at {homeName}. Immediate review required."` |
+| **Template (Push)** | `"URGENT: High-severity incident at {homeName}. Immediate review required."` |
 | **Template (SMS)** | `"Guad URGENT: High-severity incident at {homeName}. Review immediately in the app."` |
-| **PHI Safety** | SMS contains incident severity and home name only. Incident type is acceptable in push but NOT in SMS. Client name, injury details, and description are NEVER included in any notification body. |
+| **PHI Safety** | SMS contains incident severity and home name only. Incident type is not included in push or SMS. Client name, injury details, and description are NEVER included in any notification body. |
 | **Deep Link** | `/incidents/{incidentId}` |
 | **Escalation** | Push + SMS at 0 min. If `read_at` is null after 15 min, re-send SMS to supervisor. If still unread after 30 min, SMS to agency admin (if not already a recipient). Max 3 escalation levels. |
 
@@ -309,6 +323,7 @@ Update `notifications.sent_at`
 | `note_approved` | Low | Y | N | N | N | None |
 | `note_sent_back` | Normal | Y | N | N | N | 8 hr, 24 hr reminders |
 | `med_refusal` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
+| `med_possible_double_dose` | Urgent | Y | Y | N | Y | 15 min admin SMS |
 | `med_due_reminder` | Normal | Y | N | N | N | 30 min overdue alert |
 | `health_alert` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
 | `incident_reported` | High | Y | Y** | N | Y | Severity-based |
@@ -397,7 +412,7 @@ interface BaseNotificationJob {
   notificationId: string;    // UUID - references notifications.id
   agencyId: string;          // UUID - tenant isolation
   profileId: string;         // UUID - recipient
-  type: NotificationType;    // one of the 18 notification types
+  type: NotificationType;    // one of the 19 notification types
   priority: 1 | 2 | 3 | 4;  // 1=urgent, 2=high, 3=normal, 4=low
   referenceId?: string;      // UUID - the triggering record (note, incident, etc.)
   referenceType?: string;    // table name of the triggering record
@@ -488,6 +503,7 @@ type NotificationType =
   | 'note_approved'
   | 'note_sent_back'
   | 'med_refusal'
+  | 'med_possible_double_dose'
   | 'med_due_reminder'
   | 'health_alert'
   | 'incident_reported'
@@ -513,7 +529,7 @@ The SvelteKit service worker (`src/service-worker.ts`) registers for push notifi
 1. User logs in -> App checks Notification.permission
 2. If 'default', prompt with in-app explainer before calling Notification.requestPermission()
 3. On 'granted': call firebase.messaging().getToken({ vapidKey })
-4. Store FCM token in the `device_tokens` table (or `profiles.fcm_tokens`) for the user's profile
+4. Store the FCM token in the `device_tokens` table (schema.ts #31), one row per device
 5. Service worker listens for 'push' events and displays notifications
 6. Service worker listens for 'notificationclick' events for deep linking
 ```
@@ -522,7 +538,7 @@ The SvelteKit service worker (`src/service-worker.ts`) registers for push notifi
 
 - FCM tokens can expire or rotate. The `onTokenRefresh` callback in the client updates the server via `trpc.notification.updateFcmToken.mutate()`.
 - On every app launch, compare the stored token with `getToken()`. If different, update the server.
-- When FCM returns `messaging/registration-token-not-registered` during send, remove the stale token from `device_tokens` (or `profiles.fcm_tokens`) and log the event.
+- When FCM returns `messaging/registration-token-not-registered` during send, remove the stale row from `device_tokens` and log the event.
 
 ### Payload Structure
 
@@ -595,7 +611,7 @@ All SMS messages must be under 160 characters to avoid multi-segment billing. Te
 
 | Type | Template | Char Count |
 |------|----------|------------|
-| `coverage_offer` | `Guad: Can you cover {shift} at {home} on {date}? Reply YES or NO.` | ~65 |
+| `coverage_offer` | `Guad: Can you cover {shift} at {home} on {date}? Reply YES {code} or NO {code}.` | ~80 |
 | `coverage_unfilled` | `Guad URGENT: {shift} at {home} on {date} is unfilled. Assign manually.` | ~72 |
 | `med_refusal` | `Guad: A medication was {status} at {home}. Please review in the app.` | ~65 |
 | `health_alert` | `Guad: Health alert at {home}. Please review in the app.` | ~55 |
@@ -605,6 +621,8 @@ All SMS messages must be under 160 characters to avoid multi-segment billing. Te
 | `clock_missed` | `Guad: {staff} missed clock-out at {home} on {date}. Review needed.` | ~67 |
 
 ### Sender Configuration
+
+- **A2P 10DLC registration is required** before sending application SMS to US numbers from a standard long code (brand + campaign registration with Twilio; allow 1-3 weeks). Unregistered traffic is filtered or blocked by carriers.
 
 - Default sender: `TWILIO_FROM_NUMBER` environment variable.
 - All messages are sent from a single number per Guad deployment.
@@ -637,7 +655,9 @@ All SMS messages must be under 160 characters to avoid multi-segment billing. Te
 The `coverage_offer` SMS template (Section 2.1) instructs candidates to "Reply YES or NO." Inbound replies are handled via a Twilio incoming message webhook:
 
 - **Webhook URL:** `/api/webhooks/twilio/incoming`
-- **Reply matching:** Look up the most recent pending `coverage_offer` SMS sent to the `From` number. Match via the `notifications` table (type = `coverage_offer`, channel = `sms`, phone = From number, status = `sent`).
+- **Sender:** the `From` number is matched to `profiles.phone` (E.164) within the agency; the `notifications` table has no phone column.
+- **Multiple open offers:** every offer SMS carries a 4-digit offer code: `Guad: Can you cover {shift} at {home} on {date}? Reply YES {code} or NO {code}.` A bare YES/NO is accepted only when that person has exactly one open offer; otherwise Guad replies `Guad: You have {n} open offers. Reply YES or NO with the code from the offer you mean.`
+- **Reply matching:** Look up the pending `coverage_offer` with that code (or the single pending offer) for the sender. Match via the `notifications` table (type = `coverage_offer`, channel = `sms`, phone = From number, status = `sent`).
 - **Reply normalization:**
   - `YES`, `Y`, `SURE`, `OK`, `YEP` -> `accepted`
   - `NO`, `N`, `NOPE`, `CANT`, `CAN'T` -> `declined`
@@ -762,6 +782,7 @@ The escalation engine uses BullMQ delayed jobs. When a notification is sent for 
 | `note_submitted` | Push to supervisor at 0 min | Push reminder at 24 hr | -- (max 2 levels) |
 | `note_sent_back` | Push to caregiver at 0 min | Push reminder at 8 hr | Push reminder at 24 hr |
 | `incident_review_needed` | Push + SMS at 0 hr | Repeat daily | Stop after 3 days (escalation_exhausted) |
+| `med_possible_double_dose` | Push + SMS to supervisors at 0 min | SMS to agency admin at 15 min | -- (max 2 levels) |
 | `med_due_reminder` | Push to caregiver at -30 min | Push to supervisor at +30 min (overdue) | -- (max 2 levels) |
 
 ### Escalation State Tracking
@@ -797,7 +818,7 @@ Before sending any escalation, the worker checks:
 
 - **Unique constraint:** The `notification_preferences` table must have a unique index on `(profile_id, notification_type)` to prevent duplicate preference rows for the same user and notification type. Schema.ts should include: `uniqueIndex('notification_prefs_profile_type_idx').on(t.profile_id, t.notification_type)`.
 - **Agency timezone:** Digest scheduling (Section 3.5) and quiet hours (below) depend on the agency's IANA timezone. This is stored as `timezone: text('timezone').notNull().default('America/New_York')` on the `agencies` table in schema.ts. The `DigestJob` reads `agencyTimezone` from this column.
-- **FCM tokens:** FCM device tokens are per-device, not per-notification-type. They should be stored in a dedicated `device_tokens` table (columns: `id`, `agency_id`, `profile_id`, `token`, `platform`, `created_at`, `updated_at`) or as an `fcm_tokens text[]` column on the `profiles` table -- not in `notification_preferences`.
+- **FCM tokens:** stored in `device_tokens` (schema.ts #31), not in `notification_preferences`.
 - **Priority column:** The `notifications` table in schema.ts must include a `priority: integer('priority').notNull().default(3)` column to support quiet hours filtering, rate limit bypass for urgent notifications, and BullMQ job priority levels.
 
 ### Default Preferences by Role
@@ -813,6 +834,7 @@ When a profile is created, default notification preferences are seeded based on 
 | `note_approved` | Y | N | N | N | N | N | N | N | N |
 | `note_sent_back` | Y | N | N | N | N | N | N | N | N |
 | `med_refusal` | N | N | N | Y | N | N | Y | N | N |
+| `med_possible_double_dose` | N | N | N | Y | Y | N | Y | Y | N |
 | `med_due_reminder` | Y | N | N | N | N | N | N | N | N |
 | `health_alert` | N | N | N | Y | N | N | Y | N | N |
 | `incident_reported` | N | N | N | Y | N | N | Y | N | N |
@@ -832,6 +854,7 @@ The following notifications are always sent regardless of user preferences. The 
 | Type | Reason |
 |------|--------|
 | `med_refusal` | Clinical safety -- supervisor must acknowledge medication refusals/holds |
+| `med_possible_double_dose` | Clinical safety -- a dose may have been given twice |
 | `health_alert` | Clinical safety -- out-of-range vitals require review |
 | `incident_reported` | Regulatory compliance -- all incidents must be reviewed |
 | `incident_high_severity` | Regulatory compliance + safety -- immediate review required |
@@ -844,7 +867,7 @@ For mandatory notifications, the system always sends via push. SMS escalation st
 - Default quiet hours: **23:00 to 06:00** in the user's timezone (derived from agency timezone).
 - During quiet hours, **normal** and **low** priority notifications are held and delivered at 06:00 as a batch.
 - **High** and **urgent** priority notifications are delivered immediately regardless of quiet hours.
-- Users can customize quiet hours start/end within a minimum window of 4 hours and maximum of 10 hours. Per-user quiet hours are stored in a `user_notification_settings` table (columns: `profile_id`, `quiet_hours_start time`, `quiet_hours_end time`) or as columns on the `profiles` table. These are per-user, not per-notification-type.
+- Users can customize quiet hours start/end within a minimum window of 4 hours and maximum of 10 hours. Per-user quiet hours are stored in `user_settings.quiet_hours_start/end` (schema.ts #33). They are per-user, not per-notification-type.
 - Quiet hours apply to push and SMS only. Email delivery is not affected by quiet hours.
 
 ### Per-Agency Admin Overrides
@@ -936,7 +959,7 @@ Alerts are sent to the engineering team (not agency users) via the platform's ow
 ### Development Environment
 
 - **Console logger**: In development (`NODE_ENV=development`), all notification sends are intercepted and logged to the server console instead of dispatching to FCM/Twilio/SES. Log output includes: recipient, channel, type, rendered title/body, and deep link.
-- **In-app dev panel**: A `/dev/notifications` route (dev only) shows all queued and sent notifications with their payloads, escalation state, and delivery status. Includes a "Send Test Notification" button for each of the 18 types.
+- **In-app dev panel**: A `/dev/notifications` route (dev only) shows all queued and sent notifications with their payloads, escalation state, and delivery status. Includes a "Send Test Notification" button for each of the 19 types.
 - **BullMQ Board**: Bull Board UI available at `/dev/bull` in development for inspecting queues, retrying failed jobs, and draining queues.
 
 ### Staging Environment
@@ -956,7 +979,7 @@ Alerts are sent to the engineering team (not agency users) via the platform's ow
 
 | Test Category | What Is Tested | Runner |
 |---------------|----------------|--------|
-| Unit: template rendering | Each of the 18 types renders correctly with sample data; no PHI leaks into SMS templates | Vitest |
+| Unit: template rendering | Each of the 19 types renders correctly with sample data; no PHI leaks into SMS templates | Vitest |
 | Unit: PHI safety | SMS and email bodies are checked against a regex blocklist of PHI patterns (names, DOBs, med names from fixture data) | Vitest |
 | Unit: rate limiting | Rate limiter correctly blocks at threshold and allows urgent bypass | Vitest |
 | Unit: escalation logic | Escalation skips when `read_at` is set; fires when null; respects max depth | Vitest |
@@ -973,7 +996,7 @@ Alerts are sent to the engineering team (not agency users) via the platform's ow
 A dedicated test suite validates that no notification type leaks PHI into external channels:
 
 ```
-For each of the 18 notification types:
+For each of the 19 notification types:
   1. Create a notification with fixture data containing known PHI strings
      (client name: "Jane Doe", DOB: "1990-01-15", med: "Lisinopril 10mg")
   2. Render the SMS template
@@ -981,8 +1004,8 @@ For each of the 18 notification types:
   4. Render the email template
   5. Assert: email body does NOT contain any PHI strings
   6. Render the push template
-  7. Assert: push body does NOT contain client name or DOB
-     (push MAY contain generic clinical terms like "medication refused")
+  7. Assert: push body does NOT contain any fixture PHI or an incident type
+     (generic terms like "a medication was refused" are allowed)
 ```
 
 This suite runs on every CI build and blocks deployment if any assertion fails.

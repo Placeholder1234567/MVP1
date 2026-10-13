@@ -22,7 +22,7 @@ Supabase Postgres 15+        PowerSync Service          Client (PWA)
 
 1. **Server to client (read path):** PowerSync tails the Postgres WAL (Write-Ahead Log) and evaluates sync rules to determine which rows belong to which user. Changed rows are streamed to clients as compact deltas over a persistent WebSocket connection (WSS).
 
-2. **Client to server (write path):** Local mutations are written to the wa-sqlite database immediately (sub-20ms) and queued in a FIFO write queue. When connectivity is available, the queue replays mutations against the Supabase REST API, which enforces RLS policies. The server is authoritative -- if a write violates RLS or a unique constraint, it is rejected and the client is notified.
+2. **Client to server (write path):** Local mutations are written to the wa-sqlite database immediately (sub-20ms) and queued in a FIFO write queue. When connectivity is available, the queue is uploaded through the **`sync.upload` tRPC procedure** -- never straight to the Supabase REST API. `sync.upload` runs each operation through the owning service (the same code path as the online procedures), so Zod validation, role and feature checks, business rules (note signing, med certification, vital flags, clock verification), notifications and the audit trail all apply to offline writes too. Postgres RLS and the integrity triggers in `rls.sql` are the backstop. The server is authoritative -- if a write is rejected, the client is told why (section 6).
 
 3. **Conflict resolution:** Server-authoritative, last-write-wins using server timestamps. The server state always takes precedence over local state on conflict. See section 5 for per-operation details.
 
@@ -38,7 +38,18 @@ Supabase Postgres 15+        PowerSync Service          Client (PWA)
 | **Compatibility** | Chrome 102+, Firefox 111+, Safari 15.4+ | Universal but with divergent implementations |
 | **PHI safety** | Encrypted at rest via SQLCipher (AES-256-CBC); not inspectable via DevTools Application tab | Plaintext by default; visible in DevTools; requires manual encryption layer |
 
-OPFS is the only permitted client-side PHI storage per the constitution (principle 2). The wa-sqlite database in OPFS is encrypted with a key derived from the authenticated session. When the session expires, the key is lost and the database becomes inaccessible.
+OPFS is the only permitted client-side PHI storage per the constitution (principle 2). See "Local database encryption key" below for how the database is encrypted.
+
+### Local Database Encryption Key
+
+The key is **not** derived from the session token: access tokens rotate hourly and a device can be offline for a whole shift, so a token-derived key would lock the caregiver out of their own unsynced work.
+
+1. On first sign-in on a device, the server generates a random 256-bit database key for that user and device, stores it server-side (encrypted, in a non-synced table), and returns it once over TLS.
+2. The client keeps the key in memory only, and also stores a copy **wrapped** with a key derived from the user's device PIN (PBKDF2-SHA256, 600k iterations, random salt). Only the wrapped copy touches disk.
+3. Opening the app (online or offline) asks for the PIN, unwraps the key, and opens the database. After 5 wrong PINs the wrapped key is deleted; the database can then only be reopened by signing in online, which fetches the key from the server again.
+4. Deactivating a user or device on the server deletes the server copy, so a stolen device can't be re-keyed.
+
+> **Verify before building:** confirm the current `@powersync/web` release supports an encrypted wa-sqlite build (SQLCipher or equivalent) on OPFS in all target browsers. If it doesn't, this whole section needs a different design before any PHI is cached on devices.
 
 ### How PowerSync Differs from Traditional Sync
 
@@ -162,8 +173,11 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
 
   /**
    * Called by PowerSync to upload local mutations to the server.
-   * Iterates the write queue and applies each mutation via Supabase REST.
-   * Mutations are applied in FIFO order to preserve dependent write ordering.
+   * Sends the whole transaction to the sync.upload tRPC procedure, which
+   * applies each operation through the owning service (validation, business
+   * rules, notifications, audit). Never write to Supabase REST directly:
+   * that would bypass everything except RLS.
+   * Operations stay in FIFO order to preserve dependent write ordering.
    */
   async uploadData(database: AbstractPowerSyncDatabase) {
     const transaction = await database.getNextCrudTransaction();
@@ -171,32 +185,22 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     if (!transaction) return;
 
     try {
-      for (const op of transaction.crud) {
-        const table = op.table;
-        const record = op.opData;
+      const result = await trpc.sync.upload.mutate({
+        transactionId: transaction.transactionId,
+        ops: transaction.crud.map((op) => ({
+          op: op.op,          // 'PUT' | 'PATCH' | 'DELETE'
+          table: op.table,
+          id: op.id,
+          data: op.opData,
+        })),
+      });
 
-        switch (op.op) {
-          case 'PUT':
-            await supabase.from(table).upsert(record);
-            break;
-          case 'PATCH':
-            await supabase.from(table).update(record).eq('id', op.id);
-            break;
-          case 'DELETE':
-            await supabase.from(table).delete().eq('id', op.id);
-            break;
-        }
-      }
-
+      // Rejected ops come back with a code (Appendix B); accepted ops are applied.
+      for (const rejected of result.rejected) reportFailedWrite(rejected);
       await transaction.complete();
     } catch (error) {
-      // RLS violation or constraint error -- mark transaction as failed
-      // so it can be surfaced in the UI (see section 6)
-      if (isNonRetryableError(error)) {
-        await transaction.complete();  // remove from queue to prevent blocking
-        reportFailedWrite(transaction, error);
-      }
-      // Retryable errors (network) -- transaction stays in queue for retry
+      // Only network/5xx errors reach here: the transaction stays in the
+      // queue and PowerSync retries with backoff (section 6).
       throw error;
     }
   }
@@ -327,146 +331,137 @@ Clinical and operational data scoped to homes. **Caregivers receive only their a
         WHERE agency_id = token_parameters.agency_id
           AND token_parameters.role IN ('supervisor', 'admin')
 
-    # Note on time-window syntax: PowerSync sync rules use their own SQL
-    # dialect. Verify whether datetime('now', '-N days') or PostgreSQL
-    # NOW() - INTERVAL 'N days' is required for your PowerSync version.
-    # The examples below use PowerSync's documented syntax.
+    # Data queries select from ONE table and filter only on columns of that
+    # table. There are no JOINs, subqueries or time functions: classic
+    # PowerSync sync rules don't support them, and time functions would make
+    # bucket contents change without any row changing. Instead:
+    #   - child tables carry a denormalized home_id (always set by trigger
+    #     from the parent row; see rls.sql "Denormalized home_id")
+    #   - time windows use the device_sync flag, which SyncWindowJob sets to
+    #     false nightly once a row is older than its window (section 7)
+    # Verify against the PowerSync version you deploy; if Sync Streams with
+    # subqueries are available they can replace some of this, but the
+    # denormalized design works either way.
 
     data:
       # Clients assigned to this home (no time window -- always synced)
       - SELECT id, agency_id, home_id, name, first_name, initials,
-               info, active, created_at, updated_at
+               info, behaviors, active, created_at, updated_at
         FROM clients
         WHERE home_id = bucket.home_id
           AND agency_id = bucket.agency_id
 
       # Client health info (no time window -- reference data)
-      - SELECT chi.id, chi.agency_id, chi.client_id, chi.allergies,
-               chi.conditions, chi.diet, chi.doctor, chi.guardian, chi.dob,
-               chi.created_at, chi.updated_at
-        FROM client_health_info chi
-        INNER JOIN clients c ON chi.client_id = c.id
-        WHERE c.home_id = bucket.home_id
-          AND chi.agency_id = bucket.agency_id
+      - SELECT id, agency_id, client_id, home_id, allergies, conditions,
+               diet, doctor, guardian, dob, created_at, updated_at
+        FROM client_health_info
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
 
-      # Active goals for clients in this home (no time window)
-      - SELECT g.id, g.agency_id, g.client_id, g.area, g.text, g.steps,
-               g.frequency, g.target, g.started_at, g.stopped_at,
-               g.created_at, g.updated_at
-        FROM goals g
-        INNER JOIN clients c ON g.client_id = c.id
-        WHERE c.home_id = bucket.home_id
-          AND g.agency_id = bucket.agency_id
+      # Goals for clients in this home (no time window)
+      - SELECT id, agency_id, client_id, home_id, area, text, steps,
+               frequency, target, started_at, stopped_at,
+               created_at, updated_at
+        FROM goals
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
 
       # Medications for clients in this home (no time window)
-      - SELECT m.id, m.agency_id, m.client_id, m.name, m.dose, m.route,
-               m.scheduled_time, m.prn_instructions, m.notes,
-               m.started_at, m.stopped_at, m.created_at, m.updated_at
-        FROM medications m
-        INNER JOIN clients c ON m.client_id = c.id
-        WHERE c.home_id = bucket.home_id
-          AND m.agency_id = bucket.agency_id
+      - SELECT id, agency_id, client_id, home_id, name, dose, route,
+               scheduled_times, prn_instructions, notes,
+               started_at, stopped_at, created_at, updated_at
+        FROM medications
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
 
-      # Schedule slots -- 90-day rolling window (past 30 + future 60)
+      # Schedule slots -- past 30 + future days (device_sync)
       - SELECT id, agency_id, home_id, day, shift, assigned_to, status,
                via_lomi, created_at, updated_at
         FROM schedule_slots
         WHERE home_id = bucket.home_id
           AND agency_id = bucket.agency_id
-          AND day >= datetime('now', '-30 days')
-          AND day <= datetime('now', '+60 days')
+          AND device_sync = true
 
-      # Messages -- 90-day rolling window
+      # Messages -- 90-day window (device_sync)
       - SELECT id, agency_id, home_id, from_name, body, sent_at,
                created_by, created_at, updated_at
         FROM messages
         WHERE home_id = bucket.home_id
           AND agency_id = bucket.agency_id
-          AND created_at > datetime('now', '-90 days')
+          AND device_sync = true
 
-      # Notes -- 30-day rolling window
+      # Notes -- 30-day window (device_sync)
       - SELECT id, agency_id, client_id, home_id, author_id, author_name,
-               day, type, content, status, supervisor_comment,
+               day, shift, type, content, status, supervisor_comment,
                lomi_drafted, created_by, created_at, updated_at
         FROM notes
         WHERE home_id = bucket.home_id
           AND agency_id = bucket.agency_id
-          AND created_at > datetime('now', '-30 days')
+          AND device_sync = true
 
-      # Note goals -- linked to synced notes
-      - SELECT ng.id, ng.agency_id, ng.note_id, ng.goal_id, ng.trials,
-               ng.not_attempted, ng.reason, ng.created_at, ng.updated_at
-        FROM note_goals ng
-        INNER JOIN notes n ON ng.note_id = n.id
-        WHERE n.home_id = bucket.home_id
-          AND ng.agency_id = bucket.agency_id
-          AND n.created_at > datetime('now', '-30 days')
+      # Note goals -- follow their note's window (device_sync)
+      - SELECT id, agency_id, note_id, goal_id, home_id, trials,
+               not_attempted, reason, created_at, updated_at
+        FROM note_goals
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
+          AND device_sync = true
 
-      # Incidents -- 30-day rolling window
-      - SELECT id, agency_id, client_id, author_id, author_name,
+      # Incidents -- 30-day window (device_sync)
+      - SELECT id, agency_id, client_id, home_id, author_id, author_name,
                type, severity, occurred_at, location, description,
                antecedent, injured, injury_detail, staff_action,
                medical_followup, witnesses, notified_parties, status,
                followup_notes, created_by, created_at, updated_at
         FROM incidents
-        WHERE agency_id = bucket.agency_id
-          AND client_id IN (
-            SELECT id FROM clients WHERE home_id = bucket.home_id
-          )
-          AND created_at > datetime('now', '-30 days')
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
+          AND device_sync = true
 
-      # MAR records -- 30-day rolling window
-      - SELECT id, agency_id, client_id, medication_id, day, status,
-               recorded_at, recorded_by, recorded_by_name, reason,
-               effect, is_prn, acknowledged, created_by,
-               created_at, updated_at
+      # MAR records -- 30-day window (device_sync)
+      - SELECT id, agency_id, client_id, home_id, medication_id, day,
+               scheduled_time, status, recorded_at, recorded_by,
+               recorded_by_name, reason, effect, is_prn, acknowledged,
+               amends_id, conflict_with, created_by, created_at, updated_at
         FROM mar_records
-        WHERE agency_id = bucket.agency_id
-          AND client_id IN (
-            SELECT id FROM clients WHERE home_id = bucket.home_id
-          )
-          AND created_at > datetime('now', '-30 days')
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
+          AND device_sync = true
 
-      # Health entries -- 30-day rolling window
-      - SELECT id, agency_id, client_id, kind, data, recorded_at,
+      # Health entries -- 30-day window (device_sync)
+      - SELECT id, agency_id, client_id, home_id, kind, data, recorded_at,
                recorded_by, flags, acknowledged, created_by,
                created_at, updated_at
         FROM health_entries
-        WHERE agency_id = bucket.agency_id
-          AND client_id IN (
-            SELECT id FROM clients WHERE home_id = bucket.home_id
-          )
-          AND created_at > datetime('now', '-30 days')
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
+          AND device_sync = true
 
-      # Attendance -- 30-day rolling window
-      - SELECT id, agency_id, client_id, day, services, recorded_at,
-               recorded_by, recorded_by_name, created_by,
+      # Attendance -- 30-day window (device_sync)
+      - SELECT id, agency_id, client_id, home_id, day, services,
+               recorded_at, recorded_by, recorded_by_name, created_by,
                created_at, updated_at
         FROM attendance
-        WHERE agency_id = bucket.agency_id
-          AND client_id IN (
-            SELECT id FROM clients WHERE home_id = bucket.home_id
-          )
-          AND created_at > datetime('now', '-30 days')
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
+          AND device_sync = true
 
-      # Coverage requests -- 7-day rolling window (transient)
+      # Coverage requests -- 7-day window (device_sync)
       - SELECT id, agency_id, home_id, day, shift, called_out_by,
                reason, status, filled_by, created_by,
                created_at, updated_at
         FROM coverage_requests
         WHERE home_id = bucket.home_id
           AND agency_id = bucket.agency_id
-          AND created_at > datetime('now', '-7 days')
+          AND device_sync = true
 
-      # Coverage steps -- linked to synced coverage requests
-      - SELECT cs.id, cs.agency_id, cs.coverage_request_id,
-               cs.description, cs.occurred_at,
-               cs.created_at, cs.updated_at
-        FROM coverage_steps cs
-        INNER JOIN coverage_requests cr ON cs.coverage_request_id = cr.id
-        WHERE cr.home_id = bucket.home_id
-          AND cs.agency_id = bucket.agency_id
-          AND cr.created_at > datetime('now', '-7 days')
+      # Coverage steps -- follow their request's window (device_sync)
+      - SELECT id, agency_id, coverage_request_id, home_id,
+               description, occurred_at, created_at, updated_at
+        FROM coverage_steps
+        WHERE home_id = bucket.home_id
+          AND agency_id = bucket.agency_id
+          AND device_sync = true
 ```
 
 ### Bucket: `user_data`
@@ -490,7 +485,7 @@ Per-user records that are private to the authenticated user.
         FROM clock_records
         WHERE profile_id = bucket.profile_id
           AND agency_id = bucket.agency_id
-          AND created_at > datetime('now', '-30 days')
+          AND device_sync = true
 
       # Notifications -- 7-day window, own only
       - SELECT id, agency_id, profile_id, type, title, body, channel,
@@ -499,13 +494,20 @@ Per-user records that are private to the authenticated user.
         FROM notifications
         WHERE profile_id = bucket.profile_id
           AND agency_id = bucket.agency_id
-          AND created_at > datetime('now', '-7 days')
+          AND device_sync = true
 
       # Notification preferences -- own only, no time window
       - SELECT id, agency_id, profile_id, notification_type,
                push_enabled, sms_enabled, email_enabled,
                created_at, updated_at
         FROM notification_preferences
+        WHERE profile_id = bucket.profile_id
+          AND agency_id = bucket.agency_id
+
+      # User settings -- own row (theme, quiet hours, disclosure counters)
+      - SELECT id, agency_id, profile_id, theme, quiet_hours_start,
+               quiet_hours_end, disclosure, created_at, updated_at
+        FROM user_settings
         WHERE profile_id = bucket.profile_id
           AND agency_id = bucket.agency_id
 ```
@@ -527,7 +529,7 @@ All clock records in the agency, for supervisors and admins only. Separated from
                acknowledged, created_at, updated_at
         FROM clock_records
         WHERE agency_id = bucket.agency_id
-          AND created_at > datetime('now', '-30 days')
+          AND device_sync = true
 ```
 
 ### Tables Never Synced to Client
@@ -564,14 +566,14 @@ PowerSync applies this model automatically. The write queue replays mutations ag
 | **Update note (draft)** | Caregiver edits a draft note offline. Another device (or same user on another tab) also edits. | Last write wins at server. The second write to reach the server overwrites the first. | User sees their local edits until sync completes. After sync, the note content reflects the server state. If the user's edits were overwritten, a toast shows "Note updated from another device." |
 | **Sign note (draft -> submitted)** | Caregiver signs a note offline. Meanwhile, a supervisor returns the note from another device (changing status to `returned`). | Server state wins. The supervisor's `returned` status is authoritative. The caregiver's `submitted` transition is rejected because the note is no longer in `draft` status. | Caregiver sees "Note was returned by supervisor" on sync. They must review the supervisor comment and re-submit. |
 | **Approve note** | Supervisor approves a note while the caregiver is editing the same note offline. | Server state wins. The note is `approved`. The caregiver's offline edits are rejected because the note is no longer in `draft` or `returned` status. | Caregiver sees "Note already approved" on sync. Their local edits are lost. The approved version is authoritative. |
-| **Record MAR (scheduled)** | Two med-certified caregivers record the same scheduled medication for the same client on the same day while both offline. | Server rejects the second write. Unique constraint on `(client_id, medication_id, day)` where `is_prn = false`. The first write to reach the server succeeds. | Second caregiver sees "Medication already recorded for today by [name]" on sync. Their local MAR entry is removed from the local DB. |
+| **Record MAR (scheduled)** | Two med-certified caregivers record the same dose slot (same client, medication, day and `scheduled_time`) while both offline. | **Neither record is discarded.** Two records for one slot may mean the person was given the dose twice, which is a safety event. `sync.upload` catches the unique-index violation and saves the second record with `conflict_with` pointing at the first (the index excludes conflict records). It then sends a mandatory `med_possible_double_dose` alert to the home's supervisors. | Second caregiver sees "[Name] also recorded this dose. Your supervisor has been alerted." The supervisor reviews both records and, if a second dose was actually given, files a medication-error incident. |
 | **Record MAR (PRN)** | Two caregivers record PRN doses for the same medication while offline. | Both accepted -- PRN doses are not subject to the unique constraint. Each PRN record has a unique ID. | Both PRN entries appear in the MAR. This is valid -- PRN medications can be given multiple times. |
 | **Create incident** | Two caregivers report the same incident while offline. | Both accepted -- different `incident.id` UUIDs. | Both incident reports appear. Supervisor reviews and may close one as duplicate with a follow-up note. |
 | **Clock in** | Caregiver clocks in offline. GPS coordinates captured locally. | Write accepted on sync. Server recalculates `distance_meters` and sets `verified` based on home geofence. | If GPS was spoofed or inaccurate offline, the server may set `verified = false` and `distance_meters` to the actual calculated distance. Supervisor is notified of out-of-geofence clock-in. |
 | **Clock out** | Caregiver clocks out offline. Meanwhile, supervisor manually overrides the clock record. | Server state wins. The supervisor's manual override is authoritative. The caregiver's clock-out may be applied to the overridden record or rejected. | Caregiver sees the corrected times on sync. `manual_override = true` and `acknowledged = false` -- caregiver must acknowledge. |
 | **Send message** | Caregiver sends a home message offline. | Write accepted on sync. Messages are append-only -- no conflict possible (each message has a unique ID). | Message appears in the home board after sync. Timestamp reflects `sent_at` captured locally. Messages may appear out of chronological order if multiple users are offline. |
 | **Record health entry** | Two caregivers record vitals for the same client at the same time while both offline. | Both accepted -- different `health_entry.id` UUIDs, no conflict. Duplicate vital entries for the same time may indicate re-measurement and are reviewed by supervisor. | Both entries appear in the health log. Supervisor reviews and may flag duplicate readings for the same time window. |
-| **Update attendance** | Two caregivers update attendance for the same client on the same day. | Last write wins at server. The second update overwrites the first. **Warning:** attendance is a billing and compliance document; silent overwrites risk regulatory issues. UI should prevent overwrites where possible. | UI should show "Attendance already recorded by [name]" if a record exists for the same client+day before allowing an update. Consider adding a unique constraint on `(client_id, day)` to reject duplicate writes at the database level. |
+| **Update attendance** | Two caregivers record attendance for the same client on the same day. | The unique index on `(client_id, day)` keeps one row. `sync.upload` merges the two service lists (union) rather than overwriting, and both caregivers are recorded in the audit log. Attendance is a billing document, so it is never silently replaced. | UI shows "Attendance already recorded by [name]" before editing an existing record. |
 
 ### Conflict Notification Flow
 
@@ -584,9 +586,14 @@ PowerSync replays write to Supabase
         ├── Success: local DB updated to match server state
         │
         └── Failure:
-            ├── Constraint violation (e.g., duplicate MAR):
-            │     -> Remove from local DB
-            │     -> Show toast: "Medication already recorded"
+            ├── Duplicate MAR dose slot:
+            │     -> Kept as a conflict record (conflict_with set)
+            │     -> Supervisor alerted (med_possible_double_dose)
+            │     -> Toast: "[Name] also recorded this dose. Your supervisor has been alerted."
+            │
+            ├── Other constraint violation:
+            │     -> Remove from local DB, keep details in _failed_writes
+            │     -> Show toast with the reason
             │
             ├── RLS violation (e.g., user deactivated):
             │     -> Remove from local DB
@@ -672,6 +679,8 @@ The queue depth is checked on every write and on a 30-second interval. At 100+ p
 | **Schedule data** (schedule_slots) | 90 days rolling (past 30 + future 60) | Volume grows linearly with time if unbounded. A 90-day window covers recent history and near-future scheduling needs. Historical schedule data is available via online views. |
 | **Messages** | 90 days rolling | Low volume per home, but syncing in full with no expiry while purging locally at 30 days creates repeated download-purge cycles. A 90-day server-side window eliminates this churn. |
 
+**How windows are applied:** sync rules can't evaluate "now", so each windowed table has a `device_sync` boolean (default `true`). `SyncWindowJob` (BullMQ, nightly at 03:00 agency time, idempotent) sets `device_sync = false` on rows older than the table's window. Example: notes older than 30 days, or schedule slots more than 30 days in the past. PowerSync then removes them from devices. Rows are never deleted on the server.
+
 ### Local Database Size Management
 
 | Metric | Threshold | Action |
@@ -698,11 +707,11 @@ Purging removes data from the local wa-sqlite database only. Server data is unaf
 
 | Event | Data Action |
 |-------|------------|
-| **Explicit logout** | Delete OPFS database file. Purge service worker cache. Reset all Svelte stores. Revoke Supabase Auth session server-side. |
-| **Session timeout** (12 hours inactivity, configurable per agency) | Revoke the decryption key (session-derived). Redirect to login. OPFS database file is **preserved** (encrypted, inaccessible without re-auth). On successful re-auth, re-derive the key and flush the write queue before resuming normal sync. If re-auth fails (e.g., account deactivated), delete OPFS database file and purge service worker cache. This preserves offline writes made during a shift that spans a session timeout. |
-| **Account deactivation** (`profiles.active = false`) | Server revokes Supabase Auth session. On next sync attempt, PowerSync receives auth error. Client clears local data and redirects to login with "Account deactivated" message. |
-| **App backgrounded** (mobile PWA, 5+ minutes) | PIN/biometric required to resume. If PIN fails 3 times, session is terminated and local data cleared. |
-| **Browser tab closed** | Session persists (Supabase refresh token in httpOnly cookie). On re-open, refresh token is used to resume. If refresh token is expired, user must re-authenticate and a full sync occurs. |
+| **Explicit logout** | **Never deletes unsynced work.** If the upload queue is empty, delete the OPFS database, purge the service worker cache, reset stores and revoke the session. If changes are still pending, logout first tries to sync. If the device is offline, the user sees "You have [n] changes that haven't synced yet. Stay signed in until you're back online." Logout then just locks the app (in-memory key dropped, PIN needed to reopen), and the database is deleted only after the queue drains on a later sign-in. |
+| **Session timeout** (12 hours inactivity, configurable per agency) | Drop the in-memory database key and redirect to login. The OPFS database stays on the device (encrypted, unreadable without the PIN-wrapped key). On re-auth, unwrap the key, flush the write queue, then resume sync. |
+| **Account deactivation** (`profiles.active = false`) | Server revokes the session and deletes the server copy of the device's database key. On the next connection, writes still in the queue are uploaded with the deactivated user's identity and flagged for supervisor review (they are clinical records made while the person was working) before local data is cleared. |
+| **App backgrounded** (mobile PWA, 5+ minutes) | PIN/biometric required to resume. After 5 wrong PINs the wrapped key is deleted. Local data stays encrypted until an online sign-in re-fetches the key; it is not deleted while the queue is non-empty. |
+| **Browser tab closed** | The refresh token lives in a cookie managed by `@supabase/ssr` in `hooks.server.ts`. On re-open the server refreshes the session and hands the client a fresh short-lived access token (kept in memory only). If the refresh token has expired, the user signs in again; unsynced local data is kept. |
 | **Role change** (e.g., caregiver promoted to supervisor) | Server updates JWT claims. On next token refresh, PowerSync re-evaluates sync rules. New bucket data begins syncing. Old restricted-scope data remains until replaced by wider-scope sync. |
 | **Home assignment change** (caregiver moved to different home) | Server updates `profiles.home_ids`. On next token refresh, sync rules produce new bucket parameters. Data for the old home is purged. Data for the new home begins syncing. |
 
@@ -740,7 +749,7 @@ Service Worker
 
 - **Does NOT cache API responses.** PowerSync handles all data replication. Caching tRPC or Supabase responses in the service worker would create stale data and conflict with PowerSync's consistency model.
 - **Does NOT intercept PowerSync WebSocket traffic.** The PowerSync WebSocket connection is pass-through.
-- **Does NOT manage authentication.** Supabase Auth handles sessions via httpOnly cookies.
+- **Does NOT manage authentication.** Session cookies are managed by `@supabase/ssr`; the access token is held in memory (security.md).
 - **Does NOT store PHI.** The service worker cache contains only static assets (HTML, CSS, JS, images). No API responses, no client data, no note content.
 
 ### Cache Strategy Details
@@ -783,13 +792,16 @@ The service worker version is tied to the SvelteKit build hash. Every deployment
 
 ### Status Indicators
 
-A small dot indicator appears in the app header, next to the user avatar. It communicates sync state at a glance without interrupting the caregiving workflow.
+**Canonical definition: `frontend-spec-2.md` §8.1.** Other specs reference it rather than redefining it. Summary:
 
-| Indicator | Color | Meaning | Tooltip |
-|-----------|-------|---------|---------|
-| Solid dot | Green (`var(--ok)`) | Fully synced, connected | "All changes saved" |
-| Pulsing dot | Yellow (`var(--lemon)`) | Syncing or pending writes (1-100 in queue) | "Syncing [n] changes..." |
-| Solid dot | Red (`var(--bad)`) | Offline or sync error | "Offline -- changes will sync when connected" |
+| State | Visual | Tooltip on tap |
+|-------|--------|----------------|
+| Synced | No indicator | -- |
+| Pending or syncing | 6px amber dot (`var(--lemon)`), slow pulse while syncing | "[n] changes waiting to sync. Last synced [time]." |
+| Offline | Small "Offline" pill (`var(--lemon-2)` bg) | "You're offline. Your work is saved and will sync when you reconnect." |
+| Retryable sync error | Amber dot (same as pending) | "Some changes couldn't sync. They'll retry automatically." |
+
+Connectivity is never shown in red: being offline is normal, not an error. Red is reserved for writes that **permanently** failed and need the user's attention (banner below).
 
 ### Banner Messages
 
@@ -801,7 +813,7 @@ Banners appear below the app header when the user needs to take action or be awa
 | Pending writes (51-100) | Yellow | "Syncing [n] changes..." | Yes |
 | Pending writes (101+) | Orange | "You have [n] unsynced changes. Connect to sync." | No |
 | Failed writes | Red | "[n] change(s) could not be saved. Tap to review." | No |
-| Reconnected after offline period | Green (toast) | "Back online -- syncing..." | Auto-dismiss after 3s |
+| Reconnected after offline period | Neutral (toast) | "Back online -- syncing..." | Auto-dismiss after 3s |
 | Sync complete after reconnect | Green (toast) | "All changes synced" | Auto-dismiss after 3s |
 
 ### Implementation
@@ -840,11 +852,12 @@ $effect(() => {
   };
 });
 
-export function getSyncIndicator() {
-  if (failedWrites > 0) return 'red';
-  if (syncStatus === 'offline') return 'red';
-  if (syncStatus === 'syncing' || pendingWrites > 0) return 'yellow';
-  return 'green';
+// Matches frontend-spec-2.md §8.1. Permanently failed writes are shown by the
+// red banner, not the indicator.
+export function getSyncIndicator(): 'none' | 'amber' | 'offline' {
+  if (syncStatus === 'offline') return 'offline';
+  if (syncStatus === 'syncing' || pendingWrites > 0) return 'amber';
+  return 'none';
 }
 ```
 
@@ -934,7 +947,7 @@ test('caregiver can create note while offline and sync on reconnect', async ({ p
   expect(note.status).toBe('submitted');
 });
 
-test('duplicate MAR is rejected on sync with user notification', async ({ page, context }) => {
+test('duplicate MAR dose is kept as a conflict and the supervisor is alerted', async ({ page, context }) => {
   await loginAsCaregiver(page);
   await waitForSync(page);
 
@@ -953,9 +966,10 @@ test('duplicate MAR is rejected on sync with user notification', async ({ page, 
   // Reconnect
   await context.setOffline(false);
 
-  // Verify conflict resolution
-  await expect(page.locator('[data-testid="sync-error-toast"]'))
-    .toContainText('already recorded', { timeout: 10000 });
+  // Verify the second record is kept as a conflict, not discarded
+  await expect(page.locator('[data-testid="sync-toast"]'))
+    .toContainText('also recorded this dose', { timeout: 10000 });
+  expect(await countServerMarConflicts(page, { medication: 'Med A' })).toBe(1);
 });
 ```
 
@@ -971,8 +985,8 @@ Every feature that touches synced data must pass this checklist before shipping:
 | 4 | **Conflict: server wins** | Create a record offline. Have the server modify the same record. Go online. | Server version prevails. Local version is overwritten. User sees toast notification. |
 | 5 | **Constraint violation** | Create a duplicate record offline (e.g., same MAR). Go online. | Duplicate is rejected. User sees error toast. Local duplicate is removed. |
 | 6 | **RLS rejection** | Deactivate the user's account on the server while they are offline. User creates records offline. Go online. | All writes are rejected. User is redirected to login. Local data is cleared. |
-| 7 | **Logout clears data** | Create records offline. Logout without reconnecting. | OPFS database is deleted. No data persists after logout. |
-| 8 | **Session timeout** | Create records offline. Wait for session timeout (configurable, default 12 hours). | OPFS database preserved (encrypted). On re-auth, decryption key is re-derived and write queue flushes. If re-auth fails, data is cleared. |
+| 7 | **Logout never loses work** | Create records offline. Tap logout without reconnecting. | Logout is held: user sees the unsynced-changes message, app locks instead of wiping. After reconnecting and signing in, the queue drains, then the database can be deleted. |
+| 8 | **Session timeout** | Create records offline. Wait for session timeout (configurable, default 12 hours). | OPFS database preserved (encrypted). On re-auth the PIN-wrapped key is unwrapped and the write queue flushes. |
 | 9 | **Large queue** | Create 100+ records offline. Go online. | All records sync in correct order. Progress is visible in UI. No writes are lost. |
 | 10 | **Multi-tab behavior** | Open the app in two tabs. Create a record in tab A. Verify tab B sees it. | OPFS exclusive lock means only one tab can have write access. Second tab shows "App is open in another tab" message. |
 | 11 | **PWA installed + offline** | Install PWA via "Add to Home Screen." Go offline. Open PWA. | App shell loads from service worker cache. PowerSync provides local data. Full offline functionality. |
@@ -1013,6 +1027,7 @@ npm run test:e2e -- --grep @offline
 | `clock_records` | user_data + admin_clock_data | 30 days | Own records (user_data) | Own records (user_data) + all agency records (admin_clock_data) | Yes |
 | `notifications` | user_data | 7 days | Own records | Own records | No |
 | `notification_preferences` | user_data | Full | Own record | Own record | No |
+| `user_settings` | user_data | Full | Own record | Own record | Yes |
 | `audit_log` | -- | Never synced | -- | -- | -- |
 | `sync_checkpoints` | -- | Never synced | -- | -- | -- |
 | `events` | -- | Never synced | -- | -- | -- |
@@ -1027,7 +1042,8 @@ npm run test:e2e -- --grep @offline
 
 | Error Code | Meaning | User Message | Recovery |
 |------------|---------|-------------|----------|
-| `CONSTRAINT_VIOLATION` | Unique constraint failed (e.g., duplicate MAR) | "This record was already saved by another user." | Discard local duplicate |
+| `CONSTRAINT_VIOLATION` | Unique constraint failed (other than a duplicate MAR dose slot, which is kept as a conflict record) | "This record was already saved by another user." | Discard local duplicate; details kept in `_failed_writes` |
+| `MAR_CONFLICT` | Same dose slot recorded on two devices | "[Name] also recorded this dose. Your supervisor has been alerted." | Record kept with `conflict_with`; supervisor reviews |
 | `RLS_DENIED` | Row-Level Security policy rejected the write | "You don't have permission to save this change." | Discard; may indicate role/home change |
 | `FK_VIOLATION` | Foreign key reference missing (e.g., note references deleted client) | "The referenced record no longer exists." | Discard; data was deleted server-side |
 | `SESSION_EXPIRED` | Auth token expired and refresh failed | "Your session has expired. Please log in again." | Re-authenticate; writes preserved if re-auth succeeds within grace period |

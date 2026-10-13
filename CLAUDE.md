@@ -100,14 +100,15 @@ These are absolute. Do not deviate.
 ### tRPC
 - One router file per domain in `src/lib/server/trpc/routers/`
 - Zod for input validation in every procedure
-- Middleware chain: auth (always) -> role (if needed) -> audit (mutations)
+- Middleware chain: auth (always) -> requireFeature (if gated) -> role (if needed) -> audit context (mutations)
+- Offline writes go through `sync.upload`, which calls the same service functions as the online procedures. Never write to Supabase REST from the client.
 - Types flow to frontend automatically -- no manual type exports
 
 ### Services
 - One directory per service under `src/lib/server/services/`
 - Public API in `index.ts`, queries in `*.queries.ts`, types in `*.types.ts`
 - Every function takes `agencyId` as first argument
-- Call `audit.logMutation()` after every PHI data mutation
+- Don't write audit rows yourself for table changes: the `audit_row_change` trigger (rls.sql) records every INSERT/UPDATE/DELETE on audited tables. Call `audit.logEvent()` only for actions that don't change a row (PHI reads, exports, AI invocations).
 
 ### Database
 - All tables include `agency_id` FK (except system config tables without PHI)

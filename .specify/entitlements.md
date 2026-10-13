@@ -352,6 +352,7 @@ Every tRPC procedure is mapped to a feature flag and minimum role. Procedures ma
 | `client` | `create` | always | supervisor | New client |
 | `client` | `update` | always | supervisor | Edit client basic info |
 | `client` | `archive` | always | admin | Archive client |
+| `sync` | `upload` | always (each op is checked against its own feature, e.g. a `notes` op requires `charting`) | caregiver | Offline write upload |
 
 ### Scheduling Pillar
 

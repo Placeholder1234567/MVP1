@@ -103,7 +103,7 @@ src/lib/server/services/
 
 **Key functions:**
 - `getMedsDue(agencyId, clientId, day): MedWithStatus[]` — list medications with their MAR status for the day; highlights overdue scheduled meds.
-- `recordDose(agencyId, data): MarRecord` — record a dose as `given`, `refused`, or `held`. Requires `recorded_by` (med-certified staff). For non-PRN meds, enforces unique constraint per client+med+day.
+- `recordDose(agencyId, data): MarRecord` — record a dose as `given`, `refused`, or `held` for one dose slot (`scheduled_time`, one of the medication's `scheduled_times`; null for PRN). Requires `recorded_by` (med-certified staff). The unique index is per client+med+day+slot. When a second original arrives for the same slot (offline on two devices), it is stored with `conflict_with` and a `med_possible_double_dose` alert is sent instead of rejecting it.
 - `amendDose(agencyId, originalId, correction): MarRecord` — create correction entry referencing original (never deletes).
 - `acknowledgeAlert(agencyId, marId, userId): void` — supervisor acknowledges a refusal/hold alert.
 - `getMedicationHistory(agencyId, medicationId): MedHistory[]` — full change log for a medication (dose changes, start/stop).
@@ -276,7 +276,7 @@ src/lib/server/services/
 
 **Key functions:**
 - `createReferral(agencyId, data): Referral` — log a new referral/inquiry with contact info and source.
-- `updateReferralStatus(agencyId, referralId, status, notes?): Referral` — advance referral through pipeline (inquiry -> assessment -> accepted -> placed -> declined).
+- `updateReferralStatus(agencyId, referralId, status, notes?): Referral` — advance referral through pipeline (inquiry -> touring -> accepted | waitlist | declined -> placed; values per `referral_status` in schema.ts).
 - `listReferrals(agencyId, status?): Referral[]` — filter referrals by status.
 - `listAvailableRooms(agencyId): Room[]` — rooms with status `available` across all homes.
 - `getRoomsByHome(agencyId, homeId): Room[]` — room inventory for a specific home.
@@ -418,6 +418,10 @@ src/lib/server/services/
 
 ### 17. Sync Service
 
+**Upload path:** `upload(agencyId, userId, ops)` backs the `sync.upload` tRPC procedure. It dispatches each queued offline op, in order, to the owning service's normal function (charting, medication, health, clock, attendance, message, incident), so offline writes get the same validation, business rules, notifications and audit as online ones. Ops on tables that aren't writable offline are rejected with `RLS_DENIED`.
+
+**`SyncWindowJob`** (nightly 03:00 agency time): sets `device_sync = false` on rows older than their device sync window (offline-sync.md §7) so PowerSync removes them from devices.
+
 **Responsibility:** PowerSync bridge configuration, sync rule generation (what data each user can sync offline), checkpoint management for incremental sync.
 
 **Owns tables:** `sync_checkpoints`
@@ -468,7 +472,8 @@ src/lib/server/services/
 **Owns tables:** `audit_log`, `events`
 
 **Key functions:**
-- `logMutation(agencyId, tableName, recordId, action, oldValues, newValues, userId, ip, userAgent): void` — record a data mutation in the audit log. Called by every service after INSERT/UPDATE/DELETE.
+- Row changes are recorded by the `audit_row_change` database trigger (rls.sql), not by service code, so they can't be skipped or forged.
+- `logEvent(agencyId, action, detail, userId): void` — record an audited action that changes no row (exports with format/record count/filters, AI invocations with model/tokens/latency, report downloads).
 - `logAccess(agencyId, tableName, recordId, userId): void` — record PHI read access (for sensitive tables: `clients`, `client_health_info`, `notes`, `incidents`, `mar_records`, `health_entries`).
 - `emitEvent(agencyId, eventType, detail, homeId?): Event` — publish a domain event (e.g., `note.submitted`, `shift.filled`, `incident.created`). Used for Supabase Realtime subscriptions and cross-service side effects.
 - `getAuditTrail(agencyId, tableName, recordId): AuditEntry[]` — full history of changes to a specific record.

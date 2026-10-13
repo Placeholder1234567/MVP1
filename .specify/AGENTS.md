@@ -74,7 +74,7 @@ Lomi outputs are always shown in a review UI. AI-generated content is flagged (`
 
 ### 6. Supabase Auth only
 
-All authentication flows go through Supabase Auth. Never store tokens in `localStorage`. Use `httpOnly` cookies via SvelteKit hooks. Never implement custom JWT generation, custom session management, or set auth cookies from application code. Role-based access (caregiver, supervisor, admin) is enforced via Supabase Auth metadata and RLS policies.
+All authentication flows go through Supabase Auth. Never store tokens in `localStorage` or `sessionStorage`. Session cookies are managed only by `@supabase/ssr` in `hooks.server.ts`. The browser holds the short-lived access token in memory, because PowerSync and Realtime need it (security.md, Session Management). Never implement custom JWT generation, custom session management, or set auth cookies from application code. Role-based access (caregiver, supervisor, admin) is enforced via Supabase Auth metadata and RLS policies.
 
 ### 7. Charting presets are cosmetic only
 
@@ -129,12 +129,12 @@ API keys, service credentials, database connection strings, Twilio tokens, and A
 1. Create a directory under `src/lib/server/services/` with `index.ts`, `<name>.queries.ts`, and `<name>.types.ts`.
 2. Every exported function receives `agencyId` as its first argument and passes it to all Drizzle queries.
 3. Import from other services via their `index.ts` exports (same-process function calls, not network hops).
-4. Call `audit.logMutation()` after every INSERT, UPDATE, DELETE on PHI tables.
+4. Don't write audit rows yourself for table changes: the `audit_row_change` trigger (rls.sql) records every INSERT/UPDATE/DELETE on audited tables. Call `audit.logEvent()` only for actions that don't change a row (PHI reads, exports, AI invocations).
 5. Document the service in `services.md`: responsibility, owned tables, key functions, dependencies, BullMQ jobs.
 
 ### Working with PowerSync (offline data)
 
-1. Never call Supabase client directly for data that needs offline support.
+1. Never call the Supabase client directly for data that needs offline support. Offline writes are uploaded through `sync.upload` (trpc-router.md), which runs the owning service's code.
 2. Use PowerSync reactive queries in Svelte stores (`$lib/stores/sync.ts`).
 3. Generate UUIDs client-side for new records (enables offline creation).
 4. Design mutations to be idempotent where possible (upserts on natural keys).
