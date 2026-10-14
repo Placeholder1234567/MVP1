@@ -57,7 +57,7 @@ The MVP stores **all application data as a single JSON object** in the browser's
 | Jobs | Cloud Tasks + Cloud Scheduler | Coverage workflows, notification dispatch, recurring jobs |
 | Notifications | FCM / AWS End User Messaging SMS / SES | Push, SMS, email |
 | Hosting | Cloud Run | `web`, `worker` and `powersync` services (infrastructure.md) |
-| Frontend | SvelteKit 2 + Svelte 5 runes | PWA with service worker |
+| Frontend | SvelteKit 3 + Svelte 5 runes | PWA with service worker |
 
 ### Key Architectural Gains
 
@@ -597,7 +597,7 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 
 | Task | Detail | Deliverable |
 |------|--------|-------------|
-| SvelteKit project init | `npm create svelte@latest`, Svelte 5 runes mode, TypeScript strict, Vite | Repo with `src/`, `static/`, `svelte.config.js` |
+| SvelteKit project init | `npx sv create` (SvelteKit 3), Svelte 5 runes mode, TypeScript strict, Vite, adapter-node | Repo with `src/`, `static/`, `vite.config.ts` |
 | Local stack | `docker compose` with Postgres 16 (logical replication on), PowerSync and Mailpit; Firebase Auth emulator (infrastructure.md §6) | `docker compose up` + `npm run dev` work on a clean laptop |
 | Google Cloud project | Project, budget alerts, Identity Platform (email/password + email link, TOTP MFA), Cloud SQL dev instance, Secret Manager | Dev project configured, env vars set |
 | Drizzle ORM setup | Install `drizzle-orm` + `drizzle-kit`, copy `schema.ts` from `.specify/`, configure `drizzle.config.ts` | `npx drizzle-kit push` succeeds |

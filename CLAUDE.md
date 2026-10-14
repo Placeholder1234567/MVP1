@@ -2,16 +2,14 @@
 
 ## Quick Start
 
-> **The SvelteKit app isn't set up yet.** The commands below are for the rebuild. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`) and the specs in `.specify/`. Spec checks you can run now:
->
-> - `node .specify/lint.js`: cross-spec consistency
-> - `bash .specify/tests/rls/run.sh`: applies `schema.ts` + `rls.sql` to a throwaway Postgres (needs Docker) and runs the RLS and integrity-trigger tests
+> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, the shared domain rules and their tests; sign-in, tRPC and PowerSync come next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
 
 ```bash
 npm install
-docker compose up -d        # Local Postgres 16, PowerSync, Mailpit (infrastructure.md §6)
-npx drizzle-kit push        # Push schema to database, then apply .specify/rls.sql
-npm run dev                 # SvelteKit dev server at http://localhost:5173 + Firebase Auth emulator
+cp .env.example .env
+npm run db:up               # Local Postgres 16 + Mailpit (infrastructure.md §6); PowerSync joins in Phase 2
+npm run db:setup            # Drizzle migrations, then .specify/rls.sql (policies, triggers) and grants
+npm run dev                 # SvelteKit dev server at http://localhost:5173
 ```
 
 ## Key Commands
@@ -21,13 +19,15 @@ npm run dev                 # SvelteKit dev server at http://localhost:5173 + Fi
 | `npm run dev` | SvelteKit dev server |
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build locally |
-| `npm run test` | Run vitest (unit + integration) |
-| `npm run test:e2e` | Run Playwright e2e tests |
-| `npm run db:generate` | Generate Drizzle migration from schema changes |
-| `npm run db:push` | Push schema to database (dev) |
+| `npm test` | Unit tests (vitest) |
+| `npm run test:integration` | Database tests against the local Docker Postgres |
+| `npm run db:up` / `db:down` | Start / stop the local stack |
+| `npm run db:setup` | Apply migrations, RLS policies, triggers and grants (`db:reset` drops everything first) |
+| `npm run db:generate` | Generate a Drizzle migration after editing `.specify/schema.ts` |
 | `npm run db:studio` | Open Drizzle Studio (database browser) |
-| `npm run lint` | ESLint + svelte-check |
+| `npm run lint` | ESLint (incl. import boundaries) + svelte-check |
 | `npm run format` | Prettier |
+| `npm run spec:lint` / `spec:rls-test` | Spec consistency linter / SQL-level RLS tests |
 
 ## MVP Reference (read before building UI)
 

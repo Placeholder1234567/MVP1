@@ -20,6 +20,7 @@ import {
   time,
   index,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -638,13 +639,13 @@ export const marRecords = pgTable(
     effect: text('effect'),
     is_prn: boolean('is_prn').notNull().default(false),
     acknowledged: boolean('acknowledged').notNull().default(false),
-    amends_id: uuid('amends_id').references(() => marRecords.id, {
+    amends_id: uuid('amends_id').references((): AnyPgColumn => marRecords.id, {
       onDelete: 'restrict',
     }),
     // Set when two devices recorded the same dose slot while offline. The
     // later record is kept (never discarded) and points at the first one,
     // and a mandatory med_possible_double_dose alert goes to the supervisor.
-    conflict_with: uuid('conflict_with').references(() => marRecords.id, {
+    conflict_with: uuid('conflict_with').references((): AnyPgColumn => marRecords.id, {
       onDelete: 'restrict',
     }),
     created_by: uuid('created_by').references(() => profiles.id, {

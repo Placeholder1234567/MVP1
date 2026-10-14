@@ -347,8 +347,9 @@ guad/
 │   ├── sw.js                                 # Service worker: app shell cache, offline navigation, FCM push registration
 │   ├── icons/                                # PWA icons (192x192, 512x512, maskable)
 │   └── lomi.svg                              # Lomi lemon SVG asset
-├── svelte.config.js                          # SvelteKit config: adapter-node (Cloud Run), preprocess, alias ($lib)
-├── vite.config.ts                            # Vite config: vitest, PowerSync OPFS worker, WASM
+├── vite.config.ts                            # Vite + SvelteKit 3 config: adapter-node (Cloud Run), runes, PowerSync OPFS worker, WASM
+├── vitest.config.ts                          # Unit and integration tests (no SvelteKit plugin needed)
+├── eslint.config.js                          # Lint, including the import boundaries (constitution principle 15)
 ├── tsconfig.json                             # TypeScript config: strict, paths
 ├── package.json                              # Dependencies, scripts (dev, build, test, db:generate, db:push, lint)
 ├── .env.example                              # Environment variable template (no secrets)

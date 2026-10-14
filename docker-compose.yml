@@ -1,0 +1,33 @@
+name: guad
+
+# Local stack (infrastructure.md §6). Synthetic data only.
+#   npm run db:up      start
+#   npm run db:setup   create tables, RLS policies and grants
+# PowerSync joins this file when offline sync is wired up (Phase 2).
+services:
+  postgres:
+    image: postgres:16-alpine
+    # Logical replication is what PowerSync reads; on now so the dev DB matches Cloud SQL.
+    command: ['postgres', '-c', 'wal_level=logical']
+    environment:
+      POSTGRES_USER: guad
+      POSTGRES_PASSWORD: guad
+      POSTGRES_DB: guad
+    ports:
+      - '5433:5432' # 5433 so it doesn't clash with a Postgres already installed on 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U guad -d guad']
+      interval: 2s
+      retries: 30
+
+  mailpit:
+    # Catches every email the app sends; view them at http://localhost:8025
+    image: axllent/mailpit:v1.27
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  pgdata:

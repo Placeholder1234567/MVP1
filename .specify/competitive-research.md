@@ -3,7 +3,7 @@
 
 > **Consolidated from 5 research runs.** Best facts merged; duplicates removed.
 > For detailed Therap analysis, see [therap-research.md](therap-research.md).
-> **Production stack decided: SvelteKit 2 + Svelte 5 runes + PowerSync + Postgres on Google Cloud (see CLAUDE.md and infrastructure.md).** Architecture and framework recommendations from prior research runs have been removed. The patterns described here (component-based, offline-first, API-first) apply regardless of framework.
+> **Production stack decided: SvelteKit 3 + Svelte 5 runes + PowerSync + Postgres on Google Cloud (see CLAUDE.md and infrastructure.md).** Architecture and framework recommendations from prior research runs have been removed. The patterns described here (component-based, offline-first, API-first) apply regardless of framework.
 
 ---
 

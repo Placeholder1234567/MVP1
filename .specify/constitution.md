@@ -63,7 +63,7 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 
 | Decision | Choice | Rationale | Alternative Considered |
 |---|---|---|---|
-| Frontend framework | SvelteKit 2 + Svelte 5 runes | Smallest bundle size for 3G performance targets; runes provide fine-grained reactivity; SSR/SPA hybrid; built-in service worker support | Next.js (heavier runtime), React Native (rejected — PWA only) |
+| Frontend framework | SvelteKit 3 + Svelte 5 runes | Smallest bundle size for 3G performance targets; runes provide fine-grained reactivity; SSR/SPA hybrid; built-in service worker support | Next.js (heavier runtime), React Native (rejected — PWA only) |
 | Internal API | tRPC | End-to-end TypeScript type safety between SvelteKit client and server; no code generation step; composable middleware for auth/audit | GraphQL (over-engineering for single-client app), REST (no type safety) |
 | External API | OpenAPI 3.1 | Industry standard for state reporting and EVV integrations; machine-readable spec; code generation for partners | GraphQL (unfamiliar to state systems), gRPC (no browser interop needed) |
 | Database | Cloud SQL for PostgreSQL 16 | Managed Postgres with backups and point-in-time recovery; RLS and triggers work unchanged; covered by the free Google Cloud BAA | Supabase (BAA requires ~$1,000+/mo plans), AWS RDS (viable; GCP chosen for Cloud Run and credits) |

@@ -44,10 +44,10 @@ The `charting_preset` field on the agency record (`"therap"` or `"default"`) dri
 
 ### Implementation
 
-A single `presetLabels` object is imported from `$lib/config/charting-preset.ts`. Every component reads labels from this object via a Svelte context or store. No component hardcodes "Shift Note" or "T-Log" as a string literal.
+A single `presetLabels` object is imported from `#lib/config/charting-preset.ts`. Every component reads labels from this object via a Svelte context or store. No component hardcodes "Shift Note" or "T-Log" as a string literal.
 
 ```typescript
-// $lib/config/charting-preset.ts
+// #lib/config/charting-preset.ts
 export type ChartingPreset = 'therap' | 'default';
 
 export function getLabels(preset: ChartingPreset) {

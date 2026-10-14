@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    name: Lint, types, unit tests, spec lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx svelte-kit sync
+      - run: npx eslint .
+      - run: npm run check
+      - run: npm test
+      - run: node .specify/lint.js
+      - run: npm run build
+
+  database:
+    name: Database (migrations, RLS, withUser)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: guad
+          POSTGRES_PASSWORD: guad
+          POSTGRES_DB: guad
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U guad -d guad" --health-interval 2s --health-retries 30
+    env:
+      DATABASE_URL: postgres://guad:guad@localhost:5433/guad
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:setup
+      - run: npm run test:integration
+      # SQL-level RLS and integrity-trigger tests (starts its own throwaway Postgres)
+      - run: bash .specify/tests/rls/run.sh

@@ -1,0 +1,6 @@
+mvp/
+.specify/
+drizzle/
+build/
+.svelte-kit/
+package-lock.json

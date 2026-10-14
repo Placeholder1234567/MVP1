@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Guad ("friend" in Amharic) is a HIPAA-compliant charting and operations platform for IDD residential care agencies. DSPs document shift activities, administer medications, track ISP goals, record vitals, and report incidents from their phones. Supervisors review notes, manage schedules, and run audit reports. Lomi ("lemon" in Amharic) is the built-in AI assistant that drafts clinical notes, covers shift callouts via SMS, and generates daily summaries. The stack is SvelteKit 2 + Svelte 5 runes (PWA) on Google Cloud Run, tRPC (internal API), Cloud SQL Postgres with RLS, Identity Platform (auth), Drizzle ORM, self-hosted PowerSync (offline-first), Claude on Vertex AI (note drafting), Google Speech-to-Text (transcription), Cloud Tasks + Cloud Scheduler (jobs), FCM push plus Amazon SES email and AWS End User Messaging SMS (notifications). infrastructure.md has the full picture. All architecture specs live in the `.specify/` directory.
+Guad ("friend" in Amharic) is a HIPAA-compliant charting and operations platform for IDD residential care agencies. DSPs document shift activities, administer medications, track ISP goals, record vitals, and report incidents from their phones. Supervisors review notes, manage schedules, and run audit reports. Lomi ("lemon" in Amharic) is the built-in AI assistant that drafts clinical notes, covers shift callouts via SMS, and generates daily summaries. The stack is SvelteKit 3 + Svelte 5 runes (PWA) on Google Cloud Run, tRPC (internal API), Cloud SQL Postgres with RLS, Identity Platform (auth), Drizzle ORM, self-hosted PowerSync (offline-first), Claude on Vertex AI (note drafting), Google Speech-to-Text (transcription), Cloud Tasks + Cloud Scheduler (jobs), FCM push plus Amazon SES email and AWS End User Messaging SMS (notifications). infrastructure.md has the full picture. All architecture specs live in the `.specify/` directory.
 
 ## Architecture Reference
 
@@ -79,7 +79,7 @@ All authentication flows go through Google Cloud Identity Platform (Firebase Aut
 
 ### 7. Charting presets are cosmetic only
 
-The `charting_preset` agency config (`"therap"` or `"default"`) changes UI labels (e.g., "T-Log" vs "Shift Note") and form field ordering. It never alters the database schema, API contracts, validation rules, or business logic. Read labels from `$lib/config/charting-preset.ts`. Never hardcode "Shift Note" or "T-Log" as string literals in components. Never branch schema or API logic based on preset.
+The `charting_preset` agency config (`"therap"` or `"default"`) changes UI labels (e.g., "T-Log" vs "Shift Note") and form field ordering. It never alters the database schema, API contracts, validation rules, or business logic. Read labels from `#lib/config/charting-preset.ts`. Never hardcode "Shift Note" or "T-Log" as string literals in components. Never branch schema or API logic based on preset.
 
 ### 8. MAR entries are irrevocable
 
@@ -136,7 +136,7 @@ API keys, service credentials and database connection details exist only on the 
 ### Working with PowerSync (offline data)
 
 1. Never query or write the database from the client. Data that needs offline support comes from PowerSync. Offline writes are uploaded through `sync.upload` (trpc-router.md), which runs the owning service's code.
-2. Use PowerSync reactive queries in Svelte stores (`$lib/stores/sync.ts`).
+2. Use PowerSync reactive queries in Svelte stores (`#lib/stores/sync.ts`).
 3. Generate UUIDs client-side for new records (enables offline creation).
 4. Design mutations to be idempotent where possible (upserts on natural keys).
 5. Test the feature with the network disabled before considering it complete.
@@ -172,5 +172,5 @@ Reference these when implementing validation, forms, and business logic:
 - **Svelte 5 runes:** Use `$state`, `$derived`, `$effect`. No legacy `$:` reactive declarations or `writable`/`readable` stores in new code.
 - **tRPC routers:** One router file per domain (e.g., `note.ts`, `mar.ts`, `schedule.ts`).
 - **Services:** One directory per service with `index.ts` (public API), `*.queries.ts` (Drizzle helpers), `*.types.ts` (service types).
-- **Imports:** Use `$lib/` alias for all library imports. Use `$lib/server/` for server-only code.
+- **Imports:** Use `#lib/` alias for all library imports. Use `#lib/server/` for server-only code.
 - **Error messages:** Never include PHI. Use operation identifiers and generic descriptions.

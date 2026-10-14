@@ -1,0 +1,61 @@
+{
+	"name": "guad",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "vitest run tests/unit",
+		"test:unit": "vitest run tests/unit",
+		"test:integration": "vitest run tests/integration",
+		"lint": "eslint . && npm run check",
+		"format": "prettier --write .",
+		"db:up": "docker compose up -d",
+		"db:down": "docker compose down",
+		"db:push": "drizzle-kit push",
+		"db:generate": "drizzle-kit generate",
+		"db:studio": "drizzle-kit studio",
+		"spec:lint": "node .specify/lint.js",
+		"spec:rls-test": "bash .specify/tests/rls/run.sh",
+		"db:setup": "node scripts/db-setup.mjs",
+		"db:reset": "node scripts/db-setup.mjs --reset",
+		"test:all": "vitest run"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@sveltejs/adapter-node": "^6.0.0",
+		"@sveltejs/kit": "^3.0.0",
+		"@sveltejs/vite-plugin-svelte": "^7.2.0",
+		"@types/pg": "^8.23.1",
+		"drizzle-kit": "^0.31.11",
+		"eslint": "^10.12.0",
+		"eslint-plugin-svelte": "^3.23.1",
+		"globals": "^17.13.0",
+		"prettier": "^3.9.10",
+		"prettier-plugin-svelte": "^4.1.1",
+		"svelte": "^5.57.1",
+		"svelte-check": "^4.6.0",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.71.2",
+		"vite": "^8.3.0",
+		"vitest": "^5.0.4"
+	},
+	"imports": {
+		"#lib": "./src/lib/index.js",
+		"#lib/*": "./src/lib/*"
+	},
+	"description": "Guad: charting, scheduling and AI coverage for IDD residential care agencies",
+	"engines": {
+		"node": ">=22"
+	},
+	"dependencies": {
+		"drizzle-orm": "^0.45.4",
+		"pg": "^8.23.1",
+		"zod": "^4.6.7"
+	}
+}

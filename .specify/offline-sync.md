@@ -122,8 +122,8 @@ PowerSync initializes in the SvelteKit client hook (`src/hooks.client.ts`) so it
 ```typescript
 // src/hooks.client.ts (pseudocode)
 import { PowerSyncDatabase } from '@powersync/web';
-import { GuadConnector } from '$lib/sync/connector';
-import { appSchema } from '$lib/sync/schema';
+import { GuadConnector } from '#lib/sync/connector';
+import { appSchema } from '#lib/sync/schema';
 
 const connector = new GuadConnector();
 
@@ -149,7 +149,7 @@ import type {
   PowerSyncBackendConnector,
   AbstractPowerSyncDatabase
 } from '@powersync/web';
-import { auth } from '$lib/auth/firebase';   // Firebase Auth SDK, inMemoryPersistence
+import { auth } from '#lib/auth/firebase';   // Firebase Auth SDK, inMemoryPersistence
 import { signInWithCustomToken } from 'firebase/auth';
 
 export class GuadConnector implements PowerSyncBackendConnector {
@@ -829,7 +829,7 @@ Banners appear below the app header when the user needs to take action or be awa
 
 ```typescript
 // src/lib/stores/sync-status.svelte.ts (pseudocode)
-import { powerSync } from '$lib/sync';
+import { powerSync } from '#lib/sync';
 
 // Reactive sync status using Svelte 5 runes
 let syncStatus = $state<'connected' | 'syncing' | 'offline'>('offline');
