@@ -20,10 +20,10 @@ cp "$here"/0*.sql .
 docker run -d --rm --name guad-rls-test -e POSTGRES_PASSWORD=test postgres:15-alpine >/dev/null
 until docker exec guad-rls-test pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 
-for f in 00_supabase_stub.sql 01_schema.sql 015_rls.sql 02_grants_seed.sql 03_tests.sql; do
+for f in 01_schema.sql 015_rls.sql 02_grants_seed.sql 03_tests.sql; do
   docker cp "$f" guad-rls-test:/tmp/"$f"
 done
-for f in 00_supabase_stub.sql 01_schema.sql 015_rls.sql 02_grants_seed.sql; do
+for f in 01_schema.sql 015_rls.sql 02_grants_seed.sql; do
   docker exec guad-rls-test psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/"$f"
 done
 

@@ -5,24 +5,24 @@
 Guad uses [PowerSync](https://www.powersync.com/) to deliver offline-first functionality for IDD residential care charting. The architecture has three tiers:
 
 ```
-Supabase Postgres 15+        PowerSync Service          Client (PWA)
- (source of truth)         (sync gateway)           (wa-sqlite via OPFS)
+Cloud SQL Postgres 16        PowerSync Service          Client (PWA)
+ (source of truth)       (self-hosted, Cloud Run)  (wa-sqlite via OPFS)
  ┌──────────────┐         ┌──────────────┐         ┌──────────────────┐
  │              │  WAL    │              │  delta   │  wa-sqlite DB    │
  │  37 tables   │────────>│  Sync Rules  │────────> │  (encrypted,     │
  │  RLS-enforced│         │  (YAML)      │         │   OPFS-backed)   │
- │              │<────────│              │<────────│                  │
- │              │  writes │  Bucket      │  write  │  Write Queue     │
- │              │ (via    │  routing     │  queue  │  (FIFO)          │
- │              │ Supabase│              │         │                  │
- └──────────────┘  API)   └──────────────┘         └──────────────────┘
+ │              │         │  Bucket      │         │  Write Queue     │
+ │              │         │  routing     │         │  (FIFO)          │
+ │              │         └──────────────┘         │                  │
+ │              │<──── writes: tRPC sync.upload ───│                  │
+ └──────────────┘      (app server, Cloud Run)     └──────────────────┘
 ```
 
 ### How It Works
 
 1. **Server to client (read path):** PowerSync tails the Postgres WAL (Write-Ahead Log) and evaluates sync rules to determine which rows belong to which user. Changed rows are streamed to clients as compact deltas over a persistent WebSocket connection (WSS).
 
-2. **Client to server (write path):** Local mutations are written to the wa-sqlite database immediately (sub-20ms) and queued in a FIFO write queue. When connectivity is available, the queue is uploaded through the **`sync.upload` tRPC procedure** -- never straight to the Supabase REST API. `sync.upload` runs each operation through the owning service (the same code path as the online procedures), so Zod validation, role and feature checks, business rules (note signing, med certification, vital flags, clock verification), notifications and the audit trail all apply to offline writes too. Postgres RLS and the integrity triggers in `rls.sql` are the backstop. The server is authoritative -- if a write is rejected, the client is told why (section 6).
+2. **Client to server (write path):** Local mutations are written to the wa-sqlite database immediately (sub-20ms) and queued in a FIFO write queue. When connectivity is available, the queue is uploaded through the **`sync.upload` tRPC procedure** -- never straight to the database. `sync.upload` runs each operation through the owning service (the same code path as the online procedures), so Zod validation, role and feature checks, business rules (note signing, med certification, vital flags, clock verification), notifications and the audit trail all apply to offline writes too. Postgres RLS and the integrity triggers in `rls.sql` are the backstop. The server is authoritative -- if a write is rejected, the client is told why (section 6).
 
 3. **Conflict resolution:** Server-authoritative, last-write-wins using server timestamps. The server state always takes precedence over local state on conflict. See section 5 for per-operation details.
 
@@ -102,14 +102,14 @@ For a feature to be considered offline-capable, all of the following must be tru
 
 | Feature | Reason | Offline Fallback |
 |---------|--------|------------------|
-| AI note drafting (Lomi) | Requires Bedrock API call | Show "Lomi unavailable offline" banner; DSP types manually or drafts from structured input |
-| Voice transcription | Requires Azure Whisper API | Show "Transcription unavailable offline" banner; DSP types manually |
+| AI note drafting (Lomi) | Requires Vertex AI call | Show "Lomi unavailable offline" banner; DSP types manually or drafts from structured input |
+| Voice transcription | Requires Speech-to-Text API | Show "Transcription unavailable offline" banner; DSP types manually |
 | Supervisor note approval | Requires authoritative status transition and audit trail integrity | Note remains in `submitted` status; supervisor sees it when back online |
-| Real-time messaging | Supabase Realtime requires WebSocket | Messages queue locally and deliver on sync; no real-time indication |
+| Real-time messaging | Requires the PowerSync connection | Messages queue locally and deliver on sync; no real-time indication |
 | Report generation | Server-side aggregation, PDF/CSV rendering | Show "Reports require connectivity" message |
 | Coverage offers | Time-sensitive SMS/push notifications | Coverage requests queue but are only useful in real-time; show "Coverage requires connectivity" |
 | Calling out sick | Coverage request triggers SMS notification pipeline | Show "Callout requires connectivity" message; suggest calling supervisor directly |
-| Notification delivery | FCM/Twilio require network | Notifications queue server-side and deliver when user reconnects |
+| Notification delivery | FCM, SMS and email require network | Notifications queue server-side and deliver when user reconnects |
 
 ---
 
@@ -122,10 +122,10 @@ PowerSync initializes in the SvelteKit client hook (`src/hooks.client.ts`) so it
 ```typescript
 // src/hooks.client.ts (pseudocode)
 import { PowerSyncDatabase } from '@powersync/web';
-import { SupabaseConnector } from '$lib/sync/supabase-connector';
+import { GuadConnector } from '$lib/sync/connector';
 import { appSchema } from '$lib/sync/schema';
 
-const connector = new SupabaseConnector();
+const connector = new GuadConnector();
 
 export const powerSync = new PowerSyncDatabase({
   schema: appSchema,
@@ -144,30 +144,35 @@ await powerSync.connect(connector);
 ### Connection Management
 
 ```typescript
-// src/lib/sync/supabase-connector.ts (pseudocode)
+// src/lib/sync/connector.ts (pseudocode)
 import type {
   PowerSyncBackendConnector,
   AbstractPowerSyncDatabase
 } from '@powersync/web';
-import { supabase } from '$lib/supabase';
+import { auth } from '$lib/auth/firebase';   // Firebase Auth SDK, inMemoryPersistence
+import { signInWithCustomToken } from 'firebase/auth';
 
-export class SupabaseConnector implements PowerSyncBackendConnector {
+export class GuadConnector implements PowerSyncBackendConnector {
   /**
    * Called by PowerSync to obtain an auth token for the sync connection.
-   * Returns the Supabase JWT which PowerSync forwards to the sync service
-   * for bucket routing based on agency_id, role, and home_ids.
+   * Returns an Identity Platform ID token (held in memory only). PowerSync
+   * verifies it against Google's JWKS and reads token_parameters
+   * (agency_id, role, profile_id) for bucket routing.
    */
   async fetchCredentials() {
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session) {
-      throw new Error('No active session');
+    if (!auth.currentUser) {
+      // After a reload: the HttpOnly session cookie proves the session, and
+      // the server returns a Firebase custom token (infrastructure.md §3).
+      const res = await fetch('/auth/sync-token', { method: 'POST' });
+      if (!res.ok) throw new Error('No active session');
+      await signInWithCustomToken(auth, (await res.json()).customToken);
     }
+    const result = await auth.currentUser!.getIdTokenResult();
 
     return {
-      endpoint: import.meta.env.VITE_POWERSYNC_URL,
-      token: session.access_token,
-      expiresAt: new Date(session.expires_at! * 1000)
+      endpoint: PUBLIC_POWERSYNC_URL,   // from '$env/static/public'
+      token: result.token,
+      expiresAt: new Date(result.expirationTime)
     };
   }
 
@@ -175,8 +180,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
    * Called by PowerSync to upload local mutations to the server.
    * Sends the whole transaction to the sync.upload tRPC procedure, which
    * applies each operation through the owning service (validation, business
-   * rules, notifications, audit). Never write to Supabase REST directly:
-   * that would bypass everything except RLS.
+   * rules, notifications, audit). Devices have no direct database access.
    * Operations stay in FIFO order to preserve dependent write ordering.
    */
   async uploadData(database: AbstractPowerSyncDatabase) {
@@ -210,19 +214,22 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
 ### Auth Token Provider Flow
 
 ```
-User logs in via Supabase Auth
+User signs in via Identity Platform (Firebase Auth SDK)
          │
          v
-Supabase issues JWT with custom claims:
+Server creates the session cookie; the ID token carries custom claims
+set by the server under `parameters`:
   - agency_id (uuid)
   - role (caregiver | supervisor | admin)
   - profile_id (uuid)
          │
          v
-PowerSync connector reads JWT from Supabase session
+PowerSync connector gets the in-memory ID token (or a fresh one
+via /auth/sync-token after a reload)
          │
          v
-PowerSync service validates JWT signature
+PowerSync service validates the token signature against Google's JWKS
+(client_auth: jwks_uri = securetoken JWKS, audience = Firebase project ID)
          │
          v
 Sync rules evaluate JWT claims to determine bucket membership:
@@ -262,12 +269,14 @@ Sync rules define which rows each authenticated user receives. Rules are organiz
 ### JWT Parameters Available in Sync Rules
 
 ```yaml
-# These are extracted from the Supabase JWT by PowerSync:
+# Extracted by PowerSync from the Identity Platform ID token. The server sets
+# the custom claim { parameters: { agency_id, role, profile_id } } with the
+# Admin SDK; PowerSync exposes it as token_parameters.
 # token_parameters:
-#   user_id:  request.jwt().sub                  # Supabase Auth UID
-#   agency_id: request.jwt().app_metadata.agency_id
-#   role:      request.jwt().app_metadata.role
-#   profile_id: request.jwt().app_metadata.profile_id
+#   user_id:    request.user_id()        # Identity Platform UID (sub)
+#   agency_id:  token_parameters.agency_id
+#   role:       token_parameters.role
+#   profile_id: token_parameters.profile_id
 ```
 
 ### Bucket: `global`
@@ -304,7 +313,7 @@ bucket_definitions:
       # Note: mfa_enabled intentionally omitted -- security metadata not
       # needed for offline caregiving operations. MFA status is checked
       # server-side during auth, not on-device.
-      - SELECT id, agency_id, supabase_uid, email, phone, name, initials,
+      - SELECT id, agency_id, auth_uid, email, phone, name, initials,
                role, home_ids, med_certified, avatar_url, active,
                created_at, updated_at
         FROM profiles
@@ -540,7 +549,7 @@ These tables exist only on the server. They are never included in sync rules and
 |-------|--------|
 | `audit_log` | Server-only append-only log. Too large and sensitive for client sync. Accessible via read-only tRPC procedure for admins. |
 | `sync_checkpoints` | Server-side sync metadata managed by the Sync Service. |
-| `events` | Server-side domain events consumed via Supabase Realtime subscriptions (when online). |
+| `events` | Server-side domain events for analytics and side effects. Supervisor views read them through tRPC when online. |
 | `referrals` | Client Intake pillar -- used only by supervisors/admins via online admin views. Low frequency, not needed offline. |
 | `rooms` | Room inventory is admin-only, used for intake pipeline. Not needed during caregiving shifts. |
 | `medication_history` | Medication change audit trail. Available via online medication detail view. |
@@ -556,7 +565,7 @@ These tables exist only on the server. They are never included in sync rules and
 
 **Server-authoritative, last-write-wins using server timestamps.** When a client syncs a write that conflicts with the current server state, the server state wins. The client's local database is updated to reflect the server's authoritative state on the next sync cycle.
 
-PowerSync applies this model automatically. The write queue replays mutations against Supabase, which enforces RLS and database constraints. If a write succeeds at Supabase, it becomes the new authoritative state. If it fails (constraint violation, RLS rejection), it is discarded from the queue.
+PowerSync applies this model automatically. The write queue replays mutations through `sync.upload`, which runs the owning service and then Postgres (RLS and constraints). If a write succeeds, it becomes the new authoritative state. If it fails (constraint violation, RLS rejection), it is discarded from the queue.
 
 ### Per-Operation Conflict Scenarios
 
@@ -581,7 +590,7 @@ PowerSync applies this model automatically. The write queue replays mutations ag
 Local write queued
         │
         v
-PowerSync replays write to Supabase
+PowerSync replays write through sync.upload
         │
         ├── Success: local DB updated to match server state
         │
@@ -679,7 +688,7 @@ The queue depth is checked on every write and on a 30-second interval. At 100+ p
 | **Schedule data** (schedule_slots) | 90 days rolling (past 30 + future 60) | Volume grows linearly with time if unbounded. A 90-day window covers recent history and near-future scheduling needs. Historical schedule data is available via online views. |
 | **Messages** | 90 days rolling | Low volume per home, but syncing in full with no expiry while purging locally at 30 days creates repeated download-purge cycles. A 90-day server-side window eliminates this churn. |
 
-**How windows are applied:** sync rules can't evaluate "now", so each windowed table has a `device_sync` boolean (default `true`). `SyncWindowJob` (BullMQ, nightly at 03:00 agency time, idempotent) sets `device_sync = false` on rows older than the table's window. Example: notes older than 30 days, or schedule slots more than 30 days in the past. PowerSync then removes them from devices. Rows are never deleted on the server.
+**How windows are applied:** sync rules can't evaluate "now", so each windowed table has a `device_sync` boolean (default `true`). `SyncWindowJob` (Cloud Scheduler, nightly at 03:00 agency time, idempotent) sets `device_sync = false` on rows older than the table's window. Example: notes older than 30 days, or schedule slots more than 30 days in the past. PowerSync then removes them from devices. Rows are never deleted on the server.
 
 ### Local Database Size Management
 
@@ -711,8 +720,8 @@ Purging removes data from the local wa-sqlite database only. Server data is unaf
 | **Session timeout** (12 hours inactivity, configurable per agency) | Drop the in-memory database key and redirect to login. The OPFS database stays on the device (encrypted, unreadable without the PIN-wrapped key). On re-auth, unwrap the key, flush the write queue, then resume sync. |
 | **Account deactivation** (`profiles.active = false`) | Server revokes the session and deletes the server copy of the device's database key. On the next connection, writes still in the queue are uploaded with the deactivated user's identity and flagged for supervisor review (they are clinical records made while the person was working) before local data is cleared. |
 | **App backgrounded** (mobile PWA, 5+ minutes) | PIN/biometric required to resume. After 5 wrong PINs the wrapped key is deleted. Local data stays encrypted until an online sign-in re-fetches the key; it is not deleted while the queue is non-empty. |
-| **Browser tab closed** | The refresh token lives in a cookie managed by `@supabase/ssr` in `hooks.server.ts`. On re-open the server refreshes the session and hands the client a fresh short-lived access token (kept in memory only). If the refresh token has expired, the user signs in again; unsynced local data is kept. |
-| **Role change** (e.g., caregiver promoted to supervisor) | Server updates JWT claims. On next token refresh, PowerSync re-evaluates sync rules. New bucket data begins syncing. Old restricted-scope data remains until replaced by wider-scope sync. |
+| **Browser tab closed** | The Identity Platform session cookie (HttpOnly) survives. On re-open the client calls `/auth/sync-token` and gets a fresh short-lived ID token (kept in memory only). If the session cookie has expired, the user signs in again; unsynced local data is kept. |
+| **Role change** (e.g., caregiver promoted to supervisor) | Server updates the custom claims and revokes refresh tokens. On next token refresh, PowerSync re-evaluates sync rules. New bucket data begins syncing. Old restricted-scope data remains until replaced by wider-scope sync. |
 | **Home assignment change** (caregiver moved to different home) | Server updates `profiles.home_ids`. On next token refresh, sync rules produce new bucket parameters. Data for the old home is purged. Data for the new home begins syncing. |
 
 ---
@@ -747,9 +756,9 @@ Service Worker
 
 ### What the Service Worker Does NOT Do
 
-- **Does NOT cache API responses.** PowerSync handles all data replication. Caching tRPC or Supabase responses in the service worker would create stale data and conflict with PowerSync's consistency model.
+- **Does NOT cache API responses.** PowerSync handles all data replication. Caching tRPC responses in the service worker would create stale data and conflict with PowerSync's consistency model.
 - **Does NOT intercept PowerSync WebSocket traffic.** The PowerSync WebSocket connection is pass-through.
-- **Does NOT manage authentication.** Session cookies are managed by `@supabase/ssr`; the access token is held in memory (security.md).
+- **Does NOT manage authentication.** The session cookie is HttpOnly and set by the server; the ID token is held in memory (security.md).
 - **Does NOT store PHI.** The service worker cache contains only static assets (HTML, CSS, JS, images). No API responses, no client data, no note content.
 
 ### Cache Strategy Details
@@ -766,7 +775,7 @@ Service Worker
 ### Service Worker Update Flow
 
 ```
-New SW version deployed to Vercel
+New SW version deployed (new Cloud Run revision)
         │
         v
 Browser detects new SW on next navigation
@@ -1047,5 +1056,5 @@ npm run test:e2e -- --grep @offline
 | `RLS_DENIED` | Row-Level Security policy rejected the write | "You don't have permission to save this change." | Discard; may indicate role/home change |
 | `FK_VIOLATION` | Foreign key reference missing (e.g., note references deleted client) | "The referenced record no longer exists." | Discard; data was deleted server-side |
 | `SESSION_EXPIRED` | Auth token expired and refresh failed | "Your session has expired. Please log in again." | Re-authenticate; writes preserved if re-auth succeeds within grace period |
-| `SERVER_ERROR` | 5xx from Supabase | "Server error. Will retry automatically." | Retry with exponential backoff |
+| `SERVER_ERROR` | 5xx from the server | "Server error. Will retry automatically." | Retry with exponential backoff |
 | `NETWORK_ERROR` | Request failed to reach server | "No connection. Will retry when online." | Retry when connectivity restored |

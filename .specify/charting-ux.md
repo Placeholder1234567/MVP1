@@ -104,11 +104,11 @@ This is the core charting experience. Every design decision optimizes for this p
 
 4. **Tap Speak.** The browser requests microphone access (first time only). MediaRecorder starts. The orb rings begin pulsing. A waveform animation (10 vertical bars with staggered CSS keyframe animations) appears below the orb. The button label changes to "Pause."
 
-5. **Speak naturally.** The caregiver talks as they would to a coworker at shift change: "Marcus had a good lunch, he ate all his chicken and rice. He was in a great mood all afternoon. We worked on his toothbrushing goal twice, he needed a verbal prompt both times. No health issues." When the caregiver taps Pause or Done, the recording is uploaded once to the transcription service (production: Azure OpenAI Whisper) and the text appears in the "Transcript" textarea below the waveform. Transcription is batch, not streaming (ai-voice-analysis.md). Offline, the recording is kept on the device and transcribed on reconnect.
+5. **Speak naturally.** The caregiver talks as they would to a coworker at shift change: "Marcus had a good lunch, he ate all his chicken and rice. He was in a great mood all afternoon. We worked on his toothbrushing goal twice, he needed a verbal prompt both times. No health issues." When the caregiver taps Pause or Done, the recording is uploaded once to the transcription service (production: Google Speech-to-Text) and the text appears in the "Transcript" textarea below the waveform. Transcription is batch, not streaming (ai-voice-analysis.md). Offline, the recording is kept on the device and transcribed on reconnect.
 
 6. **Tap Done or Pause.** Recording stops. The transcript is editable -- the caregiver can fix names or add details. Below the textarea: a link "Write it myself instead" (skips AI, goes directly to a blank review form).
 
-7. **Tap "Done, write my note."** The compose screen transitions to a thinking state: the orb rings pulse slowly, the text reads "Lomi is writing your note," and a three-dot loading animation plays below. The transcript and Lomi prompt (from `prompts.js`) are sent to the AI drafting service (production: AWS Bedrock Claude). Target latency: under 8 seconds end-to-end.
+7. **Tap "Done, write my note."** The compose screen transitions to a thinking state: the orb rings pulse slowly, the text reads "Lomi is writing your note," and a three-dot loading animation plays below. The transcript and Lomi prompt (from `prompts.js`) are sent to the AI drafting service (production: Claude on Vertex AI). Target latency: under 8 seconds end-to-end.
 
 8. **Review screen appears.** Lomi's structured draft fills pre-labeled sections. Each section is an editable textarea. Goals appear as interactive pickers. Flags and incident detection appear as callout cards. The screen scrolls vertically -- no tabs, no hidden content.
 
@@ -260,7 +260,7 @@ When the AI is processing, the entire compose screen is replaced by:
 
 **Offline behavior:**
 - Microphone recording works offline (MediaRecorder is browser-native).
-- Transcription requires connectivity (Whisper API). If offline, the textarea shows: "You're offline. Type your notes and Lomi will draft when you reconnect." The Speak button is disabled with tooltip "Needs internet for voice."
+- Transcription requires connectivity (Speech-to-Text API). If offline, the textarea shows: "You're offline. Type your notes and Lomi will draft when you reconnect." The Speak button is disabled with tooltip "Needs internet for voice."
 - The "Done, write my note" button changes to "Save and draft later" when offline.
 
 **Therap-preset differences:**
@@ -519,7 +519,7 @@ The supervisor dashboard is primarily a desktop experience, but on mobile it ren
 
 **Key interactions:**
 - Home selector -> filters all dashboard data to the selected home.
-- "Summarize today" -> calls Lomi summary endpoint (AWS Bedrock Claude with today's stats as structured data). Streams response into the summary card.
+- "Summarize today" -> calls Lomi summary endpoint (Claude on Vertex AI with today's stats as structured data). Streams response into the summary card.
 - Tap attention item -> navigates to the relevant detail view (note review, incident detail, health entry, schedule, etc.).
 - Sidebar navigation -> switches the main content area to the selected tab.
 
@@ -589,7 +589,7 @@ The grid scrolls horizontally. Slot interactions use bottom sheets. Coverage act
 **Key interactions:**
 - Tap a slot -> opens slot bottom sheet.
 - Assign staff -> saves slot as filled. Schedule updates immediately.
-- Post to Lomi -> creates a coverage request. Lomi begins texting eligible caregivers. Slot changes to "Offered" state. Coverage activity updates in real time via Supabase Realtime (or local polling offline).
+- Post to Lomi -> creates a coverage request. Lomi begins texting eligible caregivers. Slot changes to "Offered" state. Coverage activity updates live through PowerSync sync (queued while offline).
 - Navigate weeks -> grid updates to show the selected week.
 
 **Offline behavior:** Schedule renders from local data. Assignments persist locally. Posting to Lomi queues the request for sync (Lomi texting requires connectivity).
@@ -837,7 +837,7 @@ Lomi appears in four contexts across the application. Each has a distinct visual
 
 On the review screen, Lomi supports three additional input modes beyond the initial voice brain dump (see ai-pipeline.md for full architecture):
 
-- **Per-box editing (Mode 2).** Each section textarea has a mic button at top-right. Tapping records audio scoped to that section. Whisper transcribes, then Haiku rewrites the section with the new content merged in. The section flashes lemon briefly to indicate the update. An "Undo" link appears for 10 seconds. Text editing works the same way: when the caregiver types casual language into a section and blurs the field (or taps the rewrite button), Lomi rewrites the text into clinical documentation language via Haiku. The rewrite preserves meaning but improves clinical tone.
+- **Per-box editing (Mode 2).** Each section textarea has a mic button at top-right. Tapping records audio scoped to that section. Speech-to-Text transcribes, then Haiku rewrites the section with the new content merged in. The section flashes lemon briefly to indicate the update. An "Undo" link appears for 10 seconds. Text editing works the same way: when the caregiver types casual language into a section and blurs the field (or taps the rewrite button), Lomi rewrites the text into clinical documentation language via Haiku. The rewrite preserves meaning but improves clinical tone.
 - **Chat (Mode 3).** A chat panel at the bottom of the review screen accepts text or voice input. Lomi classifies which section the content belongs to and routes it there. Example: "He only ate half his lunch" updates the Meals section. Proactive questions from Lomi also appear in this panel.
 - **Direct edit (Mode 4).** The caregiver types clinical language directly into any section box. No AI involvement. This is the fallback for experienced staff who prefer to write their own notes.
 
@@ -871,9 +871,9 @@ The app never shows a blocking "you're offline" screen. Instead:
 
 - **Validation errors.** Inline, below the relevant field, in red text with `role="alert"`. Never in a toast or modal. Fields with errors get a red border.
 - **Server errors.** If a sync fails, the amber sync dot appears. The change remains in the local queue. No user-facing error message unless the user explicitly checks sync status.
-- **AI errors.** If Bedrock returns an error or times out, the fallback rule-based draft activates with a banner explaining it. If Whisper fails, the Speak button is disabled with an explanation.
+- **AI errors.** If Vertex AI returns an error or times out, the fallback rule-based draft activates with a banner explaining it. If transcription fails, the Speak button is disabled with an explanation.
 - **Permission errors.** If microphone permission is denied, the Speak button is disabled. A muted message appears: "Microphone access was denied. You can type your notes below."
-- **PHI safety.** Error messages never contain client names, health data, or any PHI. Error messages reference only operation identifiers: "Could not save note (ref: n-3f8a). Try again." Monitoring tools (Sentry) receive the same sanitized messages.
+- **PHI safety.** Error messages never contain client names, health data, or any PHI. Error messages reference only operation identifiers: "Could not save note (ref: n-3f8a). Try again." Monitoring tools (Cloud Logging, Error Reporting) receive the same sanitized messages.
 
 ---
 

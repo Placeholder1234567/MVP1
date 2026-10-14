@@ -12,11 +12,11 @@ tRPC procedures are organized into domain routers aligned with the four product 
 interface TRPCContext {
   userId: string;       // profiles.id (UUID)
   agencyId: string;     // agencies.id (UUID) — injected into every query via RLS
-  supabaseUid: string;  // profiles.supabase_uid
+  authUid: string;      // profiles.auth_uid (Identity Platform UID)
   role: 'caregiver' | 'supervisor' | 'admin';
   homeIds: string[];    // profiles.home_ids — homes the user is assigned to
   medCertified: boolean;
-  db: DrizzleClient;    // Drizzle ORM instance (with RLS session set)
+  db: DrizzleClient;    // Drizzle transaction opened by withUser(): role app_user + app.claims set
   agency?: {            // Populated by requireFeature middleware after agency lookup
     subscriptionTier: string;
     enabledFeatures: string[];
@@ -28,7 +28,7 @@ interface TRPCContext {
 
 ### 1. authMiddleware
 
-Applied to every procedure. Extracts the Supabase JWT from the `Authorization` header, verifies it, loads the corresponding `profiles` row, and attaches `userId`, `agencyId`, `supabaseUid`, `role`, `homeIds`, and `medCertified` to context. Rejects with `UNAUTHORIZED` if the token is missing, expired, or the profile is `active = false`.
+Applied to every procedure. Verifies the Identity Platform session cookie with the Firebase Admin SDK (`verifySessionCookie(cookie, true)`, which also checks revocation), loads the `profiles` row by `auth_uid`, and attaches `userId`, `agencyId`, `authUid`, `role`, `homeIds`, and `medCertified` to context. It then opens the request transaction with `withUser()` (infrastructure.md §4), which sets `app.claims` from the profile row, never from token claims. Rejects with `UNAUTHORIZED` if the cookie is missing, expired or revoked, or the profile is `active = false`. Requests whose `Origin` isn't the app's own are rejected (CSRF, security.md T7).
 
 ### 2. roleMiddleware(minRole)
 
@@ -36,11 +36,11 @@ A factory that returns middleware enforcing a minimum role level. Role hierarchy
 
 ### 3. auditMiddleware
 
-Applied to all mutations. Sets the request context (`request.jwt.claims`, and `request.headers` with client IP and user agent) on the database transaction, so the `audit_row_change` trigger in rls.sql can record `performed_by`, `ip_address` and `user_agent` for every row the mutation changes. The middleware never writes `audit_log` rows itself, and clients can't either. For actions that change no row (exports, AI calls), procedures call `audit.logEvent()`.
+Applied to all mutations. Sets `app.request` (client IP and user agent) on the database transaction, next to the `app.claims` set by authMiddleware, so the `audit_row_change` trigger in rls.sql can record `performed_by`, `ip_address` and `user_agent` for every row the mutation changes. The middleware never writes `audit_log` rows itself, and clients can't either. For actions that change no row (exports, AI calls), procedures call `audit.logEvent()`.
 
 ### 4. rateLimitMiddleware(limit, windowMs)
 
-Applied to AI/transcription endpoints. Uses a sliding-window counter per `userId` stored in Redis. Configured limits: 10 requests per hour for `lomi.draft`, 5 per hour for `lomi.summarize`, 20 per hour for `lomi.transcribe`. Rejects with `TOO_MANY_REQUESTS` and includes `Retry-After` in the error metadata.
+Applied to AI/transcription endpoints. Counts the caller's AI invocations in the window from `audit_log` (`table_name = 'ai_invocations'`, written by `audit.logEvent()` for every AI call), so limits hold across all Cloud Run instances without a separate store. General per-user throttling (100 req/min, security.md T4) is an in-memory token bucket per instance; it is approximate because each instance counts separately. Configured limits: 10 requests per hour for `lomi.draft`, 5 per hour for `lomi.summarize`, 20 per hour for `lomi.transcribe`. Rejects with `TOO_MANY_REQUESTS` and includes `Retry-After` in the error metadata.
 
 ### 5. requireFeature(feature)
 
@@ -85,7 +85,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 |---|---|---|---|---|---|
 | `staff.list` | query | `{ homeId?: uuid, role?: user_role, active?: boolean }` | `Array<{ id, name, email, phone, initials, role, homeIds, medCertified, active }>` | supervisor | Lists staff members. Filterable by home assignment, role, and active status. |
 | `staff.get` | query | `{ id: uuid }` | `{ id, name, email, phone, initials, role, homeIds, medCertified, mfaEnabled, active, createdAt }` | supervisor | Returns a single staff profile with full details. |
-| `staff.invite` | mutation | `{ email: string, name: string, role: user_role, homeIds: uuid[], medCertified?: boolean }` | `{ id, email, name, role }` | admin | Creates a Supabase Auth user and a profiles row. Sends an email invitation via SES. |
+| `staff.invite` | mutation | `{ email: string, name: string, role: user_role, homeIds: uuid[], medCertified?: boolean }` | `{ id, email, name, role }` | admin | Creates an Identity Platform user and a profiles row, and sets the user's custom claims. Sends an email invitation (password-setup link) via SES. |
 | `staff.update` | mutation | `{ id: uuid, role?: user_role, homeIds?: uuid[], medCertified?: boolean, active?: boolean }` | `{ id, role, homeIds, medCertified, active, updatedAt }` | admin | Updates staff role, home assignments, med certification, or active status. Deactivating a staff member does not delete their data. |
 
 ### client
@@ -166,17 +166,17 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | `schedule.get` | query | `{ homeId: uuid, weekStart: string }` | `{ slots: Array<{ id, day, shift, assignedTo, assignedToName, status, viaLomi }> }` | caregiver | Returns the week's schedule for a home (7 days x 3 shifts). `weekStart` is an ISO date string for the Sunday that starts the week (matches the MVP's week grid). Caregivers see the full schedule for homes they are assigned to. |
 | `schedule.setSlot` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on', profileId: uuid }` | `{ id, day, shift, assignedTo, status: 'filled', updatedAt }` | supervisor | Assigns a caregiver to a shift slot. Upserts into `schedule_slots` using the unique index on (agency_id, day, shift, home_id), so a slot has one assignee. Validates that the profile is assigned to the home and is active. |
 | `schedule.clearSlot` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on' }` | `{ id, status: 'open', updatedAt }` | supervisor | Removes the assigned caregiver from a slot, setting status back to 'open'. |
-| `schedule.postOpen` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on' }` | `{ id, status: 'open', updatedAt }` | supervisor | Marks a slot as open and triggers Lomi's coverage workflow: enqueues a BullMQ job that identifies eligible caregivers (trained for the home, not already scheduled, within distance) and sends SMS offers via Twilio. |
+| `schedule.postOpen` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on' }` | `{ id, status: 'open', updatedAt }` | supervisor | Marks a slot as open and triggers Lomi's coverage workflow: enqueues a Cloud Tasks job that identifies eligible caregivers (trained for the home, not already scheduled, within distance) and sends SMS offers via AWS End User Messaging. |
 | `schedule.myShifts` | query | `{ weekStart?: string, weeks?: number }` | `Array<{ id, homeId, homeName, day, shift, status }>` | caregiver | Returns the caller's own scheduled shifts. Defaults to current week, up to 4 weeks ahead. |
 
 ### coverage
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
-| `coverage.callout` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on', reason?: string }` | `{ id, status: 'searching', createdAt }` | caregiver | Caregiver calls out from a shift. Only the assigned caregiver can call out from their own shift. Creates a `coverage_requests` row, clears the schedule slot, and enqueues Lomi's coverage search (BullMQ job). Inserts `coverage_steps` entries as the search progresses. |
+| `coverage.callout` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on', reason?: string }` | `{ id, status: 'searching', createdAt }` | caregiver | Caregiver calls out from a shift. Only the assigned caregiver can call out from their own shift. Creates a `coverage_requests` row, clears the schedule slot, and enqueues Lomi's coverage search (Cloud Tasks job). Inserts `coverage_steps` entries as the search progresses. |
 | `coverage.list` | query | `{ homeId?: uuid, status?: coverage_status, day?: string, limit?: number, offset?: number }` | `Array<{ id, homeId, homeName, day, shift, calledOutByName, reason, status, filledByName, createdAt }>` | caregiver | Lists coverage requests. Caregivers see only requests for their homes. Supervisors see all. |
 | `coverage.get` | query | `{ id: uuid }` | Full coverage request with `candidates: Array<{ profileName, eligible, eligibilityReason, reply, repliedAt }>` and `steps: Array<{ description, occurredAt }>` | supervisor | Returns a coverage request with full candidate and step audit trail. |
-| `coverage.accept` | mutation | `{ id: uuid }` | `{ id, status: 'filled', filledBy, updatedAt }` | caregiver | Caregiver accepts an offered shift. Requires connectivity (first acceptance wins, so it can't be queued offline). Runs with service_role because caregivers have no direct UPDATE on `coverage_candidates`. Must be one of the eligible candidates. Updates the `coverage_requests` status to 'filled', updates the `schedule_slots` entry with the new assignment (marked `viaLomi = true`), and sends notifications to the home supervisor and the family (if configured). |
+| `coverage.accept` | mutation | `{ id: uuid }` | `{ id, status: 'filled', filledBy, updatedAt }` | caregiver | Caregiver accepts an offered shift. Requires connectivity (first acceptance wins, so it can't be queued offline). Runs as `app_service` (via `withService()`) because caregivers have no direct UPDATE on `coverage_candidates`. Must be one of the eligible candidates. Updates the `coverage_requests` status to 'filled', updates the `schedule_slots` entry with the new assignment (marked `viaLomi = true`), and sends notifications to the home supervisor and the family (if configured). |
 | `coverage.decline` | mutation | `{ id: uuid }` | `{ candidateId, reply: 'declined', repliedAt }` | caregiver | Caregiver declines an offered shift. Updates their `coverage_candidates` row. If all candidates have declined, the coverage request status moves to 'unfilled' and the supervisor is notified. |
 
 ### clock
@@ -194,7 +194,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
-| `message.send` | mutation | `{ homeId: uuid, text: string }` | `{ id, homeId, fromName, body, sentAt }` | caregiver | Sends a message to the home's message board. The `from_name` is auto-populated from the caller's profile. Messages are broadcast via Supabase Realtime to connected clients in the same home. |
+| `message.send` | mutation | `{ homeId: uuid, text: string }` | `{ id, homeId, fromName, body, sentAt }` | caregiver | Sends a message to the home's message board. The `from_name` is auto-populated from the caller's profile. Other devices in the same home receive the message through PowerSync sync. |
 | `message.list` | query | `{ homeId: uuid, limit?: number, before?: timestamp }` | `Array<{ id, fromName, body, sentAt }>` | caregiver | Returns messages for a home, ordered by `sent_at` descending. Cursor-based pagination using `before` timestamp. |
 
 ### attendance
@@ -215,11 +215,11 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
-| `lomi.draft` | mutation | `{ clientId: uuid, type: 'shift' \| 'behavior', prompt: string, goals?: Array<{ id: uuid, text: string }>, behaviors?: string[] }` | `{ content: jsonb, goals?: Array<{ goalId: uuid, trials: string[] }> }` | caregiver | Sends structured input to AWS Bedrock Claude to generate a note draft. The prompt includes the client's active goals and known behaviors for context. The response is a `content` JSONB object matching the note schema. Output is always labeled as AI-generated. Rate-limited: 10 drafts/hour per user. |
-| `lomi.summarize` | mutation | `{ homeId: uuid, day?: string }` | `{ summary: string, highlights: Array<{ type: string, detail: string }> }` | supervisor | Generates a daily summary for a home: notes submitted, incidents reported, MAR completeness, missed clock-ins. Uses Bedrock Claude. Rate-limited: 5 summaries/hour per user. |
+| `lomi.draft` | mutation | `{ clientId: uuid, type: 'shift' \| 'behavior', prompt: string, goals?: Array<{ id: uuid, text: string }>, behaviors?: string[] }` | `{ content: jsonb, goals?: Array<{ goalId: uuid, trials: string[] }> }` | caregiver | Sends structured input to Claude on Vertex AI to generate a note draft. The prompt includes the client's active goals and known behaviors for context. The response is a `content` JSONB object matching the note schema. Output is always labeled as AI-generated. Rate-limited: 10 drafts/hour per user. |
+| `lomi.summarize` | mutation | `{ homeId: uuid, day?: string }` | `{ summary: string, highlights: Array<{ type: string, detail: string }> }` | supervisor | Generates a daily summary for a home: notes submitted, incidents reported, MAR completeness, missed clock-ins. Uses Claude on Vertex AI. Rate-limited: 5 summaries/hour per user. |
 | `lomi.edit` | mutation | `{ clientId: uuid, section: 'activities' \| 'meals' \| 'mood' \| 'health', current: string, input: string }` | `{ text: string }` | caregiver | Per-section rewrite (ai-pipeline.md Mode 2). Rate-limited: 60/hour per user. |
 | `lomi.route` | mutation | `{ clientId: uuid, message: string, current: { activities, meals, mood, health, goals } }` | `{ updates: Array<{ section, text }>, goalUpdates: Array<{ id, trials, notAttempted, reason }>, unroutable: string }` | caregiver | Chat routing (ai-pipeline.md Mode 3). Rate-limited: 30/hour per user. |
-| `lomi.transcribe` | mutation | `{ audio: string, mimeType: string }` | `{ text: string, durationMs: number }` | caregiver | Sends audio (base64-encoded) to Azure OpenAI Whisper for transcription. Returns plain text. Used to dictate note content on mobile. Max 5 minutes of audio for a brain dump, 30 seconds for per-section and chat recordings (see ai-pipeline.md). Rate-limited: 20 transcriptions/hour per user. `mimeType` must be one of: `audio/webm`, `audio/mp4`, `audio/wav`. |
+| `lomi.transcribe` | mutation | `{ audio: string, mimeType: string }` | `{ text: string, durationMs: number }` | caregiver | Sends audio (base64-encoded) to Google Speech-to-Text (Chirp model) for transcription. Returns plain text. Used to dictate note content on mobile. Max 5 minutes of audio for a brain dump, 30 seconds for per-section and chat recordings (see ai-pipeline.md). Rate-limited: 20 transcriptions/hour per user. `mimeType` must be one of: `audio/webm`, `audio/mp4`, `audio/wav`. |
 
 ### analytics
 
@@ -234,7 +234,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
-| `report.generate` | mutation | `{ type: 'incidents' \| 'notes' \| 'mar' \| 'goals' \| 'attendance' \| 'timesheets' \| 'audit', homeId?: uuid, clientId?: uuid, dateRange: { from: string, to: string }, format?: 'csv' \| 'pdf' }` | `{ reportId: uuid, status: 'queued' }` | supervisor | Enqueues a report generation job via BullMQ. Returns immediately with a report ID. Reports are generated asynchronously and stored temporarily (24h TTL). |
+| `report.generate` | mutation | `{ type: 'incidents' \| 'notes' \| 'mar' \| 'goals' \| 'attendance' \| 'timesheets' \| 'audit', homeId?: uuid, clientId?: uuid, dateRange: { from: string, to: string }, format?: 'csv' \| 'pdf' }` | `{ reportId: uuid, status: 'queued' }` | supervisor | Enqueues a report generation job via Cloud Tasks. Returns immediately with a report ID. Reports are generated asynchronously and stored in a private Cloud Storage bucket for 24 hours, downloaded through a short-lived signed URL. |
 | `report.status` | query | `{ reportId: uuid }` | `{ reportId, status: 'queued' \| 'processing' \| 'ready' \| 'failed', readyAt?: timestamp }` | supervisor | Polls report generation status. |
 | `report.download` | query | `{ reportId: uuid }` | Binary stream (CSV or PDF) | supervisor | Downloads a completed report. Returns the file as a streaming response with appropriate content-type headers. Rejects if status is not 'ready' or if the report has expired. |
 
@@ -281,7 +281,7 @@ All tRPC errors use standard tRPC error codes with additional `cause` metadata:
 
 | Code | Usage |
 |---|---|
-| `UNAUTHORIZED` | Missing or invalid Supabase JWT |
+| `UNAUTHORIZED` | Missing, expired or revoked session cookie |
 | `FORBIDDEN` | Insufficient role or accessing data outside assigned homes |
 | `NOT_FOUND` | Record does not exist or is outside the caller's tenant/home scope |
 | `BAD_REQUEST` | Input validation failure (Zod) or business rule violation |
@@ -289,18 +289,18 @@ All tRPC errors use standard tRPC error codes with additional `cause` metadata:
 | `TOO_MANY_REQUESTS` | Rate limit exceeded on AI/transcription endpoints |
 | `INTERNAL_SERVER_ERROR` | Unhandled server error (no PHI in error message) |
 
-## Subscription (Realtime)
+## Live Updates
 
-tRPC subscriptions are not used. Realtime updates flow through Supabase Realtime channels:
+tRPC subscriptions are not used, and there is no separate realtime service. Live updates come from PowerSync: when a row changes in Postgres, PowerSync streams it to every device whose sync rules include it, typically within a few seconds. Screens use PowerSync watched queries, so they re-render on their own:
 
-- `home:{homeId}:messages` -- new messages in a home
-- `home:{homeId}:schedule` -- schedule slot changes
-- `home:{homeId}:coverage` -- coverage request status updates
-- `agency:{agencyId}:notifications:{profileId}` -- per-user notification delivery
+- messages in a home (`messages`)
+- schedule slot changes (`schedule_slots`)
+- coverage request status (`coverage_requests`, `coverage_steps`)
+- per-user notifications (`notifications`)
 
-The SvelteKit client subscribes to these channels on mount and updates local stores. PowerSync handles offline queueing and sync for all table data.
+Online-only data (audit log, analytics, case notes) is fetched through tRPC queries and refreshed on focus.
 
-> **Note on events table:** The `events` table (schema.ts) stores domain events (e.g., `note.submitted`, `shift.filled`, `incident.created`) and is written server-side by the Audit Service's `emitEvent()` function. It has no corresponding tRPC procedures. Events are consumed exclusively via Supabase Realtime subscriptions, not queried through tRPC.
+> **Note on events table:** The `events` table (schema.ts) stores domain events (e.g., `note.submitted`, `shift.filled`, `incident.created`) and is written server-side by the Audit Service's `emitEvent()` function. It has no corresponding tRPC procedures. Events are not synced to devices; analytics procedures read them server-side.
 
 ## Pagination Convention
 

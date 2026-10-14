@@ -173,7 +173,7 @@ export const profiles = pgTable(
     agency_id: uuid('agency_id')
       .notNull()
       .references(() => agencies.id, { onDelete: 'cascade' }),
-    supabase_uid: uuid('supabase_uid').notNull(),
+    auth_uid: text('auth_uid').notNull(), // Identity Platform (Firebase Auth) UID
     email: text('email').notNull(),
     phone: text('phone'),
     name: text('name').notNull(),
@@ -192,7 +192,7 @@ export const profiles = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex('profiles_supabase_uid_idx').on(t.supabase_uid),
+    uniqueIndex('profiles_auth_uid_idx').on(t.auth_uid),
     index('profiles_agency_id_idx').on(t.agency_id),
     index('profiles_email_idx').on(t.email),
   ],
@@ -1087,6 +1087,9 @@ export const notifications = pgTable(
     read_at: timestamp('read_at', { withTimezone: true }),
     reference_id: uuid('reference_id'),
     reference_type: text('reference_type'),
+    // Message ID returned by FCM, SES or AWS End User Messaging, used to match
+    // delivery events (notifications.md §6-7).
+    provider_message_id: text('provider_message_id'),
     // false once the row is older than its device sync window (set nightly by
     // SyncWindowJob). Sync rules filter on this instead of time functions.
     device_sync: boolean('device_sync').notNull().default(true),
@@ -1099,8 +1102,10 @@ export const notifications = pgTable(
   },
   (t) => [
     index('notifications_agency_id_idx').on(t.agency_id),
-    index('notifications_profile_id_idx').on(t.profile_id),
+    // Rate limits count a recipient's recent sends per channel (notifications.md §10).
+    index('notifications_profile_channel_created_idx').on(t.profile_id, t.channel, t.created_at),
     index('notifications_status_idx').on(t.status),
+    index('notifications_provider_message_id_idx').on(t.provider_message_id),
   ],
 );
 
@@ -1292,7 +1297,7 @@ export const deviceTokens = pgTable(
 );
 
 // ─── 32. email_suppressions ──────────────────────────────────────────────────
-// Bounced or complained addresses (notifications.md §7). Redis is only a cache.
+// Bounced or complained addresses (notifications.md §7). The only copy of the suppression list.
 
 export const emailSuppressions = pgTable(
   'email_suppressions',

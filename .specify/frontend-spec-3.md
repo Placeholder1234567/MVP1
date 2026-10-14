@@ -2241,7 +2241,7 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 | # | Task | Priority | Rationale |
 |---|---|---|---|
 | 11 | Shift note creation flow (manual text first) | P0 | The core documentation workflow. Compose -> review sections -> sign. |
-| 12 | Voice-to-note with Lomi (batch transcription) | P0 | The #1 competitive differentiator. MediaRecorder records, the audio is uploaded once when the DSP stops, then Whisper and the draft pipeline run (ai-voice-analysis.md chose batch over real-time streaming). Offline fallback: record audio, transcribe later, use rules-based draft immediately. |
+| 12 | Voice-to-note with Lomi (batch transcription) | P0 | The #1 competitive differentiator. MediaRecorder records, the audio is uploaded once when the DSP stops, then Speech-to-Text and the draft pipeline run (ai-voice-analysis.md chose batch over real-time streaming). Offline fallback: record audio, transcribe later, use rules-based draft immediately. |
 | 13 | Goal/ISP scoring interface | P0 | Prompt level pill buttons (44px min-height). Trial tracking. Score computation. |
 | 14 | Medication administration (eMAR cards) | P0 | Card-based mobile view. "Mark as given" one-tap. Refused/held with reason sheet. |
 | 15 | Health vital entry with threshold alerts | P0 | Vitals/seizure/illness/visit segmented control. Inline out-of-range alerts on blur. |

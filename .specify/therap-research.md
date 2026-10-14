@@ -162,7 +162,7 @@ Therap's website lists 70+ integrated tools. Here's every product/solution page 
 - *"I like that they are implementing new AI features."* — Supervisor
 
 ### What's Missing from Therap's AI
-- **No voice-to-note** — Guad has this (MediaRecorder + Whisper + Claude)
+- **No voice-to-note** — Guad has this (MediaRecorder + speech-to-text + Claude)
 - **No real-time AI drafting** — Therap AI summarizes AFTER documentation; Guad's Lomi drafts DURING
 - **No conversational AI assistant** — Therap's AI is tool-based, not chat-based
 - **No AI-powered shift coverage** — Guad's coverage engine is unique
@@ -710,7 +710,7 @@ Staff coping mechanism: Type notes in a separate app first, then copy-paste into
 ### 1. AI-First Architecture
 Therap bolted AI onto a 20-year-old platform. Guad was built with AI (Lomi) from day one.
 - **Lomi drafts notes in real-time** during documentation, not after
-- **Voice-to-note** (Whisper + Claude) — Therap has nothing comparable
+- **Voice-to-note** (speech-to-text + Claude) — Therap has nothing comparable
 - **Conversational AI** — Lomi is a chat assistant; Therap's AI is dashboard-only
 - **Behavior note generation** — Structured output from simple prompts
 - **Day summaries** — AI-generated shift summaries
@@ -739,7 +739,7 @@ Guad's coverage engine (eligibility rules, home assignment, hours cap, med certi
 PowerSync OPFS persistence means work is never lost. (Rebuild target -- the current prototype uses localStorage for in-progress form data but requires network for initial load; production will add service worker + PWA manifest for true offline capability. See offline-sync.md.) Therap users live in fear of session timeouts.
 
 ### 7. Integration-Ready Architecture
-SvelteKit 2 + Svelte 5 runes + Supabase + tRPC = easy to extend. (Note: Guad references in sections 15-16 describe the production architecture. The vanilla JS prototype is documented in CLAUDE.md.) Therap's closed ecosystem is its biggest weakness.
+SvelteKit 2 + Svelte 5 runes + Postgres + tRPC = easy to extend. (Note: Guad references in sections 15-16 describe the production architecture. The vanilla JS prototype is documented in CLAUDE.md.) Therap's closed ecosystem is its biggest weakness.
 
 ---
 

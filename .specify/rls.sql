@@ -2,40 +2,64 @@
 -- Guad — Row-Level Security Policies
 -- =============================================================================
 -- Every table uses agency_id for tenant isolation.
--- JWT app_metadata carries: agency_id, role, profile_id.
+-- Clients never connect to Postgres. The app server verifies the user's
+-- Identity Platform ID token, looks up their profile, and at the start of each
+-- transaction runs:
+--   SET LOCAL ROLE app_user;
+--   SELECT set_config('app.claims',  '{"agency_id":..,"role":..,"profile_id":..}', true);
+--   SELECT set_config('app.request', '{"ip":..,"user_agent":..}', true);
+-- Every policy below reads those claims through app.claims().
 -- Caregiver access is further scoped to their assigned home_ids.
 -- Supervisors and admins have full access within their agency.
 -- audit_log is append-only: written only by the audit_row_change trigger;
 -- no client INSERT, UPDATE or DELETE.
 -- =============================================================================
 
+-- ─── Roles and session claims ───────────────────────────────────────────────
+-- app_user:    RLS applies. The server switches to it for every request made
+--              on behalf of a signed-in user.
+-- app_service: bypasses RLS. Used only by job handlers and the specific
+--              cross-user writes listed at the end of this file.
+-- The server's login role is granted both and owns no PHI privileges itself.
+DO $$ BEGIN CREATE ROLE app_user NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE app_service NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE SCHEMA IF NOT EXISTS app;
+GRANT USAGE ON SCHEMA app, public TO app_user, app_service;
+
+-- Claims the server set for this transaction (NULL when none were set, in
+-- which case every policy below matches no rows).
+CREATE OR REPLACE FUNCTION app.claims()
+RETURNS jsonb
+LANGUAGE sql STABLE
+AS $$
+  SELECT nullif(current_setting('app.claims', true), '')::jsonb;
+$$;
+
 -- ─── Helper Functions ───────────────────────────────────────────────────────
 
--- Extract agency_id from JWT app_metadata
 CREATE OR REPLACE FUNCTION public.current_agency_id()
 RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT (auth.jwt()->'app_metadata'->>'agency_id')::uuid;
+  SELECT (app.claims()->>'agency_id')::uuid;
 $$;
 
--- Extract role from JWT app_metadata
 CREATE OR REPLACE FUNCTION public.current_user_role()
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT auth.jwt()->'app_metadata'->>'role';
+  SELECT app.claims()->>'role';
 $$;
 
--- Extract profile_id from JWT app_metadata
 CREATE OR REPLACE FUNCTION public.current_profile_id()
 RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT (auth.jwt()->'app_metadata'->>'profile_id')::uuid;
+  SELECT (app.claims()->>'profile_id')::uuid;
 $$;
 
 -- Get the current user's assigned home_ids from their profile
@@ -112,7 +136,7 @@ CREATE POLICY profiles_insert ON public.profiles
 -- Users can update their own profile, but only name/phone/avatar. RLS cannot
 -- restrict columns, so profiles_protect_privileged_columns (see "Integrity
 -- triggers" below) rejects any non-admin change to role, home_ids,
--- med_certified, active, mfa_enabled, email, supabase_uid or agency_id.
+-- med_certified, active, mfa_enabled, email, auth_uid or agency_id.
 -- Without that trigger a caregiver could add every home to home_ids (and so
 -- read every client) or mark themselves med-certified.
 CREATE POLICY profiles_update ON public.profiles
@@ -821,7 +845,7 @@ CREATE POLICY coverage_candidates_insert ON public.coverage_candidates
   );
 
 -- Supervisors only. Caregivers reply through coverage.accept / coverage.decline
--- (or the Twilio webhook), which run on the server and also fill the schedule
+-- (or an SMS reply), which run on the server and also fill the schedule
 -- slot. A direct caregiver UPDATE would let someone mark themselves eligible.
 CREATE POLICY coverage_candidates_update ON public.coverage_candidates
   FOR UPDATE USING (
@@ -959,7 +983,7 @@ CREATE POLICY events_select ON public.events
   );
 
 -- No INSERT, UPDATE or DELETE policy: events are written only by the server
--- (Audit Service emitEvent() with service_role) and are an immutable log.
+-- (Audit Service emitEvent() as app_service) and are an immutable log.
 
 
 -- =============================================================================
@@ -987,7 +1011,7 @@ CREATE TRIGGER audit_log_no_delete
   FOR EACH ROW EXECUTE FUNCTION public.audit_log_immutable();
 
 -- Belt-and-suspenders: revoke DELETE and TRUNCATE at the role level
-REVOKE DELETE, TRUNCATE ON public.audit_log FROM authenticated;
+REVOKE DELETE, TRUNCATE ON public.audit_log FROM app_user;
 
 
 -- =============================================================================
@@ -1005,7 +1029,7 @@ CREATE POLICY notifications_select ON public.notifications
   );
 
 -- No INSERT policy: notifications are created only by the Notification Service
--- (service_role). Otherwise any user could send alerts to anyone in the agency.
+-- (app_service). Otherwise any user could send alerts to anyone in the agency.
 
 -- Users can mark their own notifications as read; admins restricted to own as well
 CREATE POLICY notifications_update ON public.notifications
@@ -1260,7 +1284,7 @@ CREATE POLICY device_tokens_delete ON public.device_tokens
   );
 
 -- email_suppressions: admins can read and remove; rows are added by the
--- Notification Service (service_role) from SES bounce webhooks.
+-- Notification Service (app_service) from SES bounce notifications.
 ALTER TABLE public.email_suppressions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY email_suppressions_select ON public.email_suppressions
@@ -1345,7 +1369,7 @@ CREATE POLICY webhooks_delete ON public.webhooks
     AND public.current_user_role() = 'admin'
   );
 
--- Deliveries are written by the webhook worker (service_role).
+-- Deliveries are written by the webhook job handler (app_service).
 ALTER TABLE public.webhook_deliveries ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY webhook_deliveries_select ON public.webhook_deliveries
@@ -1355,7 +1379,7 @@ CREATE POLICY webhook_deliveries_select ON public.webhook_deliveries
   );
 
 -- report_jobs: supervisors see their agency's jobs. Created and updated by
--- the Report Service (service_role) so status can't be faked.
+-- the Report Service (app_service) so status can't be faked.
 ALTER TABLE public.report_jobs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY report_jobs_select ON public.report_jobs
@@ -1370,8 +1394,10 @@ CREATE POLICY report_jobs_select ON public.report_jobs
 -- =============================================================================
 -- RLS decides which rows a user can touch; it cannot decide which columns or
 -- which state transitions. These triggers close that gap. They skip checks for
--- trusted server connections (service_role, or a direct Postgres connection
--- with no JWT), which run business logic already validated in the services.
+-- trusted server work (any role other than app_user, e.g. app_service job
+-- handlers or migrations), which runs business logic already validated in the
+-- services. The check reads the SET ROLE setting rather than current_user,
+-- because current_user changes inside SECURITY DEFINER functions.
 -- Writes from devices reach Postgres only through tRPC (see offline-sync.md §3),
 -- so these triggers are a backstop, not the primary validation.
 
@@ -1379,7 +1405,7 @@ CREATE OR REPLACE FUNCTION public.is_trusted_server()
 RETURNS boolean
 LANGUAGE sql STABLE
 AS $$
-  SELECT auth.jwt() IS NULL OR auth.jwt()->>'role' = 'service_role';
+  SELECT current_setting('role') IS DISTINCT FROM 'app_user';
 $$;
 
 -- ─── profiles: privileged columns are admin-only ────────────────────────────
@@ -1397,7 +1423,7 @@ BEGIN
      OR NEW.active IS DISTINCT FROM OLD.active
      OR NEW.mfa_enabled IS DISTINCT FROM OLD.mfa_enabled
      OR NEW.email IS DISTINCT FROM OLD.email
-     OR NEW.supabase_uid IS DISTINCT FROM OLD.supabase_uid
+     OR NEW.auth_uid IS DISTINCT FROM OLD.auth_uid
      OR NEW.agency_id IS DISTINCT FROM OLD.agency_id THEN
     RAISE EXCEPTION 'Only an admin can change role, homes, certification or account status'
       USING ERRCODE = '42501';
@@ -1664,7 +1690,7 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  hdrs json := nullif(current_setting('request.headers', true), '')::json;
+  req  jsonb := nullif(current_setting('app.request', true), '')::jsonb;
   rec  jsonb := to_jsonb(coalesce(NEW, OLD));
 BEGIN
   INSERT INTO public.audit_log
@@ -1675,8 +1701,8 @@ BEGIN
      CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) END,
      CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) END,
      public.current_profile_id(),
-     hdrs->>'x-forwarded-for',
-     hdrs->>'user-agent');
+     req->>'ip',
+     req->>'user_agent');
   RETURN coalesce(NEW, OLD);
 END;
 $$;
@@ -1696,16 +1722,16 @@ BEGIN
 END $$;
 
 -- =============================================================================
--- Service-role bypass (for server-side functions, BullMQ workers, Lomi)
+-- RLS bypass (app_service: job handlers, cross-user writes, Lomi)
 -- =============================================================================
--- Supabase's service_role key bypasses RLS by default. Server-side tRPC
--- procedures and BullMQ workers use service_role for cross-cutting operations
--- (e.g., Lomi coverage engine querying all eligible caregivers, writing
--- notifications, events and coverage replies). The service role is NEVER
--- exposed to the client bundle. Procedures that act on behalf of a user should
--- prefer the user's JWT so RLS still applies, and use service_role only for
+-- app_service bypasses RLS. Job handlers (Cloud Tasks / Cloud Scheduler
+-- endpoints) and a few tRPC procedures switch to it for cross-cutting work
+-- (e.g., the Lomi coverage engine querying all eligible caregivers, writing
+-- notifications, events and coverage replies). Clients never hold database
+-- credentials. Procedures that act on behalf of a user run as app_user with
+-- that user's claims so RLS still applies, and switch to app_service only for
 -- the specific cross-user writes listed above.
 --
--- PowerSync sync rules execute with service_role and apply their own filtering
--- based on the authenticated user's agency_id and home_ids before sending data
--- to the client.
+-- PowerSync replicates through its own read-only replication role (BYPASSRLS,
+-- see offline-sync.md) and applies its sync rules, filtered by the signed-in
+-- user's agency_id and home_ids, before sending data to the device.

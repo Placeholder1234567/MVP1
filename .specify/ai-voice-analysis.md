@@ -7,7 +7,7 @@
 
 How should Lomi turn a caregiver's spoken shift description into a structured clinical note?
 
-**Architecture A — Batch Pipeline:** Record voice → Whisper transcription → parallel Claude calls → structured draft → review screen.
+**Architecture A — Batch Pipeline:** Record voice → Speech-to-Text transcription → parallel Claude calls → structured draft → review screen.
 
 **Architecture B — Real-Time Voice Agent:** Conversational AI (ElevenLabs / Vapi / Retell / LiveKit+Deepgram) conducts a guided interview, filling sections as the caregiver speaks.
 
@@ -24,9 +24,9 @@ This is the current MVP approach, extended with parallelism and per-section edit
 ```
 Caregiver taps "Talk to Lomi"
   → records voice (MediaRecorder, webm/mp4, ≤5 min at 32 kbps)
-  → POST /api/transcribe → Azure OpenAI Whisper → transcript text
+  → POST /api/transcribe → Google Speech-to-Text (Chirp) → transcript text
   → client builds prompt (prompts.js)
-  → POST /api/lomi → AWS Bedrock Claude → structured JSON
+  → POST /api/lomi → Claude on Vertex AI → structured JSON
   → Review screen renders sections (activities, meals, mood, health, goals, flags, incidents)
   → Caregiver edits, signs
 ```
@@ -36,7 +36,7 @@ Caregiver taps "Talk to Lomi"
 Instead of a single Sonnet call doing everything, split into parallel tasks:
 
 ```
-Whisper transcript (one call, ~3s)
+Speech-to-Text transcript (one call, ~3s)
        ↓
   ┌────┼────────┬──────────────┐
   ↓    ↓        ↓              ↓
@@ -48,7 +48,7 @@ classify  match goals  detect issues  draft sections
   Merge results → Review screen
 ```
 
-**Total wall-clock: ~7-8s** (Whisper 3s + max(parallel calls) 4s + overhead 0.5s)
+**Total wall-clock: ~7-8s** (Speech-to-Text 3s + max(parallel calls) 4s + overhead 0.5s)
 
 The Haiku calls are fast classifiers:
 - **Classify:** Sentence → section mapping (activities/meals/mood/health)
@@ -73,7 +73,7 @@ On the review screen, each section box gets a mic button:
 
 When the caregiver taps 🎤 on a specific section:
 1. Records a short voice clip (≤30s)
-2. Whisper transcribes it (~2s)
+2. Speech-to-Text transcribes it (~2s)
 3. Haiku rewrites just that section, merging the new information with the existing draft (~1.5s)
 4. Section updates in-place, highlighted briefly to show what changed
 
@@ -87,7 +87,7 @@ professional tone. If the new input contradicts the old, use the new.
 Return only the updated section text, nothing else.
 ```
 
-**Total per-edit: ~3.5s** (record stop + Whisper 2s + Haiku 1.5s)
+**Total per-edit: ~3.5s** (record stop + Speech-to-Text 2s + Haiku 1.5s)
 
 ---
 
@@ -150,7 +150,7 @@ Close: "All done! Your note is ready for review."
 
 | Factor | A: Batch Pipeline | B: Real-Time Agent |
 |--------|--------------------|--------------------|
-| Transcription accuracy | Whisper v3 (state of the art, ~95-97% WER for conversational English) | Deepgram (optimized for speed, ~93-95% WER) or platform STT |
+| Transcription accuracy | Batch STT on the full recording (Whisper v3 or Google Chirp; Whisper-class accuracy, ~95-97% accuracy on conversational English) | Deepgram (optimized for speed, ~93-95% WER) or platform STT |
 | Clinical reasoning | Full transcript available → Sonnet sees everything at once, reasons holistically | Incremental — LLM sees partial transcript per turn, must reason in real-time |
 | Prompt control | Exact, tested prompts (prompts.js) with JSON schema enforcement | Conversational system prompt — harder to guarantee structured output |
 | Hallucination risk | Low: Sonnet gets the full narrative, instruction says "use only facts stated" | Higher: turn-by-turn processing means the model may infer connections between partial statements |
@@ -182,7 +182,7 @@ Close: "All done! Your note is ready for review."
 
 | Component | A: Batch Pipeline | B: Real-Time Agent |
 |-----------|--------------------|--------------------|
-| STT | Whisper: ~$0.006/min | Deepgram: ~$0.005/min (streaming) |
+| STT | Google Speech-to-Text: ~$0.016/min (Whisper API: ~$0.006/min) | Deepgram: ~$0.005/min (streaming) |
 | LLM (drafting) | Sonnet: ~$0.003-0.008/note | Claude via platform: ~$0.02-0.05/conversation (more turns, more tokens) |
 | LLM (classifiers) | Haiku ×3: ~$0.001/note | N/A (included in agent LLM) |
 | TTS | None | ElevenLabs: ~$0.05-0.15/conversation |
@@ -202,14 +202,14 @@ This cost difference is a dealbreaker for the IDD market, where agencies run on 
 
 | Factor | A: Batch Pipeline | B: Real-Time Agent |
 |--------|--------------------|--------------------|
-| PHI exposure points | 2 (Whisper, Claude) | 3-4 (STT, LLM, TTS, platform orchestrator) |
-| BAAs needed | AWS + Azure (already planned) | AWS + Azure + voice platform (ElevenLabs/Vapi/Retell) |
+| PHI exposure points | 2 (Speech-to-Text, Claude) | 3-4 (STT, LLM, TTS, platform orchestrator) |
+| BAAs needed | Google Cloud only (already planned) | Google Cloud + voice platform (ElevenLabs/Vapi/Retell) |
 | Data in transit | Audio file (one POST), text (one POST) | Continuous audio stream over WebSocket — more surface area |
 | Audio retention | Processed in memory, never persisted | Platform may buffer/log audio for quality/debugging |
 | Audit trail | Simple: 2 API calls per note, logged | Complex: multi-turn conversation, each turn is an API call |
 | PHI in TTS | N/A | Agent speaks client names aloud — audio output contains PHI |
 
-**Key risk with B:** Voice platforms are newer companies with less mature HIPAA compliance programs than AWS/Azure. BAA availability varies, and enterprise tiers (required for BAA) are expensive. The PHI flows through more systems, increasing the attack surface.
+**Key risk with B:** Voice platforms are newer companies with less mature HIPAA compliance programs than the major clouds. BAA availability varies, and enterprise tiers (required for BAA) are expensive. The PHI flows through more systems, increasing the attack surface.
 
 ### 5. Reliability and Offline Behavior
 
@@ -231,14 +231,14 @@ This cost difference is a dealbreaker for the IDD market, where agencies run on 
 
 | Factor | A: Batch Pipeline | B: Real-Time Agent |
 |--------|--------------------|--------------------|
-| New dependencies | 0 (Whisper and Claude already in stack) | Voice platform SDK, WebRTC/WebSocket handling, TTS integration |
-| Server infrastructure | Existing SvelteKit routes + BullMQ | Voice platform webhook handlers, WebSocket servers, audio stream management |
+| New dependencies | 0 (Speech-to-Text and Claude already in stack) | Voice platform SDK, WebRTC/WebSocket handling, TTS integration |
+| Server infrastructure | Existing SvelteKit routes + Cloud Tasks | Voice platform webhook handlers, WebSocket servers, audio stream management |
 | Client complexity | MediaRecorder (existing) + fetch | WebRTC setup, audio stream management, real-time UI updates, conversation state machine |
 | Conversation design | N/A | Dialog flow, error recovery, interruption handling, silence detection, barge-in |
 | Testing | Straightforward: mock API, check JSON output | Complex: simulate voice conversations, test timing, handle race conditions |
 | Lines of code estimate | ~200-300 new (parallel pipeline + per-section editing) | ~2,000-4,000 new (conversation engine, platform integration, state management) |
 | Time to build | 1-2 weeks | 6-10 weeks |
-| Maintenance burden | Low: Whisper and Claude are stable APIs | High: voice platform API changes, conversation flow tuning, audio edge cases |
+| Maintenance burden | Low: Speech-to-Text and Claude are stable APIs | High: voice platform API changes, conversation flow tuning, audio edge cases |
 
 ### 7. User Experience
 
@@ -265,13 +265,13 @@ This cost difference is a dealbreaker for the IDD market, where agencies run on 
 | Concurrent users | Limited only by API rate limits (easily handled) | Each active conversation holds a WebSocket/WebRTC connection |
 | Server resources | Stateless: request → response → done | Stateful: maintain conversation state per active user |
 | Cost scaling | Linear with notes filed ($0.01-0.02 each) | Linear with conversation minutes ($0.25-2.00 each) |
-| Peak load | End-of-shift rush: batch requests, Whisper handles concurrency | End-of-shift rush: dozens of simultaneous voice sessions — expensive, may hit platform limits |
+| Peak load | End-of-shift rush: batch requests, Speech-to-Text handles concurrency | End-of-shift rush: dozens of simultaneous voice sessions — expensive, may hit platform limits |
 
 ### 9. Accuracy for IDD-Specific Vocabulary
 
 **Architecture A wins slightly.**
 
-Whisper v3 handles medical/IDD terminology well because it processes complete audio with full context. Real-time STT (Deepgram streaming) processes audio in chunks and may struggle with terms like "gestural prompt," "elopement," "ISP goals," or medication names mid-stream.
+Batch transcription (Speech-to-Text or Chirp) handles medical/IDD terminology better because it processes complete audio with full context. Real-time STT (Deepgram streaming) processes audio in chunks and may struggle with terms like "gestural prompt," "elopement," "ISP goals," or medication names mid-stream.
 
 Both approaches benefit from post-processing with Claude, which understands IDD terminology. But A gives Claude the full, corrected transcript to reason over, while B gives Claude fragments that may contain STT errors.
 
@@ -319,8 +319,8 @@ Architecture B's main advantage — guided completeness — is addressed by per-
 
 ### What to Build
 
-1. **Parallel draft pipeline** — Whisper → parallel Haiku classifiers + Sonnet drafter → merged result
-2. **Per-section mic buttons** — Each review screen section gets a 🎤 → Whisper → Haiku edit
+1. **Parallel draft pipeline** — Speech-to-Text → parallel Haiku classifiers + Sonnet drafter → merged result
+2. **Per-section mic buttons** — Each review screen section gets a 🎤 → Speech-to-Text → Haiku edit
 3. **Completeness prompts** — Empty sections are highlighted: "Lomi didn't catch anything here. Tap 🎤 to add."
 4. **Streaming UX** — Server-sent events for the Sonnet draft call so sections appear progressively (~2s to first section instead of ~4s to all)
 
@@ -328,13 +328,13 @@ Architecture B's main advantage — guided completeness — is addressed by per-
 
 | Task | Model | Why |
 |------|-------|-----|
-| Transcription | Azure OpenAI Whisper v3 | Best accuracy, BAA available, handles IDD vocabulary |
-| Section classification | Claude Haiku 4.5 (Bedrock) | Fast (~1s), cheap ($1/MTok), sufficient for keyword-level classification |
-| Goal matching | Claude Haiku 4.5 (Bedrock) | Structured mapping task, Haiku handles well |
-| Issue detection | Claude Haiku 4.5 (Bedrock) | Pattern matching with clinical judgment |
-| Note drafting | Claude Sonnet (latest) (Bedrock) | Best quality-to-speed ratio for clinical prose generation |
-| Per-section editing | Claude Haiku 4.5 (Bedrock) | Single-section rewrite is a simple task, Haiku is fast enough |
-| Supervisor summary | Claude Haiku 4.5 (Bedrock) | Short output, structured input, speed matters |
+| Transcription | Google Speech-to-Text v2 (Chirp), batch | Same cloud and BAA as the rest of the stack; phrase hints for IDD vocabulary. Accuracy and the 60 s sync limit to verify in the first spike (ai-pipeline.md); Azure OpenAI Whisper is the fallback |
+| Section classification | Claude Haiku 4.5 (Vertex AI) | Fast (~1s), cheap ($1/MTok), sufficient for keyword-level classification |
+| Goal matching | Claude Haiku 4.5 (Vertex AI) | Structured mapping task, Haiku handles well |
+| Issue detection | Claude Haiku 4.5 (Vertex AI) | Pattern matching with clinical judgment |
+| Note drafting | Claude Sonnet (latest) (Vertex AI) | Best quality-to-speed ratio for clinical prose generation |
+| Per-section editing | Claude Haiku 4.5 (Vertex AI) | Single-section rewrite is a simple task, Haiku is fast enough |
+| Supervisor summary | Claude Haiku 4.5 (Vertex AI) | Short output, structured input, speed matters |
 
 ### Cost Projection (Production)
 
@@ -435,7 +435,7 @@ User taps 🎤 on "Mood" section
      a little anxious around dinner time, pacing back
      and forth in the hallway."
   → User taps 🎤 again to stop (or auto-stop after 3s silence)
-  → Whisper transcribes (~2s)
+  → Speech-to-Text transcribes (~2s)
   → Haiku merges with existing content (~1.5s)
   → Mood section updates:
      "John was calm for most of the shift. He became
@@ -450,4 +450,4 @@ User taps 🎤 on "Mood" section
 - **Contradiction:** New voice input overrides old content ("actually he didn't eat lunch" replaces the meals section).
 - **Multiple edits:** Each 🎤 tap is cumulative. The section grows more detailed with each edit.
 - **Undo:** Tapping the section shows "Undo last voice edit" for 10 seconds after an update.
-- **Offline:** Per-section editing requires network (Whisper + Haiku). If offline, the mic button is disabled and the text input remains available.
+- **Offline:** Per-section editing requires network (Speech-to-Text + Haiku). If offline, the mic button is disabled and the text input remains available.

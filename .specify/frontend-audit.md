@@ -377,7 +377,7 @@ Rendering is a full innerHTML replacement on every state change:
 3. `C.save()` persists to localStorage
 4. Event delegation via single `document.addEventListener("click", ...)` handler
 
-This is intentionally simple for the prototype. The production architecture will use SvelteKit 2 + Svelte 5 runes (PWA) with PowerSync + Supabase.
+This is intentionally simple for the prototype. The production architecture will use SvelteKit 2 + Svelte 5 runes (PWA) with PowerSync + Postgres on Google Cloud (infrastructure.md).
 
 ---
 
@@ -463,12 +463,12 @@ Findings are organized by the 12 audit dimensions requested, followed by acknowl
 - **Section:** 9 (Offline & Data Layer)
 - **Problem:** `store.js` wraps `localStorage.setItem` in a try/catch that silently swallows errors. If localStorage is full (typical 5MB limit on mobile browsers, can be as low as 2.5MB on some Android WebViews), data is silently lost. If the JSON is malformed on load, the app silently resets to empty state -- destroying all agency data, staff, clients, notes, and incidents. There is no user notification, no recovery prompt, no data export before reset, and no warning when storage is approaching capacity. On a $100 Android phone with limited storage, this is a realistic failure scenario.
 - **Severity:** CRITICAL
-- **Recommended Fix:** (1) On save failure, show a persistent error banner: "Your data may not have been saved. Export your records now." (2) Before resetting to empty state on load failure, attempt to recover what was stored and offer to download a backup. (3) Add a storage capacity indicator in Settings. (4) Implement data compression (e.g., LZString) to reduce localStorage usage. (5) For production: this entire storage layer will be replaced by PowerSync/Supabase, but the error handling patterns should carry over.
+- **Recommended Fix:** (1) On save failure, show a persistent error banner: "Your data may not have been saved. Export your records now." (2) Before resetting to empty state on load failure, attempt to recover what was stored and offer to download a backup. (3) Add a storage capacity indicator in Settings. (4) Implement data compression (e.g., LZString) to reduce localStorage usage. (5) For production: this entire storage layer will be replaced by PowerSync/Postgres, but the error handling patterns should carry over.
 
 ---
 
 #### FINDING 7: Session timeout and re-authentication UX is completely absent
-- **STATUS:** Addressed in security.md (Supabase Auth, session management, PHI visibility rules, and re-auth flows specified).
+- **STATUS:** Addressed in security.md (Identity Platform auth, session management, PHI visibility rules, and re-auth flows specified).
 - **Section:** 12 (Security UX)
 - **Problem:** There is no session timeout. There is no re-authentication flow. There is no screen lock. The "sign-in" screen is a list of all staff names with no passwords -- anyone who opens the browser sees all users and can impersonate anyone. While the README clearly states this is a "development sign-in" placeholder, the design spec should document the production re-auth flow because it affects every screen's UX. Key scenarios not designed:
   - What happens when a session expires mid-medication-pass? (Data loss risk)

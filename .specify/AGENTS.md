@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Guad ("friend" in Amharic) is a HIPAA-compliant charting and operations platform for IDD residential care agencies. DSPs document shift activities, administer medications, track ISP goals, record vitals, and report incidents from their phones. Supervisors review notes, manage schedules, and run audit reports. Lomi ("lemon" in Amharic) is the built-in AI assistant that drafts clinical notes, covers shift callouts via SMS, and generates daily summaries. The stack is SvelteKit 2 + Svelte 5 runes (PWA), tRPC (internal API), Supabase (Postgres + Auth + RLS + Realtime), Drizzle ORM, PowerSync (offline-first), AWS Bedrock Claude (note drafting), Azure OpenAI Whisper (transcription), BullMQ + Redis (jobs), FCM/Twilio/SES (notifications). All architecture specs live in the `.specify/` directory.
+Guad ("friend" in Amharic) is a HIPAA-compliant charting and operations platform for IDD residential care agencies. DSPs document shift activities, administer medications, track ISP goals, record vitals, and report incidents from their phones. Supervisors review notes, manage schedules, and run audit reports. Lomi ("lemon" in Amharic) is the built-in AI assistant that drafts clinical notes, covers shift callouts via SMS, and generates daily summaries. The stack is SvelteKit 2 + Svelte 5 runes (PWA) on Google Cloud Run, tRPC (internal API), Cloud SQL Postgres with RLS, Identity Platform (auth), Drizzle ORM, self-hosted PowerSync (offline-first), Claude on Vertex AI (note drafting), Google Speech-to-Text (transcription), Cloud Tasks + Cloud Scheduler (jobs), FCM push plus Amazon SES email and AWS End User Messaging SMS (notifications). infrastructure.md has the full picture. All architecture specs live in the `.specify/` directory.
 
 ## Architecture Reference
 
@@ -12,7 +12,8 @@ Before writing any code, read the relevant `.specify/` files:
 |------|----------|
 | `constitution.md` | Non-negotiable engineering principles (14 rules). Read this first. |
 | `schema.ts` | Drizzle pgTable definitions for all 37 tables. This is the single source of truth for the data model. |
-| `services.md` | Service boundaries, data ownership matrix, dependency graph, BullMQ job registry. |
+| `services.md` | Service boundaries, data ownership matrix, dependency graph, job registry (Cloud Tasks). |
+| `infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, database session setup, jobs, local dev, cost. |
 | `trpc-router.md` | Every tRPC procedure: input/output types, required role, behavior. |
 | `charting-ux.md` | Screen-by-screen UX spec, component catalog, accessibility requirements, charting preset system. |
 | `ai-pipeline.md` | Lomi AI: prompts, model config, fallback strategy, HIPAA compliance, rate limits. |
@@ -62,7 +63,7 @@ Every database query must be scoped to `agency_id`. Never bypass Row-Level Secur
 
 ### 3. Offline-first
 
-Every UI feature must work offline. PowerSync (wa-sqlite + OPFS) handles local persistence and sync. Never write direct Supabase client calls for data that needs offline support. Test every screen with network disabled. No spinners or "you're offline" dead ends -- degrade gracefully. Features that require connectivity (AI drafting, voice transcription, Lomi summary) must have explicit fallback behavior.
+Every UI feature must work offline. PowerSync (wa-sqlite + OPFS) handles local persistence and sync. Never fetch or write data that needs offline support outside PowerSync and `sync.upload`. Test every screen with network disabled. No spinners or "you're offline" dead ends -- degrade gracefully. Features that require connectivity (AI drafting, voice transcription, Lomi summary) must have explicit fallback behavior.
 
 ### 4. Drizzle schema is the type source
 
@@ -72,9 +73,9 @@ The database schema is defined exclusively in Drizzle `pgTable` definitions in `
 
 Lomi outputs are always shown in a review UI. AI-generated content is flagged (`lomi_drafted = true`) and visually labeled in the UI. Every AI draft enters the workflow as `draft` status and follows the same review/approval path as human-authored content. No AI output is persisted as a final clinical record without explicit human confirmation (tap-to-sign or PIN).
 
-### 6. Supabase Auth only
+### 6. Identity Platform only
 
-All authentication flows go through Supabase Auth. Never store tokens in `localStorage` or `sessionStorage`. Session cookies are managed only by `@supabase/ssr` in `hooks.server.ts`. The browser holds the short-lived access token in memory, because PowerSync and Realtime need it (security.md, Session Management). Never implement custom JWT generation, custom session management, or set auth cookies from application code. Role-based access (caregiver, supervisor, admin) is enforced via Supabase Auth metadata and RLS policies.
+All authentication flows go through Google Cloud Identity Platform (Firebase Auth SDK in the browser, Firebase Admin SDK on the server). Never store tokens in `localStorage`, `sessionStorage` or IndexedDB (use `inMemoryPersistence`). The session is an Identity Platform session cookie created with `createSessionCookie` and verified with `verifySessionCookie` in `hooks.server.ts`. The browser holds only the short-lived ID token in memory, because PowerSync needs it (security.md, Session Management; infrastructure.md §3). Never implement password storage, custom JWT generation or custom session management. Role-based access (caregiver, supervisor, admin) is enforced via the profile row and RLS policies.
 
 ### 7. Charting presets are cosmetic only
 
@@ -90,7 +91,7 @@ All frontend-to-backend communication uses tRPC with end-to-end type safety. Ope
 
 ### 10. Secrets never touch the client bundle
 
-API keys, service credentials, database connection strings, Twilio tokens, and AWS/Azure keys exist only in server-side environment variables. The SvelteKit client bundle contains zero secrets. Supabase anon keys are the sole exception (safe by design, scoped by RLS).
+API keys, service credentials and database connection details exist only on the server (Secret Manager). Google Cloud and AWS access uses service account identities and workload identity federation, not long-lived keys. The SvelteKit client bundle contains zero secrets. The Firebase web config (API key, project ID) is the sole exception: it identifies the project and grants no data access on its own.
 
 ## Common Patterns
 
@@ -130,11 +131,11 @@ API keys, service credentials, database connection strings, Twilio tokens, and A
 2. Every exported function receives `agencyId` as its first argument and passes it to all Drizzle queries.
 3. Import from other services via their `index.ts` exports (same-process function calls, not network hops).
 4. Don't write audit rows yourself for table changes: the `audit_row_change` trigger (rls.sql) records every INSERT/UPDATE/DELETE on audited tables. Call `audit.logEvent()` only for actions that don't change a row (PHI reads, exports, AI invocations).
-5. Document the service in `services.md`: responsibility, owned tables, key functions, dependencies, BullMQ jobs.
+5. Document the service in `services.md`: responsibility, owned tables, key functions, dependencies, jobs.
 
 ### Working with PowerSync (offline data)
 
-1. Never call the Supabase client directly for data that needs offline support. Offline writes are uploaded through `sync.upload` (trpc-router.md), which runs the owning service's code.
+1. Never query or write the database from the client. Data that needs offline support comes from PowerSync. Offline writes are uploaded through `sync.upload` (trpc-router.md), which runs the owning service's code.
 2. Use PowerSync reactive queries in Svelte stores (`$lib/stores/sync.ts`).
 3. Generate UUIDs client-side for new records (enables offline creation).
 4. Design mutations to be idempotent where possible (upserts on natural keys).

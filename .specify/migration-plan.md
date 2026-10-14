@@ -1,4 +1,4 @@
-# Guad Migration Plan: localStorage MVP to Supabase/Postgres
+# Guad Migration Plan: localStorage MVP to Postgres (Google Cloud)
 
 ## 1. Current State
 
@@ -46,22 +46,23 @@ The MVP stores **all application data as a single JSON object** in the browser's
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Database | Supabase Postgres (minimum version tracked in `supabase/config.toml`) | 37 normalized tables, RLS, realtime subscriptions |
-| Auth | Supabase Auth | Email/password, magic link, SSO, MFA, JWT with agency_id claim |
+| Database | Cloud SQL for PostgreSQL 16 | 37 normalized tables, RLS, integrity triggers |
+| Auth | Identity Platform | Email/password, email link, SSO, TOTP MFA, session cookies |
 | ORM | Drizzle | Type-safe schema definition, migration generation |
 | Internal API | tRPC | End-to-end typed frontend-to-backend communication |
 | External API | OpenAPI 3.1 | EVV, state reporting, agency exports |
 | Offline | PowerSync (wa-sqlite + OPFS) | Server-authoritative last-write-wins sync, encrypted local PHI cache |
-| AI -- notes | AWS Bedrock Claude | HIPAA-eligible note drafting |
-| AI -- voice | Azure OpenAI Whisper | HIPAA-eligible transcription |
-| Jobs | BullMQ + Redis | Coverage workflows, notification dispatch |
-| Notifications | FCM / Twilio / SES | Push, SMS, email |
+| AI -- notes | Claude on Vertex AI | Note drafting under the Google Cloud BAA |
+| AI -- voice | Google Speech-to-Text (Chirp) | Transcription under the Google Cloud BAA |
+| Jobs | Cloud Tasks + Cloud Scheduler | Coverage workflows, notification dispatch, recurring jobs |
+| Notifications | FCM / AWS End User Messaging SMS / SES | Push, SMS, email |
+| Hosting | Cloud Run | `web`, `worker` and `powersync` services (infrastructure.md) |
 | Frontend | SvelteKit 2 + Svelte 5 runes | PWA with service worker |
 
 ### Key Architectural Gains
 
 - **Tenant isolation**: Every table has `agency_id` FK + RLS policy. Cross-tenant access is impossible at the Postgres level.
-- **Real authentication**: Supabase Auth with JWT, session expiry, MFA for supervisor/admin.
+- **Real authentication**: Identity Platform with session cookies, session expiry, MFA for supervisor/admin.
 - **Immutable audit log**: Append-only `audit_log` table. No UPDATE/DELETE by application code. 7-year retention (exceeds HIPAA's 6-year minimum).
 - **Offline-first**: PowerSync syncs via server-authoritative last-write-wins. Writes persist locally in encrypted OPFS, sync on reconnect.
 - **Normalized schema**: Client health, goals, medications, and case notes each in dedicated tables with proper FKs and indexes.
@@ -86,7 +87,7 @@ The MVP is a prototype containing only synthetic test data entered during develo
 | No real data exists | MVP contains only developer-entered test scenarios |
 | Schema incompatibility | MVP uses nested JSON objects; production uses 37 normalized tables |
 | ID format change | MVP uses 8-char random strings; production uses UUIDs |
-| No auth mapping | MVP has no user accounts; production requires Supabase Auth UIDs |
+| No auth mapping | MVP has no user accounts; production requires Identity Platform UIDs |
 | Compliance risk | Any automated data transfer from an unauthenticated plaintext store would create audit complications |
 
 ---
@@ -133,7 +134,7 @@ The MVP is a prototype containing only synthetic test data entered during develo
 | `medCert` | boolean | `profiles.med_certified` | boolean | Renamed |
 | `homeIds` | string[] | `profiles.home_ids` | uuid[] | Type change (UUIDs). Note: PostgreSQL cannot enforce FK constraints on individual array elements. Application-level cleanup is required when a home is deleted to remove orphaned UUIDs from this array. Consider replacing with a `staff_homes` join table if referential integrity is critical. |
 | -- | -- | `profiles.agency_id` | uuid FK | New, tenant isolation |
-| -- | -- | `profiles.supabase_uid` | uuid | New, links to Supabase Auth |
+| -- | -- | `profiles.auth_uid` | text | New, links to the Identity Platform user |
 | -- | -- | `profiles.email` | text | New, required for auth |
 | -- | -- | `profiles.phone` | text | New, optional |
 | -- | -- | `profiles.mfa_enabled` | boolean | New |
@@ -500,11 +501,11 @@ The MVP stores attendance as a nested object: `{ [yyyy-mm-dd]: { [clientId]: { s
 | -- | -- | `events.record_id` | uuid | New, for cross-referencing |
 | -- | -- | `events.updated_at` | timestamptz | New |
 
-### 4.19 session -> Supabase Auth
+### 4.19 session -> Identity Platform
 
 | MVP Field | MVP Type | Replacement | Notes |
 |-----------|----------|------------|-------|
-| `session.userId` | string | Supabase Auth JWT | No longer stored in app data. Auth state managed by Supabase client SDK. |
+| `session.userId` | string | Identity Platform session cookie | No longer stored in app data. Auth state managed by Identity Platform (infrastructure.md §3). |
 
 ---
 
@@ -597,11 +598,12 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | Task | Detail | Deliverable |
 |------|--------|-------------|
 | SvelteKit project init | `npm create svelte@latest`, Svelte 5 runes mode, TypeScript strict, Vite | Repo with `src/`, `static/`, `svelte.config.js` |
-| Supabase project setup | Create project, enable Auth (email/password + magic link), configure JWT claims for `agency_id` | Supabase dashboard configured, env vars set |
+| Local stack | `docker compose` with Postgres 16 (logical replication on), PowerSync and Mailpit; Firebase Auth emulator (infrastructure.md §6) | `docker compose up` + `npm run dev` work on a clean laptop |
+| Google Cloud project | Project, budget alerts, Identity Platform (email/password + email link, TOTP MFA), Cloud SQL dev instance, Secret Manager | Dev project configured, env vars set |
 | Drizzle ORM setup | Install `drizzle-orm` + `drizzle-kit`, copy `schema.ts` from `.specify/`, configure `drizzle.config.ts` | `npx drizzle-kit push` succeeds |
-| Schema push | Push all 37 tables to local Supabase Postgres | All tables created with indexes |
+| Schema push | Push all 37 tables to local Postgres | All tables created with indexes |
 | RLS policies | Apply all policies from `.specify/rls.sql` | `SELECT * FROM pg_policies` shows complete coverage |
-| Auth integration | Supabase Auth client in SvelteKit hooks, session management, role extraction from JWT | Login/logout works, roles propagate |
+| Auth integration | Firebase Auth SDK (in-memory) + Admin SDK session cookies in SvelteKit hooks, custom claims, `withUser()` DB helper | Login/logout works, roles propagate, RLS tests pass through the app |
 | Seed script | Faker.js-based seed (see Section 8) | `npm run db:seed` populates dev database |
 | CI pipeline | GitHub Actions: lint, type-check, unit test, Drizzle schema validation | Green CI on every push |
 
@@ -615,7 +617,7 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | Health service | Vitals logging, seizure tracking, vital threshold alerts, health entry CRUD | `health.*` tRPC procedures |
 | Incident service | Incident reporting, severity classification, notification rules | `incident.*` tRPC procedures |
 | Attendance service | Daily service attendance tracking per client | `attendance.*` tRPC procedures |
-| PowerSync setup | PowerSync instance, sync rules per table, OPFS configuration, conflict resolution | Offline writes sync on reconnect |
+| PowerSync setup | Self-hosted PowerSync (Docker locally, Cloud Run in the cloud), Identity Platform JWKS auth, sync rules per table, OPFS configuration, conflict resolution | Offline writes sync on reconnect |
 
 ### Phase 3: UI Migration (Weeks 5-6)
 
@@ -627,8 +629,8 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | Behavior note editor | ABC fields (antecedent, behavior, consequence), behavior type selector | Behavior notes created |
 | Supervisor dashboard | Pending reviews, home overview, staff status, coverage status | Feature parity with MVP supervisor view |
 | Note review flow | Approve/return with comments, signature capture | Supervisor can review and approve |
-| Lomi AI integration | AWS Bedrock Claude for note drafting, streaming response, `lomi_drafted` flag | AI drafts rendered with label |
-| Voice transcription | Azure OpenAI Whisper, recording UI, transcript insertion | Voice-to-text in note editor |
+| Lomi AI integration | Claude on Vertex AI for note drafting, streaming response, `lomi_drafted` flag | AI drafts rendered with label |
+| Voice transcription | Google Speech-to-Text (Chirp), recording UI, transcript insertion; spike first on accuracy and the 60 s sync limit (ai-pipeline.md) | Voice-to-text in note editor |
 
 ### Phase 4a: Scheduling & Timekeeping (Weeks 7-8)
 
@@ -636,21 +638,21 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 |------|--------|-------------|
 | Schedule manager | Weekly grid by home, shift assignment, open shift detection | Schedule view with drag-and-fill |
 | Coverage engine | Lomi coverage workflow: callout -> eligibility check -> offer -> accept/decline -> fill | Coverage fills automatically via Lomi |
-| BullMQ integration | Redis + BullMQ for coverage jobs, notification dispatch, coverage timeout | Background jobs process reliably |
+| Jobs | Cloud Tasks queues + Cloud Scheduler, `worker` handlers with OIDC auth, in-process driver for local dev | Background jobs process reliably |
 | Clock-in system | Geofence verification, GPS distance check, missed punch detection, manual override | Clock-in/out with location verification |
 
 ### Phase 4b: Notifications & Intake (Weeks 9-10)
 
 | Task | Detail | Deliverable |
 |------|--------|-------------|
-| Twilio SMS | Shift offers sent via SMS, reply handling (accept/decline by text) | SMS coverage flow end-to-end |
+| SMS | AWS End User Messaging: 10DLC registration (start early, 1-3 weeks), shift offers, two-way replies via SNS | SMS coverage flow end-to-end |
 | Timesheet export | Payroll-ready CSV/PDF export, supervisor approval | Exportable timesheets |
-| Notification system | FCM push, Twilio SMS, SES email, notification preferences per user | Notifications delivered by channel |
+| Notification system | FCM push, AWS SMS, SES email, notification preferences per user | Notifications delivered by channel |
 | Client intake | Referral pipeline, room availability, client admission flow | Intake workflow operational |
 
 ### Phase 5: Production Readiness (Weeks 11-13)
 
-**Note:** BAA (Business Associate Agreement) execution with subprocessors (Supabase, AWS, Azure, Twilio) should begin as a parallel legal/compliance workstream starting in Phase 1. BAA negotiations typically take 4-12 weeks and involve legal review, security questionnaires, and procurement processes outside the engineering team's control. Supabase, AWS, and Azure all have standard BAA templates that can accelerate this process, but Twilio's HIPAA offering requires ISV program enrollment.
+**Note:** Only two BAAs are needed, both free and click-through: Google Cloud (accepted in the Cloud console) and AWS (accepted in AWS Artifact). Accept them before any real client data, and confirm the Claude model and region on Google's covered-products list (infrastructure.md §8). The 10DLC SMS registration is the slowest external step, so start it in Phase 1.
 
 | Task | Detail | Deliverable |
 |------|--------|-------------|
@@ -660,7 +662,7 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | Security audit | OWASP checklist, RLS verification, PHI leak scan, penetration test | Audit report with zero critical findings |
 | HIPAA compliance | BAA portfolio verification (started in Phase 1), privacy policy, breach response plan | BAA portfolio complete |
 | Performance optimization | Lighthouse audit, bundle analysis, 3G performance target verification | All performance targets met (see constitution) |
-| Deployment | Vercel (app) + Supabase (DB) production projects, DNS, SSL, monitoring | Production URL live |
+| Deployment | Production Google Cloud project: Cloud Run services, Cloud SQL (backups + PITR), Cloud Tasks queues, Scheduler jobs, custom domain, monitoring and alerts | Production URL live |
 | Charting preset validation | Verify `therap` and `default` presets produce identical data, different labels | Both presets tested end-to-end |
 
 ---
@@ -707,7 +709,7 @@ The seed script (`src/lib/server/seed.ts`) creates a realistic development datas
 src/lib/server/seed.ts
   - createAgency()           // Nticare with settings
   - createHomes(agencyId)    // 3 homes with rooms
-  - createStaff(agencyId)    // 8 profiles with Supabase Auth test accounts
+  - createStaff(agencyId)    // 8 profiles with Auth emulator test accounts
   - createClients(agencyId)  // 12 clients with health info, goals, meds
   - createSchedule(agencyId) // 2 weeks of schedule slots
   - createNotes(agencyId)    // Notes with goal tracking data
@@ -757,17 +759,17 @@ This is a greenfield deployment. The MVP and the production system are entirely 
 | Scenario | Action | Data Impact |
 |----------|--------|-------------|
 | Production system has critical bugs during internal testing | Continue using MVP for demos. Fix bugs in production system. | None. MVP data is test data. Production data is seed data. |
-| Production system fails after agency onboarding | Revert agency to MVP (if before real data entry) or fix production bugs. | If agency entered real data in production, that data is in Supabase and unaffected by MVP revert. |
-| Supabase outage | PowerSync offline mode keeps the app functional. Data syncs when Supabase recovers. | No data loss. PowerSync queues writes locally. |
+| Production system fails after agency onboarding | Revert agency to MVP (if before real data entry) or fix production bugs. | If agency entered real data in production, that data is in Cloud SQL and unaffected by MVP revert. |
+| Google Cloud outage | PowerSync offline mode keeps the app functional. Data syncs when the services recover. | No data loss. PowerSync queues writes locally. |
 | Schema needs breaking changes post-launch | Drizzle migration with data backfill. Never destructive -- always additive migrations with backfill scripts. | Data preserved via migration. |
-| Need to roll back a deployment | Vercel instant rollback to previous deployment. Database migrations are forward-only. | App code reverts. Database schema stays current (backward-compatible migrations only). |
-| PowerSync OPFS corruption | App falls back to online-only mode (direct Supabase queries). OPFS database is cleared and re-synced from server. | No data loss. PowerSync is a cache of server-authoritative data. Unsynced writes in the corrupted OPFS may be lost; this is an accepted risk mitigated by frequent sync intervals. |
+| Need to roll back a deployment | Route Cloud Run traffic back to the previous revision. Database migrations are forward-only. | App code reverts. Database schema stays current (backward-compatible migrations only). |
+| PowerSync OPFS corruption | App falls back to online-only mode (tRPC queries). OPFS database is cleared and re-synced from server. | No data loss. PowerSync is a cache of server-authoritative data. Unsynced writes in the corrupted OPFS may be lost; this is an accepted risk mitigated by frequent sync intervals. |
 
 ### Key Principle
 
 There is no "migration back to MVP" scenario because:
 1. The MVP contains no real data worth preserving.
 2. The MVP architecture (localStorage, no auth, no encryption) is fundamentally incompatible with production requirements.
-3. Once real agencies onboard, their data exists only in Supabase -- there is no MVP equivalent.
+3. Once real agencies onboard, their data exists only in Cloud SQL -- there is no MVP equivalent.
 
-The rollback strategy is standard deployment rollback (Vercel revert + database forward-compatibility), not a return to the MVP architecture.
+The rollback strategy is standard deployment rollback (previous Cloud Run revision + database forward-compatibility), not a return to the MVP architecture.

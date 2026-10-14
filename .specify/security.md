@@ -8,17 +8,17 @@ Guad operates as a Business Associate under HIPAA. This document defines the sec
 
 | # | Threat | Likelihood | Impact | Mitigation |
 |---|--------|-----------|--------|------------|
-| T1 | **Insider access to PHI** — A staff member views client records outside their assigned homes, or a terminated employee retains access. | High | High | Supabase RLS enforces home-scoped access for caregivers at the Postgres level. On termination, `profiles.active` is set to `false` and the Supabase Auth session is revoked, which is the primary deactivation mechanism. `current_user_home_ids()` in rls.sql also requires `active = true`, so a deactivated user's token stops returning clinical rows even before it expires. Users cannot widen their own access: a trigger blocks non-admins from changing `home_ids`, `role` or `med_certified` on their own profile. Audit log captures every PHI read. |
+| T1 | **Insider access to PHI** — A staff member views client records outside their assigned homes, or a terminated employee retains access. | High | High | Postgres RLS enforces home-scoped access for caregivers. On termination, `profiles.active` is set to `false`, the Identity Platform account is disabled and its refresh tokens are revoked, which is the primary deactivation mechanism. `current_user_home_ids()` in rls.sql also requires `active = true`, so a deactivated user's token stops returning clinical rows even before it expires. Users cannot widen their own access: a trigger blocks non-admins from changing `home_ids`, `role` or `med_certified` on their own profile. Audit log captures every PHI read. |
 | T2 | **Device theft or loss** — A caregiver's phone is stolen while logged in, exposing offline-cached PHI in PowerSync OPFS. | High | High | Session timeout after 12 hours of inactivity (configurable per agency, minimum 15 minutes for high-security). PowerSync OPFS is encrypted at rest with a random per-device key; only a PIN-wrapped copy is stored on the device (offline-sync.md, "Local database encryption key"). PIN/biometric lock is required to open the app or resume a backgrounded session; after 5 wrong PINs the wrapped key is deleted. Deactivating the device on the server deletes the server copy of the key. Local data is deleted on logout only once all changes have synced. |
-| T3 | **Session hijacking** — An attacker steals a JWT or refresh token via XSS, MITM, or physical access to a shared device. | Medium | Critical | The refresh token lives in a cookie managed by `@supabase/ssr` in `hooks.server.ts` (Secure, SameSite=Lax). The browser gets a short-lived (1 hour) access token from the server and holds it in memory only, because PowerSync and Supabase Realtime need it. Refresh tokens rotate on every use (Supabase default). No token is ever written to `localStorage` or `sessionStorage`. TLS 1.3 enforced on all connections. Content Security Policy headers block inline scripts and mitigate XSS. Session revocation propagates within 60 seconds via Supabase Realtime. |
-| T4 | **API abuse** — An attacker or rogue integration hammers the tRPC or OpenAPI endpoints to exfiltrate data, brute-force auth, or cause denial of service. | Medium | High | Rate limiting on all endpoints: 100 req/min per user for tRPC, 30 req/min per API key for OpenAPI (60/hour for bulk export). Supabase Auth rate-limits login attempts (5 failures lock the account for 15 minutes). OpenAPI keys are scoped to specific endpoints and agency. tRPC procedures validate input with Zod schemas. All OpenAPI responses are paginated (max 100 records per page; max 1,000 for bulk export). Export endpoints log every invocation to audit_log. |
+| T3 | **Session hijacking** — An attacker steals a JWT or refresh token via XSS, MITM, or physical access to a shared device. | Medium | Critical | The session is an Identity Platform session cookie (HttpOnly, Secure, SameSite=Lax) verified with revocation checking on every tRPC request. The browser holds only a short-lived (1 hour) ID token in memory, because PowerSync needs it (Firebase Auth SDK with `inMemoryPersistence`). No token is ever written to `localStorage`, `sessionStorage` or IndexedDB. TLS 1.3 enforced on all connections. Content Security Policy headers block inline scripts and mitigate XSS. Revocation takes effect on the next tRPC request; sync stops at once because sync rules only return rows for active profiles. |
+| T4 | **API abuse** — An attacker or rogue integration hammers the tRPC or OpenAPI endpoints to exfiltrate data, brute-force auth, or cause denial of service. | Medium | High | Rate limiting on all endpoints: 100 req/min per user for tRPC, 30 req/min per API key for OpenAPI (60/hour for bulk export). Identity Platform throttles repeated failed sign-ins, and reCAPTCHA Enterprise is enabled for email/password sign-in to block automated attempts. OpenAPI keys are scoped to specific endpoints and agency. tRPC procedures validate input with Zod schemas. All OpenAPI responses are paginated (max 100 records per page; max 1,000 for bulk export). Export endpoints log every invocation to audit_log. |
 | T5 | **Data exfiltration via exports** — A privileged user (admin/supervisor) exports client data as CSV/PDF and shares it outside the organization. | Medium | High | All export actions are logged in audit_log with the export format, record count, and filter criteria. Exports are watermarked with the requesting user's name and timestamp. Export access is restricted to supervisor and admin roles. Agencies can disable export functionality per role via `agencies.settings`. Large exports (>500 records) require a second confirmation step. |
 | T6 | **Stored XSS** — An attacker injects malicious scripts via note content, messages, or incident descriptions that execute when rendered in supervisor views. | Medium | High | All user-generated content is rendered via Svelte's default auto-escaping (no `{@html}`). Content Security Policy headers block inline scripts (`script-src 'self'`). Zod input validation on tRPC procedures sanitizes inputs. Supervisor review screens render note content as text, not HTML. |
-| T7 | **CSRF** — An attacker tricks an authenticated user's browser into making state-changing requests to the tRPC API. | Low | High | Session cookies set by `@supabase/ssr` are `SameSite=Lax`. tRPC procedures require the access token in the Authorization header (a cross-site form can't add it), and the server rejects requests whose `Origin` isn't the app's own. No state-changing operations use GET requests. CORS is restricted to the application's own origin. |
+| T7 | **CSRF** — An attacker tricks an authenticated user's browser into making state-changing requests to the tRPC API. | Low | High | The Identity Platform session cookie is `SameSite=Lax`. tRPC procedures require the access token in the Authorization header (a cross-site form can't add it), and the server rejects requests whose `Origin` isn't the app's own. No state-changing operations use GET requests. CORS is restricted to the application's own origin. |
 | T8 | **Supply chain attack** — A compromised npm dependency exfiltrates PHI or injects malicious code into the production build. | Low | Critical | `npm audit` runs in CI on every build. Dependencies are pinned with `package-lock.json`. Renovate/Dependabot monitors for CVEs. Production builds use `npm ci` (no deviation from lockfile). CSP headers limit exfiltration vectors. PHI is never present in the build output (server-side only). |
 | T9 | **Ransomware or malware on caregiver devices** — A caregiver's personal phone is infected, compromising the cached OPFS database or intercepting PHI in memory. | Medium | High | PowerSync OPFS is encrypted (SQLCipher-style AES-256; confirm the encrypted wa-sqlite build before launch). The database key is never stored on disk in plaintext; only a PIN-wrapped copy is. PWA isolation limits malware access to browser sandbox. Minimum OS version requirements (iOS 16.4+, Android 10+) ensure current security patches. PHI in memory is transient and cleared on logout/session expiry. |
 | T10 | **IDOR via UUID guessing** — An attacker attempts to access records by guessing or enumerating UUIDs in API requests. | Low | High | UUIDs are v4 (122 bits of entropy, infeasible to guess). All queries are scoped by `agency_id` via RLS at the Postgres level — even a valid UUID from another agency returns no rows. tRPC procedures validate input with Zod UUID schemas. Rate limiting on API endpoints prevents enumeration. |
-| T11 | **Social engineering / phishing targeting magic link auth** — An attacker sends a phishing email mimicking the magic link flow to harvest credentials or session tokens. | Medium | Medium | Magic link emails are sent only via Supabase Auth with a verified sender domain. Links expire after 1 hour. Links are single-use (consumed on first click). MFA is required for supervisor and admin roles, limiting the impact of a compromised magic link. Security awareness training covers phishing recognition. |
+| T11 | **Social engineering / phishing targeting email sign-in links** — An attacker sends a phishing email mimicking the sign-in link flow to harvest credentials or session tokens. | Medium | Medium | Email sign-in links are generated by Identity Platform and sent through Amazon SES from a verified sender domain (SPF, DKIM, DMARC). Links expire after 1 hour. Links are single-use (consumed on first click). MFA is required for supervisor and admin roles, limiting the impact of a compromised sign-in link. Security awareness training covers phishing recognition. |
 | T12 | **Prompt injection via Lomi AI inputs** — A caregiver (or attacker with a caregiver's session) crafts voice or text input designed to manipulate Lomi's AI behavior, bypass safety rules, or extract system prompt content. | Low | Medium | Lomi prompts use structured templates with clear system/user message separation. AI output always goes through the review UI — no auto-submission. Output is constrained to clinical prose sections (activities, meals, mood, health) with Zod schema validation. Model output that fails schema validation falls back to rules-based drafting. No tool use or function calling is enabled for Lomi. |
 
 ---
@@ -27,27 +27,27 @@ Guad operates as a Business Associate under HIPAA. This document defines the sec
 
 ### Flow
 
-1. **Primary method:** Email + password via Supabase Auth `signInWithPassword()`.
-2. **Secondary method:** Magic link via Supabase Auth `signInWithOtp()` (email). Available for password resets and agencies that prefer passwordless.
-3. **Future:** SAML/OIDC SSO for enterprise agencies, via Supabase Auth's built-in SSO support.
+Identity is provided by Google Cloud Identity Platform (Firebase Auth). See infrastructure.md §3 for the full flow.
+
+1. **Primary method:** Email + password via the Firebase Auth SDK `signInWithEmailAndPassword()`.
+2. **Secondary method:** Email link via `sendSignInLinkToEmail()`. Available for password resets and agencies that prefer passwordless. The link is generated server-side with the Admin SDK and sent through SES.
+3. **Future:** SAML/OIDC SSO for enterprise agencies, via Identity Platform's SAML and OIDC providers.
 
 ### Session Management
 
-- Supabase Auth issues a short-lived JWT (1 hour) and a long-lived refresh token.
-- Session cookies are managed by `@supabase/ssr` in `hooks.server.ts`; application code never builds or sets auth cookies itself.
-- The access token is handed to the client and kept in memory only (never `localStorage` or `sessionStorage`), because PowerSync and Supabase Realtime need it in JavaScript. Mitigations: short-lived (1 hour), strict CSP against XSS, no durable client-side storage.
-- Refresh token rotation: each use of a refresh token invalidates the old one and issues a new pair.
-- Session expiry: 12 hours of inactivity (no API calls). Configurable per agency down to 15 minutes.
-- On logout: Supabase Auth session is revoked server-side and the service worker cache is purged. The local PowerSync database is deleted once its upload queue is empty; if changes are still unsynced (offline), the app locks instead and deletes the database after the next successful sync (offline-sync.md §7).
+- After sign-in, the server exchanges the ID token for an Identity Platform **session cookie** (Admin SDK `createSessionCookie`) and sets it from `hooks.server.ts`. The cookie's contents are created and signed by Identity Platform; application code never builds its own tokens.
+- The browser keeps a 1-hour ID token in memory only (never `localStorage`, `sessionStorage` or IndexedDB), because PowerSync needs it in JavaScript. After a reload it gets a new one from `/auth/sync-token` (a Firebase custom token exchanged with `signInWithCustomToken`). Mitigations: short-lived, strict CSP against XSS, no durable client-side storage.
+- Session length: the session cookie lasts 12 hours (absolute), configurable per agency down to 15 minutes. Inactivity locks the app sooner on mobile (see Session Timeout Policy). Identity Platform session cookies can't be extended, so the user signs in again when one expires; unsynced local data is kept.
+- On logout: the server clears the cookie and revokes the user's refresh tokens (Admin SDK `revokeRefreshTokens`), and the service worker cache is purged. The local PowerSync database is deleted once its upload queue is empty; if changes are still unsynced (offline), the app locks instead and deletes the database after the next successful sync (offline-sync.md §7).
 
-### JWT Custom Claims
+### Identity Claims
 
-The JWT `app_metadata` contains:
+The ID token carries custom claims under `parameters`, used by PowerSync sync rules:
 - `agency_id` (uuid) — tenant isolation key, set at account creation, immutable by the user.
 - `role` (string) — `caregiver`, `supervisor`, or `admin`. Changed only by admins via a server-side function.
-- `profile_id` (uuid) — the user's `profiles.id`, for RLS ownership checks.
+- `profile_id` (uuid) — the user's `profiles.id`, for ownership checks.
 
-These claims are set by server-side Supabase Auth hooks and cannot be modified by the client.
+These claims are set only by the server with the Admin SDK (`setCustomUserClaims`) and cannot be modified by the client. The database does not trust them: for every request the server loads the profile by `auth_uid` and sets the Postgres session claims from that row (rls.sql header).
 
 ### MFA Policy
 
@@ -57,17 +57,18 @@ These claims are set by server-side Supabase Auth hooks and cannot be modified b
 | Supervisor | Required after go-live. 30-day grace period on account creation. |
 | Admin | Required immediately. Cannot access admin functions without MFA enrolled. |
 
-MFA is implemented via Supabase Auth's TOTP factor. Backup codes are generated on enrollment (10 single-use codes).
+MFA is implemented with Identity Platform's TOTP multi-factor. SMS codes are not offered (cost and SIM-swap risk). Identity Platform has no backup codes, so a user who loses their authenticator is reset by an admin: the admin unenrolls the factor (Admin SDK), the action is audited, and the user must enroll again at next sign-in.
 
 ### Password Requirements
 
 - Minimum 10 characters.
 - At least one uppercase, one lowercase, one digit.
+- Enforced by Identity Platform's password policy (set to "enforce", so non-compliant passwords are rejected at sign-up and change).
 - Checked against the HaveIBeenPwned breached-password API (k-anonymity model, no plaintext sent).
 - Password history: last 5 passwords cannot be reused.
 - Forced rotation: none (NIST 800-63B guidance). Rotation forced only on suspected compromise.
 
-**Implementation note:** HaveIBeenPwned checking and password history require custom Supabase Auth hooks (password validation hook for breach checking, and a custom `password_history` table for reuse tracking). These are not natively supported by Supabase Auth. See [Supabase Auth Hooks documentation](https://supabase.com/docs/guides/auth/auth-hooks) for implementation guidance. These features are post-launch hardening items if custom hooks are not available at MVP.
+**Implementation note:** Identity Platform doesn't check breached passwords or password history natively. Both need password changes to go through a server endpoint (check HaveIBeenPwned with k-anonymity, compare against hashed history in a `password_history` table, then call the Admin SDK `updateUser`). They are post-launch hardening items.
 
 ---
 
@@ -148,17 +149,18 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 
 | Location | Permitted | Controls |
 |----------|-----------|----------|
-| Supabase Postgres | Yes | AES-256 at rest, RLS, BAA in place |
+| Cloud SQL Postgres | Yes | AES-256 at rest, RLS, Google Cloud BAA |
 | PowerSync OPFS (device) | Yes | Encrypted SQLite, session-scoped, cleared on logout |
-| AWS Bedrock (in-flight) | Yes | BAA in place, PHI in prompt/response only, not stored by AWS |
-| Azure OpenAI Whisper (in-flight) | Yes | BAA in place, audio processed and discarded |
+| Claude on Vertex AI (in-flight) | Yes | Google Cloud BAA, PHI in prompt/response only, prompt logging off |
+| Speech-to-Text (in-flight) | Yes | Google Cloud BAA, audio processed and discarded (data logging off) |
+| Cloud Storage | Yes (report exports) | Private bucket, signed URLs (15 min), lifecycle deletion after 7 days, Google Cloud BAA |
 
 ### Where PHI Is NEVER Stored
 
 - `localStorage` or `sessionStorage`
 - `console.log`, `console.error`, or any client-side logging
 - URL parameters or query strings
-- Error monitoring payloads (Sentry, LogRocket, etc.)
+- Error monitoring and log payloads (Cloud Logging, Error Reporting). These are BAA-covered, but logs are copied widely (exports, support), so PHI is still never logged.
 - SMS message bodies (shift info only: home name, time — never client names or health data)
 - Push notification payloads (generic title + notification ID only; FCM is not a BAA-covered service)
 - Browser speech-recognition APIs (e.g., Chrome's Web Speech API sends audio to Google; it is never used)
@@ -174,26 +176,26 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 
 ### In Transit
 
-- **TLS 1.3** enforced on all connections (Supabase, Vercel, API endpoints).
+- **TLS 1.3** enforced on all connections (Cloud Run, Cloud SQL connector, AWS APIs, API endpoints).
 - HTTP Strict Transport Security (HSTS) header with `max-age=31536000; includeSubDomains; preload`.
 - Certificate pinning is not used (PWA limitation) but certificate transparency monitoring is enabled.
-- WebSocket connections (Supabase Realtime, PowerSync) use WSS (TLS-encrypted WebSocket).
+- PowerSync streaming connections use TLS (WSS or HTTPS streaming).
 
 ### At Rest
 
 | Layer | Encryption | Key Management |
 |-------|-----------|----------------|
-| Supabase Postgres | AES-256 (managed by Supabase/AWS) | AWS KMS, keys rotated annually |
-| Supabase backups | AES-256 server-side encryption | Same KMS key hierarchy |
+| Cloud SQL Postgres | AES-256 (Google-managed) | Google-managed keys; customer-managed keys (Cloud KMS) optional later |
+| Cloud SQL backups | AES-256 | Same as the instance |
 | PowerSync OPFS (device) | SQLCipher-style AES-256 (confirm encrypted wa-sqlite build) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2); server copy deleted on deactivation |
-| AWS Bedrock | AES-256 (AWS managed) | AWS KMS |
-| Redis (BullMQ) | TLS in transit; AES-256 at rest (required — use managed Redis with encryption enabled; unencrypted Redis deployments must not be used in production) | Provider KMS |
+| Cloud Storage (exports) | AES-256 (Google-managed) | Google-managed keys |
+| Cloud Tasks payloads | AES-256 (Google-managed) | Payloads hold record IDs only, never PHI |
 
 ### Backup Encryption
 
-- Supabase automated daily backups are encrypted at rest with AES-256.
+- Cloud SQL automated daily backups are encrypted at rest with AES-256.
 - Point-in-time recovery (PITR) enabled with 7-day retention.
-- Backup access restricted to Supabase infrastructure; no Guad engineer has direct backup access.
+- Restoring a backup requires the `cloudsql.backupRuns` IAM permission, held by the two account owners only; every restore is recorded in Cloud Audit Logs.
 
 ---
 
@@ -224,14 +226,14 @@ All PHI tables trigger audit logging: `clients`, `client_health_info`, `goals`, 
 ### Tamper Resistance
 
 - The `audit_log` table has **no UPDATE or DELETE RLS policies**. Application code cannot modify or remove audit entries.
-- The Supabase database role used by the application has no `DELETE` or `TRUNCATE` grant on `audit_log`.
+- The `app_user` database role used for user requests has no `DELETE` or `TRUNCATE` grant on `audit_log`.
 - A Postgres trigger prevents direct `UPDATE` or `DELETE` on `audit_log` rows even for superusers within the application context.
 - **Known risk:** `audit_log.agency_id` currently has `onDelete: 'cascade'` in the schema, meaning deleting an agency would cascade-delete its entire audit trail. This must be changed to `onDelete: 'restrict'` (preventing agency deletion while audit records exist) or `onDelete: 'set null'` (preserving orphaned audit records) before production to meet the 7-year retention requirement. A Postgres trigger should also prevent `DELETE` on the `agencies` table while `audit_log` rows reference it.
 
 ### Retention
 
 - **Minimum 7 years** (exceeds HIPAA's 6-year minimum for Security Rule documentation).
-- Archived to cold storage (S3 Glacier) after 2 years for cost optimization.
+- Archived to Cloud Storage Archive class after 2 years for cost optimization.
 - Retention policy is enforced by infrastructure; no application code deletes audit records.
 
 ### Access
@@ -283,7 +285,7 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 ### Logging Requirements for Breach Investigation
 
 - All `audit_log` entries for the affected time window are preserved and exported.
-- Supabase Auth logs (login attempts, token refreshes) are exported.
+- Identity Platform audit logs (sign-ins, token refreshes, account changes) from Cloud Audit Logs are exported.
 - Server access logs (IP addresses, endpoints hit, response codes) are preserved.
 - PowerSync sync logs for affected users are reviewed.
 - All logs are preserved for the duration of the investigation plus 7 years.
@@ -294,26 +296,18 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 
 | Vendor | Service | PHI Exposed | BAA Status |
 |--------|---------|------------|------------|
-| **Supabase** | Managed Postgres, Auth, Realtime, Storage | Yes — all PHI at rest, auth tokens | Required. Supabase offers BAA on Pro plan and above. **Must be executed before production launch.** |
-| **AWS (Bedrock)** | Claude AI for note drafting | Yes — the caregiver's transcript (which can describe health, behavior, meals and medications), plus the client's first name and goal text. No last names, DOBs, IDs, diagnoses list or guardian info are added by Guad. See ai-pipeline.md PHI Minimization. | Required. AWS provides BAA as part of the AWS BAA program (HIPAA Eligible Services). **Must be executed before enabling Lomi note drafting.** |
-| **Azure (OpenAI)** | Whisper for transcription | Yes — audio may contain client names, health info | Required. Azure provides BAA for Azure OpenAI Service. **Must be executed before enabling voice transcription.** |
-| **Twilio** | SMS for shift coverage, notifications | Minimal — shift times, home names. **No client names or health data in SMS body.** | Required (belt-and-suspenders). Twilio offers HIPAA-eligible messaging. |
-| **Amazon SES** | Transactional email | Minimal — notification triggers only. Email bodies contain links, not PHI. | Required. Covered under AWS BAA. |
+| **Google Cloud** | Cloud Run, Cloud SQL, Identity Platform, Vertex AI (Claude), Speech-to-Text, Cloud Storage, Cloud Tasks, Secret Manager, Cloud Logging | Yes — all PHI at rest, auth, the caregiver's transcript and audio, plus the client's first name and goal text in AI prompts. No last names, DOBs, IDs, diagnoses list or guardian info are added to prompts by Guad (ai-pipeline.md PHI Minimization). | Required. Free; accepted in the Cloud console for the organization. Covers only the products on Google's HIPAA covered-products list: **confirm the Claude model and region on Vertex AI are listed.** **Must be accepted before any real client data.** |
+| **AWS** | SES (email), End User Messaging (SMS) | Minimal — message bodies contain no client names or health data (shift times and links only). | Required (belt-and-suspenders). Free; accepted in AWS Artifact. |
 | **Google (Firebase Cloud Messaging)** | Push notification delivery | No — by design. Push payloads carry only a generic title ("Guad: Action needed"), a notification ID and a deep link. The app fetches details after the user opens it and signs in. Incident types, client names and medication details are never in a push payload. | Not required while payloads stay PHI-free. If any PHI is ever added to push payloads, FCM is not BAA-covered and must not be used. |
-| **PowerSync** | Offline sync engine | Yes — synced PHI tables cached locally | Required. PowerSync offers BAA for healthcare customers. **Must be executed before production launch.** |
-| **Vercel** (or hosting provider) | SvelteKit application hosting | No PHI at rest (server-side rendering may process PHI in memory) | Required (precautionary). Vercel offers BAA on Enterprise plan. |
-| **Redis provider** (e.g., Upstash) | BullMQ job queue | Minimal — job payloads may contain record IDs, never raw PHI | Recommended. Structure job payloads to contain only IDs; workers fetch PHI from Postgres at execution time. |
+| **PowerSync** (Open Edition, self-hosted) | Offline sync engine | Runs inside our Google Cloud project; PowerSync (the company) never receives data | Not required: no data reaches the vendor. Required only if we move to PowerSync Cloud. |
 
 ### BAA Checklist Before Production
 
-- [ ] Supabase BAA executed (Pro plan)
-- [ ] AWS BAA executed (Bedrock, SES)
-- [ ] Azure BAA executed (OpenAI Whisper)
-- [ ] Twilio BAA executed
-- [ ] PowerSync BAA executed
+- [ ] Google Cloud BAA accepted (organization level)
+- [ ] Claude model and region confirmed on Google's HIPAA covered-products list
+- [ ] AWS BAA accepted in AWS Artifact (SES, End User Messaging)
 - [ ] Confirm push payloads contain no PHI (automated test in notifications.md §12)
-- [ ] Hosting provider BAA executed
-- [ ] Redis provider BAA executed or PHI excluded from payloads
+- [ ] Confirm Cloud Tasks payloads contain record IDs only
 - [ ] All BAAs stored in secure document management (not in git repo)
 - [ ] Annual BAA review calendar event created
 
@@ -342,7 +336,7 @@ On explicit logout, the following are cleared (session expiry only drops the in-
 1. PowerSync OPFS database is deleted (OPFS directory removal) **once the upload queue is empty**. If changes are unsynced, the app locks instead and deletes the database after the next successful sync.
 2. Service worker cache is purged of any API responses.
 3. All in-memory Svelte stores are reset.
-4. Supabase Auth session is revoked server-side (invalidates refresh token).
+4. The session cookie is cleared and the user's Identity Platform refresh tokens are revoked server-side.
 
 ### Session Timeout Policy
 
@@ -350,13 +344,13 @@ On explicit logout, the following are cleared (session expiry only drops the in-
 |----------|---------|--------|
 | Inactivity (no API calls or UI interaction) | 12 hours (default), configurable per agency | Session expired, local data cleared, redirect to login |
 | App backgrounded (mobile PWA) | 5 minutes (configurable) | PIN/biometric required to resume |
-| Browser tab closed | Session persists until timeout | Refresh token used on re-open |
+| Browser tab closed | Session persists until timeout | Session cookie used on re-open |
 | Device locked | No action | Normal OS lock protects device; session resumes on unlock |
 
 ### Offline Write Security
 
 - Writes made offline are stored in the local encrypted SQLite database.
-- On reconnect, PowerSync syncs writes to Supabase. The server validates all writes against RLS policies — a tampered local write that violates RLS is rejected.
+- On reconnect, PowerSync uploads queued writes through the `sync.upload` tRPC procedure, which runs each one through the owning service (validation, business rules, audit). RLS and the integrity triggers are the backstop, so a tampered local write is rejected.
 - Conflict resolution: server state wins. If a record was modified both offline and on another device, the server-side version is authoritative.
 - Offline writes include the `created_by` field (profile_id from local session) so authorship is preserved even if sync is delayed.
 
@@ -366,20 +360,20 @@ On explicit logout, the following are cleared (session expiry only drops the in-
 
 | HIPAA Requirement | Guad Implementation |
 |-------------------|---------------------|
-| 164.312(a)(1) — Access control | Supabase Auth + RLS. Role-based access enforced at database level. |
-| 164.312(a)(2)(i) — Unique user identification | Supabase Auth UUID per user. `profiles.supabase_uid` is unique. |
+| 164.312(a)(1) — Access control | Identity Platform + RLS. Role-based access enforced at database level. |
+| 164.312(a)(2)(i) — Unique user identification | Identity Platform UID per user. `profiles.auth_uid` is unique. |
 | 164.312(a)(2)(iii) — Automatic logoff | 12-hour inactivity timeout. Configurable per agency. |
-| 164.312(a)(2)(iv) — Encryption and decryption | AES-256 at rest (Supabase, OPFS). TLS 1.3 in transit. |
+| 164.312(a)(2)(iv) — Encryption and decryption | AES-256 at rest (Cloud SQL, OPFS). TLS 1.3 in transit. |
 | 164.312(b) — Audit controls | `audit_log` table. Append-only. 7-year retention. |
 | 164.312(c)(1) — Integrity | Audit log captures old/new values. MAR entries are irrevocable. |
-| 164.312(d) — Person or entity authentication | Email + password, MFA (TOTP), magic link. |
+| 164.312(d) — Person or entity authentication | Email + password, MFA (TOTP), email link. |
 | 164.312(e)(1) — Transmission security | TLS 1.3 on all connections. HSTS enforced. |
 | 164.308(a)(1) — Security management process | This document. Annual review cycle. |
 | 164.308(a)(4) — Information access management | Role-based access via RLS. Quarterly access reviews by agency admins. Automated stale assignment detection. |
 | 164.308(a)(5) — Security awareness training | Workforce training program (see Workforce Training section below). |
 | 164.308(a)(7) — Contingency plan | Disaster recovery plan, RTO/RPO targets, backup verification (see Contingency Plan section below). |
 | 164.308(a)(6) — Security incident procedures | Breach response procedure defined above. |
-| 164.310(a)(1) — Facility access controls | Cloud-hosted (Supabase/AWS/Vercel). Physical security delegated to cloud providers per their SOC 2 / ISO 27001 certifications. |
+| 164.310(a)(1) — Facility access controls | Cloud-hosted (Google Cloud, AWS for messaging). Physical security delegated to cloud providers per their SOC 2 / ISO 27001 certifications. |
 | 164.310(b) — Workstation use | Caregiver devices: PWA in browser sandbox. Admin workstations: screen lock required, no PHI in local files. |
 | 164.310(c) — Workstation security | Session timeout enforced. OPFS encrypted. No PHI in clipboard persistence. |
 | 164.310(d)(1) — Device and media controls | OPFS wiped on logout. No USB export. Watermarked exports. See Device Requirements section below. |
@@ -423,7 +417,7 @@ Each assessment covers: application code, infrastructure configuration, third-pa
 
 ### Archival Process
 
-- Records past their active use period (2+ years old) are archived to cold storage (S3 Glacier) for cost optimization.
+- Records past their active use period (2+ years old) are archived to cold storage (Cloud Storage Archive class) for cost optimization.
 - Archived records remain accessible for compliance inquiries with a retrieval SLA of 24 hours.
 - Archival is enforced by infrastructure automation, not application code.
 
@@ -432,7 +426,7 @@ Each assessment covers: application code, infrastructure configuration, third-pa
 - When an agency terminates service, all PHI is retained for the remainder of the required retention period.
 - After retention period expiration, data is disposed of via cryptographic erasure (key destruction for encrypted storage) or certified deletion.
 - Agency offboarding triggers:
-  1. Deactivation of all user accounts (Supabase Auth sessions revoked).
+  1. Deactivation of all user accounts (Identity Platform accounts disabled, refresh tokens revoked).
   2. PowerSync sync rules updated to exclude the agency (no new data synced to devices).
   3. Data flagged for retention hold (prevents premature deletion).
   4. Certificate of destruction issued after retention period and disposal.
@@ -447,15 +441,15 @@ Each assessment covers: application code, infrastructure configuration, third-pa
 | Objective | Target |
 |-----------|--------|
 | **Recovery Time Objective (RTO)** | 4 hours for core charting and MAR functions |
-| **Recovery Point Objective (RPO)** | 1 hour (Supabase PITR with WAL streaming) |
+| **Recovery Point Objective (RPO)** | 1 hour (Cloud SQL point-in-time recovery) |
 | **Maximum Tolerable Downtime** | 24 hours before manual paper-based fallback is required |
 
 ### Data Backup
 
-- **Automated daily backups:** Supabase automated daily backups, encrypted at rest with AES-256.
+- **Automated daily backups:** Cloud SQL automated daily backups, encrypted at rest with AES-256.
 - **Point-in-time recovery (PITR):** Enabled with 7-day retention. Allows recovery to any point within the last 7 days.
 - **Backup verification:** Monthly restore test to a staging environment to verify backup integrity and measure actual RTO.
-- **Backup access:** Restricted to Supabase infrastructure; no Guad engineer has direct backup access. Restore requests go through Supabase support or self-service dashboard.
+- **Backup access:** Restores are done by the account owners in the Cloud console (restore to a new instance, then switch over) and are recorded in Cloud Audit Logs.
 
 ### Emergency Mode Operations
 
@@ -481,7 +475,7 @@ All Guad platform users receive HIPAA security awareness training covering:
 1. **PHI identification** — What constitutes PHI in Guad (names, DOBs, health conditions, medications, clinical notes).
 2. **Access controls** — Role-based access, why caregivers only see their assigned homes, reporting unauthorized access.
 3. **Device security** — Screen lock requirements, not sharing login credentials, reporting lost/stolen devices immediately.
-4. **Phishing recognition** — Identifying phishing emails mimicking magic link auth, reporting suspicious communications.
+4. **Phishing recognition** — Identifying phishing emails mimicking email sign-in links, reporting suspicious communications.
 5. **Incident reporting** — How to report suspected breaches or security concerns (who to contact, what to document).
 6. **Data handling** — No PHI in text messages, personal email, screenshots, or social media. No photographing client records.
 
@@ -565,7 +559,7 @@ As a Progressive Web App, Guad cannot enforce device-level security policies (sc
 ### Penetration Testing
 
 - **Frequency:** Annual penetration test by a qualified third-party security firm.
-- **Scope:** Application layer (tRPC API, OpenAPI, authentication flows), infrastructure (Supabase configuration, Vercel deployment), and client-side (PWA, PowerSync sync).
+- **Scope:** Application layer (tRPC API, OpenAPI, authentication flows), infrastructure (Google Cloud IAM, Cloud Run, Cloud SQL and AWS messaging configuration), and client-side (PWA, PowerSync sync).
 - **Findings:** Remediated per the risk assessment SLA (Critical: 7 days, High: 30 days, Medium: 90 days).
 - **Re-test:** Critical and high findings are re-tested after remediation.
 

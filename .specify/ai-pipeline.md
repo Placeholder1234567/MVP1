@@ -14,7 +14,7 @@ Lomi is multi-modal. On the review screen, every input method feeds the same pip
 
 Lomi NEVER auto-submits notes, makes clinical decisions, or bypasses human review. Every AI-generated draft enters the workflow as `draft` status and requires explicit human signature before submission. AI output is always labeled as AI-generated in the UI (`lomi_drafted = true` on the `notes` table).
 
-Lomi does not speak. All Lomi output is text on screen. No TTS, no voice synthesis. The only audio in the system is the caregiver's voice input flowing through Whisper.
+Lomi does not speak. All Lomi output is text on screen. No TTS, no voice synthesis. The only audio in the system is the caregiver's voice input flowing through Speech-to-Text.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ Lomi does not speak. All Lomi output is text on screen. No TTS, no voice synthes
 Caregiver taps "Talk to Lomi" → records voice (≤5 min, 32 kbps)
   │
   ▼
-POST /api/transcribe → Azure OpenAI Whisper v3 → transcript
+POST /api/transcribe → Google Speech-to-Text (Chirp) → transcript
   │
   ▼
 POST /api/lomi/draft → fan out to 4 parallel calls:
@@ -40,14 +40,14 @@ POST /api/lomi/draft → fan out to 4 parallel calls:
 Merge classifier output + draft → review screen renders
 ```
 
-Wall-clock: Whisper ~3s + max(parallel) ~4s + overhead ~0.5s = **~7-8s total**.
+Wall-clock: Speech-to-Text ~3s + max(parallel) ~4s + overhead ~0.5s = **~7-8s total**.
 
 ### Per-Box Editing (voice or text → single section rewrite)
 
 ```
 Caregiver taps 🎤 on a section (or types in the box)
   │
-  ├─ voice path: record → POST /api/transcribe → Whisper → text
+  ├─ voice path: record → POST /api/transcribe → Speech-to-Text → text
   │                        (~2s)
   ├─ text path: input value used directly
   │
@@ -65,7 +65,7 @@ Wall-clock: voice path **~3.5s**, text path **~1.5s**.
 ```
 Caregiver types in chat panel (or taps 🎤 in chat)
   │
-  ├─ voice path: record → Whisper → text
+  ├─ voice path: record → Speech-to-Text → text
   ├─ text path: message used directly
   │
   ▼
@@ -100,16 +100,17 @@ BAAs are required and must be executed before any PHI processing with:
 
 | Subprocessor | Service | PHI Exposure |
 |---|---|---|
-| AWS | Bedrock (Claude) | Caregiver transcript (health, behavior, meals, medications as spoken) + client first name + goal text |
-| Microsoft | Azure OpenAI (Whisper) | Voice recordings containing shift descriptions |
-| Supabase | Database, Auth | All stored PHI |
-| Twilio | SMS | Shift times and home names only (never client names or health data) |
-| Hosting provider | Application deployment | Transient request processing |
+| Google Cloud | Claude on Vertex AI | Caregiver transcript (health, behavior, meals, medications as spoken) + client first name + goal text |
+| Google Cloud | Speech-to-Text | Voice recordings containing shift descriptions |
+| Google Cloud | Cloud SQL, Identity Platform, Cloud Run | All stored PHI, transient request processing |
+| AWS | SES, End User Messaging SMS | Shift times and home names only (never client names or health data) |
+
+One Google Cloud BAA covers every row except the last. It covers only products on Google's HIPAA covered-products list, so confirm the Claude model and region before real data (infrastructure.md §8).
 
 ### PHI Minimization (Minimum Necessary Standard)
 
-- **In prompts**: Guad adds only the client's **first name** and their goal text (and behavior plan types for behavior notes). It never adds last names, DOBs, IDs, the diagnoses list, medication lists or guardian information. The caregiver's transcript is sent as spoken, and it **is PHI**: it routinely describes health, behavior, meals and medications. That's why AWS (Bedrock) and Azure (Whisper) BAAs must be in place before any real data reaches Lomi. Calling the minimization "first name only" would understate the exposure.
-- **In transcripts**: Voice recordings may contain PHI spoken by the caregiver. Audio is processed in memory by Whisper and never persisted to disk, object storage, or any durable medium.
+- **In prompts**: Guad adds only the client's **first name** and their goal text (and behavior plan types for behavior notes). It never adds last names, DOBs, IDs, the diagnoses list, medication lists or guardian information. The caregiver's transcript is sent as spoken, and it **is PHI**: it routinely describes health, behavior, meals and medications. That's why the Google Cloud BAA (Vertex AI and Speech-to-Text) must be in place before any real data reaches Lomi. Calling the minimization "first name only" would understate the exposure.
+- **In transcripts**: Voice recordings may contain PHI spoken by the caregiver. Audio is sent inline to Speech-to-Text (never uploaded to Cloud Storage), with Speech-to-Text data logging left off, and is never persisted to disk, object storage, or any durable medium.
 - **Transcript text**: Held in browser memory during the drafting session. Saved only as part of the final signed note content in the `notes.content` JSONB column, protected by RLS.
 - **Chat messages**: Held in browser memory during the session. Not persisted independently. Content that Lomi routes into note sections is saved as part of the note, same as any edit.
 
@@ -117,12 +118,12 @@ BAAs are required and must be executed before any PHI processing with:
 
 PHI must never appear in:
 
-- Application error logs or monitoring (Sentry, console.log, console.error)
+- Application error logs or monitoring (Cloud Logging, Error Reporting, console.log, console.error)
 - URL parameters or query strings
 - localStorage or sessionStorage (PowerSync OPFS is the sole permitted client-side PHI cache)
-- Model training data (both AWS Bedrock and Azure OpenAI are configured for zero data retention)
+- Model training data (Vertex AI does not train on customer data; Vertex AI request/response logging and prompt caching across requests are left off)
 - Prompt caching keys
-- SMS message bodies (Twilio messages reference shift times and home names only)
+- SMS message bodies (messages reference shift times and home names only)
 
 ### Audit Logging for AI Invocations
 
@@ -142,7 +143,7 @@ The primary charting path. Caregiver speaks freely about their shift — activit
 
 1. Caregiver taps the Lomi orb on the person detail screen
 2. MediaRecorder captures audio (webm or mp4, `audioBitsPerSecond: 32000`, auto-stop at 5 minutes; 5 minutes is about 1.2 MB, under the request limit)
-3. Audio sent to Whisper for transcription
+3. Audio sent to Speech-to-Text for transcription
 4. Transcript sent to the parallel draft pipeline (§ Parallel Draft Pipeline)
 5. Review screen renders with all sections populated
 
@@ -152,7 +153,7 @@ This mode handles the ~80% case: a straightforward shift where the caregiver rem
 
 Every section on the review screen is a dual-input box — a text area for typing and a 🎤 button for speaking. Both produce the same result: Lomi rewrites the input into clinical language for that specific section.
 
-**Voice**: Tap 🎤 → speak → Whisper transcribes → Haiku rewrites the section, merging with existing content.
+**Voice**: Tap 🎤 → speak → Speech-to-Text transcribes → Haiku rewrites the section, merging with existing content.
 
 **Text**: Type in the box → on blur or explicit "rewrite" tap → Haiku rewrites into clinical language.
 
@@ -412,7 +413,7 @@ Used by Mode 2 (per-box editing) and when Lomi processes chat input that targets
   task: "section_edit",
   section: string,         // "activities" | "meals" | "mood" | "health"
   current: string,         // existing section text (may be "")
-  input: string,           // caregiver's new text (from Whisper or typed)
+  input: string,           // caregiver's new text (from Speech-to-Text or typed)
   person: string           // client first name
 }
 ```
@@ -451,7 +452,7 @@ Used by Mode 3 (chat interface). Haiku reads the caregiver's chat message and de
 ```typescript
 {
   task: "route",
-  message: string,         // caregiver's chat message (from Whisper or typed)
+  message: string,         // caregiver's chat message (from Speech-to-Text or typed)
   person: string,
   current: {               // current state of all sections
     activities: string,
@@ -561,10 +562,10 @@ Returns `{ text: "", fallback: true }`. The UI shows the raw data view instead o
 
 | Mode | Online | Offline |
 |---|---|---|
-| Voice brain dump | Full pipeline | Voice unavailable (no Whisper). Caregiver types, rules-based classification runs. |
-| Per-box voice | Whisper + Haiku rewrite | Mic button disabled. Text input works. No AI rewrite — text stays as typed. |
+| Voice brain dump | Full pipeline | Voice unavailable (no Speech-to-Text). Caregiver types, rules-based classification runs. |
+| Per-box voice | Speech-to-Text + Haiku rewrite | Mic button disabled. Text input works. No AI rewrite — text stays as typed. |
 | Per-box text | Haiku rewrite | No AI rewrite. Text stays as typed. |
-| Chat voice | Whisper + Haiku route + rewrite | Mic disabled. Text chat available without AI routing — caregiver must edit boxes directly. |
+| Chat voice | Speech-to-Text + Haiku route + rewrite | Mic disabled. Text chat available without AI routing — caregiver must edit boxes directly. |
 | Chat text | Haiku route + rewrite | Chat disabled. Direct box editing only. |
 | Direct edit | No AI | Works normally. |
 
@@ -574,19 +575,19 @@ The UI communicates mode availability clearly. Disabled mic buttons show a cross
 
 | Task | Provider | Model | Max Tokens | Temperature | Latency Target |
 |---|---|---|---|---|---|
-| Draft (shift) | AWS Bedrock | Claude Sonnet (latest) | 1200 | 0.3 | < 4s |
-| Draft (behavior) | AWS Bedrock | Claude Sonnet (latest) | 1200 | 0.3 | < 4s |
-| Sentence classifier | AWS Bedrock | Claude Haiku 4.5 | 600 | 0.1 | < 1s |
-| Goal matcher | AWS Bedrock | Claude Haiku 4.5 | 400 | 0.1 | < 1.5s |
-| Flag/incident detector | AWS Bedrock | Claude Haiku 4.5 | 400 | 0.1 | < 1s |
-| Section edit | AWS Bedrock | Claude Haiku 4.5 | 400 | 0.2 | < 1.5s |
-| Chat routing | AWS Bedrock | Claude Haiku 4.5 | 600 | 0.1 | < 2s |
-| Summary | AWS Bedrock | Claude Haiku 4.5 | 400 | 0.2 | < 3s |
-| Transcription | Azure OpenAI | Whisper v3 | N/A | N/A | < 3s |
+| Draft (shift) | Vertex AI | Claude Sonnet (latest) | 1200 | 0.3 | < 4s |
+| Draft (behavior) | Vertex AI | Claude Sonnet (latest) | 1200 | 0.3 | < 4s |
+| Sentence classifier | Vertex AI | Claude Haiku 4.5 | 600 | 0.1 | < 1s |
+| Goal matcher | Vertex AI | Claude Haiku 4.5 | 400 | 0.1 | < 1.5s |
+| Flag/incident detector | Vertex AI | Claude Haiku 4.5 | 400 | 0.1 | < 1s |
+| Section edit | Vertex AI | Claude Haiku 4.5 | 400 | 0.2 | < 1.5s |
+| Chat routing | Vertex AI | Claude Haiku 4.5 | 600 | 0.1 | < 2s |
+| Summary | Vertex AI | Claude Haiku 4.5 | 400 | 0.2 | < 3s |
+| Transcription | Google Cloud | Speech-to-Text v2, Chirp model | N/A | N/A | < 3s (verify, see below) |
 
-**Current MVP implementation note:** The working MVP at `/api/lomi.js` calls the Anthropic Messages API directly (model configurable via `LOMI_MODEL` env var, defaulting to `claude-sonnet-5-5`). The production system will migrate to AWS Bedrock for HIPAA-eligible processing with BAA coverage. The prompt interface (`prompts.js`) remains identical — only the transport layer changes.
+**Current MVP implementation note:** The working MVP at `/api/lomi.js` calls the Anthropic Messages API directly (model configurable via `LOMI_MODEL` env var, defaulting to `claude-sonnet-5-5`). The production system will call Claude on Vertex AI (`@anthropic-ai/vertex-sdk`, same Messages API shape) under the Google Cloud BAA. The prompt interface (`prompts.js`) remains identical — only the transport layer changes.
 
-**Current MVP transcription note:** The working MVP at `/api/transcribe.js` calls the OpenAI API directly (`whisper-1` model). The production system will migrate to Azure OpenAI Whisper for HIPAA-eligible processing with BAA coverage.
+**Current MVP transcription note:** The working MVP at `/api/transcribe.js` calls the OpenAI API directly (`whisper-1` model). The production system will use Google Speech-to-Text under the Google Cloud BAA.
 
 Models are upgradeable without prompt changes. The server abstracts model identity behind environment variables and a provider interface.
 
@@ -596,7 +597,12 @@ Models are upgradeable without prompt changes. The server abstracts model identi
 
 **Haiku for everything else:** Classification, goal matching, flag detection, section editing, and chat routing are structured tasks with constrained outputs. Haiku handles them well at ~$1/MTok input, and its speed (sub-2s) keeps per-box interactions responsive.
 
-**Whisper v3 for transcription:** Best word-error rate for conversational English, handles IDD vocabulary (prompt levels, medication names, clinical terms) better than streaming alternatives. The 3s latency for a 60s clip is acceptable because the caregiver waits only once, at the start.
+**Speech-to-Text (Chirp) for transcription:** Keeps audio inside the same cloud and BAA as everything else. Chirp is Google's large speech model, with accuracy close to Whisper for conversational English. Model adaptation (phrase hints) is used for IDD vocabulary: prompt levels, "ISP", "elopement", common medication names. Batch transcription of the complete recording keeps full context, which matters for these terms.
+
+**To verify in the first spike:**
+- Synchronous `Recognize` accepts at most 60 seconds of audio. Brain dumps can run to 5 minutes, so the server either splits the recording at pauses (≤55 s chunks, transcribed in parallel and joined) or uses streaming recognition. Measure which meets the 3 s target.
+- Word error rate on 20 synthetic shift recordings with IDD vocabulary, compared with the MVP's Whisper output.
+- If Chirp misses the bar, Azure OpenAI Whisper is the fallback. It would add a second BAA (Microsoft's, included in its Product Terms).
 
 ## Server-Side Implementation
 
@@ -621,7 +627,7 @@ Replaces the MVP's `POST /api/lomi` for shift and behavior notes. Orchestrates t
   data: ShiftDraftOutput | BehaviorDraftOutput,
   fallback: false,
   timing: {
-    whisper_ms: number,
+    stt_ms: number,
     classify_ms: number,
     goals_ms: number,
     detect_ms: number,
@@ -636,7 +642,7 @@ The `timing` object is for monitoring only — the client renders as soon as `da
 **Validation:**
 - `task` must be `"shift"` or `"behavior"`
 - Total request body must not exceed 8000 characters
-- Caller must be authenticated (Supabase session)
+- Caller must be authenticated (Identity Platform session cookie)
 - `person` required, non-empty, max 50 chars
 - `text` required, non-empty
 
@@ -737,15 +743,15 @@ The production system extends this module with:
 
 ## Rate Limiting
 
-Rate limits enforced at the server level by `rateLimitMiddleware` (Redis sliding window per profile and per agency; trpc-router.md).
+Rate limits enforced at the server level by `rateLimitMiddleware`, counting AI invocations per profile and per agency from `audit_log` (trpc-router.md).
 
 | Scope | Limit | Window | Enforcement |
 |---|---|---|---|
-| Per user: drafts | 10 | 1 hour | Token bucket per `profile_id` |
-| Per user: transcriptions | 20 | 1 hour | Token bucket per `profile_id` |
-| Per user: section edits | 60 | 1 hour | Token bucket per `profile_id` |
-| Per user: chat routes | 30 | 1 hour | Token bucket per `profile_id` |
-| Per agency: all AI calls | 500 | 1 hour | Token bucket per `agency_id` |
+| Per user: drafts | 10 | 1 hour | Count per `profile_id` |
+| Per user: transcriptions | 20 | 1 hour | Count per `profile_id` |
+| Per user: section edits | 60 | 1 hour | Count per `profile_id` |
+| Per user: chat routes | 30 | 1 hour | Count per `profile_id` |
+| Per agency: all AI calls | 500 | 1 hour | Count per `agency_id` |
 | Audio file size | 3.5 MB (base64) | per request | Request validation |
 | Audio duration (brain dump) | 5 minutes | per request | Client auto-stops; server rejects longer audio |
 | Per-box audio duration | 30 seconds | per request | Client-side enforcement |
@@ -766,7 +772,7 @@ When rate-limited, the server returns `429 Too Many Requests` with a `Retry-Afte
 | Mode usage distribution | % of edits via voice / text / chat / direct | Track (no target) |
 | Flag hit rate | % of flags that caregivers act on vs. dismiss | Informs prompt tuning |
 | Incident detection recall | Incidents detected by Lomi vs. incidents filed manually | > 90% |
-| Transcription accuracy | Periodic manual spot-check of Whisper output | Sample 1% monthly |
+| Transcription accuracy | Periodic manual spot-check of Speech-to-Text output | Sample 1% monthly |
 | Draft latency (P50) | Time from request to rendered draft | < 4s |
 | Draft latency (P95) | Time from request to rendered draft | < 7s |
 | Section edit latency (P50) | Time from input to updated section | < 1.5s |
@@ -794,22 +800,22 @@ When rate-limited, the server returns `429 Too Many Requests` with a `Retry-Afte
 
 | Component | Calls | Cost per call | Total |
 |---|---|---|---|
-| Whisper (60s recording) | 1 | ~$0.006 | $0.006 |
+| Speech-to-Text (60s recording) | 1 | ~$0.016 | $0.016 |
 | Sonnet (draft) | 1 | ~$0.005 | $0.005 |
 | Haiku (classifier + goals + detector) | 3 | ~$0.0003 | $0.001 |
 | Haiku (section edits, avg 1.5 per note) | 1.5 | ~$0.0003 | $0.0005 |
 | Haiku (chat routes, avg 0.5 per note) | 0.5 | ~$0.001 | $0.0005 |
-| **Total per note** | | | **~$0.013** |
+| **Total per note** | | | **~$0.023** |
 
 ### Monthly Cost by Agency Size
 
 | Agency Size | Caregivers | Notes/Month | AI Cost/Month |
 |---|---|---|---|
-| Small | 10 | ~900 | ~$12 |
-| Medium | 30 | ~2,700 | ~$35 |
-| Large | 100 | ~9,000 | ~$117 |
+| Small | 10 | ~900 | ~$21 |
+| Medium | 30 | ~2,700 | ~$62 |
+| Large | 100 | ~9,000 | ~$207 |
 
-These costs are compatible with all subscription tiers. For context, Therap charges $15-25/user/month — Guad's entire AI cost per user is under $1.50/month.
+These costs are compatible with all subscription tiers. For context, Therap charges $15-25/user/month — Guad's entire AI cost per user is about $2/month. Speech-to-Text is the largest part; Google's list price is ~$0.016/min (check current pricing).
 
 ## Security Considerations
 
@@ -835,15 +841,15 @@ The client validates that the parsed JSON matches the expected shape before rend
 
 | Component | MVP (current) | Production |
 |---|---|---|
-| Note drafting | Anthropic Messages API direct, single Sonnet call | AWS Bedrock, parallel pipeline (3 Haiku + 1 Sonnet) |
+| Note drafting | Anthropic Messages API direct, single Sonnet call | Claude on Vertex AI, parallel pipeline (3 Haiku + 1 Sonnet) |
 | Section editing | Not implemented | POST /api/lomi/edit (Haiku) |
 | Chat routing | Not implemented | POST /api/lomi/route (Haiku) |
-| Transcription | OpenAI Whisper API direct | Azure OpenAI Whisper (BAA) |
-| Authentication | None (TODO in code) | Supabase Auth session verification |
-| Rate limiting | Input size check only | BullMQ token bucket (per-user, per-agency, per-task) |
+| Transcription | OpenAI Whisper API direct | Google Speech-to-Text, Chirp (BAA) |
+| Authentication | None; same-site check + per-IP rate limit (`api/_guard.js`) | Identity Platform session cookie verification |
+| Rate limiting | Per-IP limit in `api/_guard.js` | Per-user, per-agency, per-task counts from `audit_log` |
 | Audit logging | None | Every invocation logged to `audit_log` |
 | Error handling | Generic 502 | Structured error codes, retry guidance |
-| Hosting | Vercel serverless functions | SvelteKit server routes (tRPC) |
+| Hosting | Vercel serverless functions | SvelteKit server routes (tRPC) on Cloud Run |
 | Proactive questions | Not implemented | Client-side gap detection from draft output |
 
 The `prompts.js` module carries forward and is extended with new prompt builders. The `lomi.js` client module's rules-based fallback carries forward unchanged.
@@ -923,7 +929,7 @@ Reference layout for the multi-modal review screen. Every section box has a text
 |---|---|---|
 | Idle | Gray mic icon | Tap to start recording |
 | Recording | Red pulsing mic, section border turns lemon (#FFE066), timer shows | Tap again or auto-stop after 3s silence |
-| Processing | Spinner replaces mic, "Updating..." text | Whisper → Haiku running |
+| Processing | Spinner replaces mic, "Updating..." text | Speech-to-Text → Haiku running |
 | Updated | Section flashes lemon briefly, new text appears | Diff highlight fades after 2s |
 | Error | Red mic icon, "Couldn't update — try again or type" | Next tap retries |
 | Offline | Crossed-out mic, muted color | Not tappable. Text input remains available. |

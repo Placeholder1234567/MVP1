@@ -1,5 +1,5 @@
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
-REVOKE DELETE, TRUNCATE ON public.audit_log FROM authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user, app_service;
+REVOKE DELETE, TRUNCATE ON public.audit_log FROM app_user;
 
 -- Agency 1: homes b1, b2. Agency 2: home b3.
 INSERT INTO agencies (id, name, slug) VALUES
@@ -11,10 +11,10 @@ INSERT INTO homes (id, agency_id, name, lat, lng, radius) VALUES
   ('b3000000-0000-0000-0000-000000000000', 'a2000000-0000-0000-0000-000000000000', 'Pine',  42.0, -75.0, 150);
 
 -- c1 caregiver at Oak (med-certified), c2 supervisor, c4 caregiver in agency 2
-INSERT INTO profiles (id, agency_id, supabase_uid, email, name, role, home_ids, med_certified) VALUES
-  ('c1000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', gen_random_uuid(), 'cg@one.test',  'Cara Giver', 'caregiver',  '{b1000000-0000-0000-0000-000000000000}', true),
-  ('c2000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', gen_random_uuid(), 'sup@one.test', 'Sue Pervisor', 'supervisor', '{b1000000-0000-0000-0000-000000000000,b2000000-0000-0000-0000-000000000000}', false),
-  ('c4000000-0000-0000-0000-000000000000', 'a2000000-0000-0000-0000-000000000000', gen_random_uuid(), 'cg@two.test',  'Other Agency', 'caregiver',  '{b3000000-0000-0000-0000-000000000000}', true);
+INSERT INTO profiles (id, agency_id, auth_uid, email, name, role, home_ids, med_certified) VALUES
+  ('c1000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', gen_random_uuid()::text, 'cg@one.test',  'Cara Giver', 'caregiver',  '{b1000000-0000-0000-0000-000000000000}', true),
+  ('c2000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', gen_random_uuid()::text, 'sup@one.test', 'Sue Pervisor', 'supervisor', '{b1000000-0000-0000-0000-000000000000,b2000000-0000-0000-0000-000000000000}', false),
+  ('c4000000-0000-0000-0000-000000000000', 'a2000000-0000-0000-0000-000000000000', gen_random_uuid()::text, 'cg@two.test',  'Other Agency', 'caregiver',  '{b3000000-0000-0000-0000-000000000000}', true);
 
 -- d1 at Oak, d2 at Maple (agency 1), d3 at Pine (agency 2)
 INSERT INTO clients (id, agency_id, home_id, name) VALUES
@@ -44,7 +44,7 @@ BEGIN
     ELSE RAISE NOTICE 'FAIL  % (blocked: %)', name, SQLERRM; END IF;
   END;
 END $$;
-GRANT EXECUTE ON FUNCTION expect(text, text, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION expect(text, text, boolean) TO app_user;
 
 CREATE FUNCTION check_eq(name text, got bigint, want bigint) RETURNS void
 LANGUAGE plpgsql AS $$
@@ -52,4 +52,4 @@ BEGIN
   IF got = want THEN RAISE NOTICE 'PASS  % (=%)', name, got;
   ELSE RAISE NOTICE 'FAIL  % (got %, want %)', name, got, want; END IF;
 END $$;
-GRANT EXECUTE ON FUNCTION check_eq(text, bigint, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION check_eq(text, bigint, bigint) TO app_user;

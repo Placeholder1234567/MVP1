@@ -185,7 +185,7 @@ If entering via Today -> Person Detail -> Shift note row, person selection is im
 1. DSP taps "Speak" -> browser requests microphone permission (first time only)
 2. `MediaRecorder` starts. `.orb` gets `.live` class. Waveform appears. Button label changes to "Pause"
 3. DSP speaks naturally. Audio chunks captured via `ondataavailable`
-4. DSP taps "Pause" -> recording stops, transcript arrives in textarea (via `/api/transcribe` Whisper call)
+4. DSP taps "Pause" -> recording stops, transcript arrives in textarea (via `/api/transcribe`, Speech-to-Text)
 5. Transcript is editable -- DSP can fix names, add details
 6. DSP can tap "Speak" again to add more audio
 7. DSP taps "Done, write my note" -> sends transcript to Lomi API
@@ -1384,7 +1384,7 @@ The mic button lives inside the compose screen as a "Speak"/"Pause" secondary-st
 - Lomi orb: rings pulse (scale 1.0 -> 1.25, 2.4s ease-in-out infinite)
 - Status text: "Lomi is listening" (serif 26px)
 - Waveform: 10 bars animating (see 3.2 compose screen spec)
-- Transcript textarea receives text after recording stops (batch, via Whisper API)
+- Transcript textarea receives text after recording stops (batch, via Speech-to-Text)
 - Duration: no timer in current prototype. **Enhancement:** add elapsed time display (MM:SS) next to the waveform, 14px `var(--muted)`, `font-variant-numeric: tabular-nums`
 
 **Post-recording AI processing:**
@@ -1668,14 +1668,14 @@ Total time: 3 minutes. Lomi appears as a 40px lemon in the corner of each step w
 
 | Condition | Voice recording | Transcription | AI structuring | Goal scoring | Signing |
 |-----------|----------------|--------------|----------------|-------------|---------|
-| Full connectivity | MediaRecorder | Whisper API | Lomi API (Claude) | Local | Local + sync |
+| Full connectivity | MediaRecorder | Speech-to-Text API | Lomi API (Claude) | Local | Local + sync |
 | Offline | Records locally, transcribed on reconnect | Not available | Rules-based if text entered | Local | Local + sync |
-| API error | MediaRecorder works | Whisper fails -> fallback to typing | Rules-based fallback | Local | Local + sync |
+| API error | MediaRecorder works | Transcription fails -> fallback to typing | Rules-based fallback | Local | Local + sync |
 
 **Offline voice behavior:**
 
 - Mic recording still works offline (MediaRecorder is browser-native)
-- Transcription fails (Whisper API unreachable)
+- Transcription fails (Speech-to-Text unreachable)
 - **Do not use the browser's `SpeechRecognition` / `webkitSpeechRecognition` API.** In Chrome it streams audio to Google's servers (not covered by a BAA, so a PHI leak), and it doesn't work offline anyway.
 - Offline: keep the recording on the device (encrypted local DB) and transcribe it when back online, and show the text input prominently: "Type your note, or keep your recording and Lomi will transcribe it when you're back online." (matches offline-sync.md: "DSP types manually")
 - The "Speak" button is hidden (not disabled with error) when voice is completely unavailable
@@ -1749,7 +1749,7 @@ Total time: 3 minutes. Lomi appears as a 40px lemon in the corner of each step w
 2. Recording begins. Section border turns lemon. Timer starts.
 3. Caregiver speaks about that section (e.g., "he went to the park and helped make lunch")
 4. Caregiver taps mic again (or 3s silence auto-stop)
-5. Audio sent to `POST /api/transcribe` (Whisper, ~2s)
+5. Audio sent to `POST /api/transcribe` (Speech-to-Text, ~2s)
 6. Transcript sent to `POST /api/lomi/edit` with `{ section: "activities", current: "<existing text>", input: "<transcript>", person: "<name>" }` (Haiku, ~1.5s)
 7. Section updates in-place with rewritten clinical text. Total: ~3.5s.
 
@@ -1910,10 +1910,10 @@ Questions appear as Lomi chat messages. Max 3 at a time. Additional questions ap
 
 | Mode | Online | Offline |
 |---|---|---|
-| Voice brain dump (Mode 1) | Full pipeline | Voice unavailable (no Whisper). Caregiver types, rules-based classification runs. |
-| Per-box voice (Mode 2) | Whisper + Haiku rewrite | Mic button disabled (crossed-out icon, not hidden). Text input works. No AI rewrite -- text stays as typed. |
+| Voice brain dump (Mode 1) | Full pipeline | Voice unavailable (no transcription). Caregiver types, rules-based classification runs. |
+| Per-box voice (Mode 2) | Speech-to-Text + Haiku rewrite | Mic button disabled (crossed-out icon, not hidden). Text input works. No AI rewrite -- text stays as typed. |
 | Per-box text (Mode 2) | Haiku rewrite | No AI rewrite. Text stays as typed. |
-| Chat voice (Mode 3) | Whisper + Haiku route + rewrite | Mic disabled. Text chat available without AI routing -- caregiver must edit boxes directly. |
+| Chat voice (Mode 3) | Speech-to-Text + Haiku route + rewrite | Mic disabled. Text chat available without AI routing -- caregiver must edit boxes directly. |
 | Chat text (Mode 3) | Haiku route + rewrite | Chat disabled. Direct box editing only. |
 | Direct edit (Mode 4) | No AI | Works normally. |
 

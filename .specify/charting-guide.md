@@ -122,7 +122,7 @@ Multi-step wizard, similar to Guad's 3-step incident flow. Same structure: What 
 
 | Feature | Guad | Closest Competitor |
 |---------|------|-------------------|
-| Voice-to-note with AI transcription | Yes (Whisper + Claude) | Nobody |
+| Voice-to-note with AI transcription | Yes (speech-to-text + Claude) | Nobody |
 | Real-time AI note drafting | Yes (Lomi) | Nobody |
 | Conversational AI assistant | Yes (Lomi chat) | Nobody |
 | AI behavior note generation | Yes | Nobody |
