@@ -43,20 +43,23 @@ function parseLoc(t){var lat=t.lat===""?null:Number(t.lat),lng=t.lng===""?null:N
 
 /* ---------- speech ---------- */
 var rec=null;
-var micStream=null,micChunks=[];
+var micStream=null,micChunks=[],micTimer=null;
+var MAX_RECORDING_MS=5*60*1000; // 5 minutes at 32 kbps is about 1.2 MB, under /api/transcribe's limit
 function preferredAudioType(){return ["audio/webm;codecs=opus","audio/webm","audio/mp4"].filter(function(t){return global.MediaRecorder&&MediaRecorder.isTypeSupported(t)})[0]||""}
 async function startMic(){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){cg.err="This browser cannot record audio. Type instead.";render();return}
   try{
     micStream=await navigator.mediaDevices.getUserMedia({audio:true});
     micChunks=[];
-    rec=new MediaRecorder(micStream,preferredAudioType()?{mimeType:preferredAudioType()}:undefined);
+    var opts={audioBitsPerSecond:32000};if(preferredAudioType())opts.mimeType=preferredAudioType();
+    rec=new MediaRecorder(micStream,opts);
     rec.ondataavailable=function(e){if(e.data&&e.data.size)micChunks.push(e.data)};
     rec.onstop=transcribeMic;
     rec.start();cg.listening=true;cg.err="";render();
+    clearTimeout(micTimer);micTimer=setTimeout(function(){if(rec&&rec.state!=="inactive"){toast("Recording stopped at 5 minutes");rec.stop()}},MAX_RECORDING_MS);
   }catch(x){micStream=null;cg.listening=false;cg.err="Microphone access was denied or is unavailable. Allow access, then try again.";render()}
 }
-function stopMic(){if(rec&&rec.state!=="inactive")rec.stop();else{cg.listening=false;render()}}
+function stopMic(){clearTimeout(micTimer);if(rec&&rec.state!=="inactive")rec.stop();else{cg.listening=false;render()}}
 async function transcribeMic(){
   if(micStream)micStream.getTracks().forEach(function(t){t.stop()});
   micStream=null;cg.listening=false;cg.thinking=true;cg.err="";render();
@@ -75,7 +78,8 @@ async function draft(){
   var c=C.client(cg.cid),ta=document.getElementById("say");cg.text=ta?ta.value.trim():"";
   if(cg.text.length<15){cg.err="Tell Lomi a little more first.";render();return}
   if(cg.listening)stopMic();cg.err="";cg.thinking=true;cg.started=cg.started||Date.now();render();
-  var payload=cg.type==="behavior"?{person:c.name,behaviors:c.behaviors,text:cg.text}:{person:c.name,goals:c.goals.filter(function(g){return !g.stopped}).map(function(g){return {id:g.id,text:g.text}}),text:cg.text};
+  // Minimum necessary: Lomi gets the first name only, never the full name.
+  var payload=cg.type==="behavior"?{person:c.first,behaviors:c.behaviors,text:cg.text}:{person:c.first,goals:c.goals.filter(function(g){return !g.stopped}).map(function(g){return {id:g.id,text:g.text}}),text:cg.text};
   var r=await global.Lomi.draft(cg.type==="behavior"?"behavior":"shift",payload);
   cg.thinking=false;cg.fromLomi=!r.fallback;cg.fallback=r.fallback;cg.draft=C.normalizeDraft(r.data,c,cg.type);cg.screen="review";render();global.scrollTo(0,0)}
 async function summary(){
@@ -179,7 +183,7 @@ document.addEventListener("click",function(e){
     var d=cg.draft,c3=C.client(cg.cid),sec=cg.type==="behavior"?{behaviorType:d.behaviorType,before:d.before,behavior:d.behavior,response:d.response,outcome:d.outcome,duration:d.duration}:{activities:d.activities,meals:d.meals,mood:d.mood,health:d.health};
     var mins=cg.started?Math.max(1,Math.round((Date.now()-cg.started)/60000)):null;
     if(cg.editing){var n2=byId(s.notes,cg.editing);n2.s=sec;n2.goals=d.goals;n2.status="submitted";n2.history.push({at:now(),who:m.name,what:"Amended and resubmitted"})}
-    else s.notes.push({id:C.uid(),clientId:c3.id,day:C.dayKey(0),type:cg.type,author:m.name,authorId:m.id,status:"submitted",createdAt:now(),lomi:!!cg.fromLomi,s:sec,goals:cg.type==="behavior"?[]:d.goals,history:[{at:now(),who:m.name,what:cg.fromLomi?"Drafted with Lomi, reviewed and signed":"Written and signed"}],comment:""});
+    else{var cs=C.currentShift();s.notes.push({id:C.uid(),clientId:c3.id,day:cs.day,shift:cs.k,type:cg.type,author:m.name,authorId:m.id,status:"submitted",createdAt:now(),lomi:!!cg.fromLomi,s:sec,goals:cg.type==="behavior"?[]:d.goals,history:[{at:now(),who:m.name,what:cg.fromLomi?"Drafted with Lomi, reviewed and signed":"Written and signed"}],comment:""})}
     C.log("note.signed",{homeId:c3.homeId,clientId:c3.id,staffId:m.id,noteType:cg.type,lomi:!!cg.fromLomi,minutes:mins,amended:!!cg.editing});
     go("done",{cid:c3.id,msg:cg.editing?"Note resubmitted":"Note signed"});return}
 
@@ -195,9 +199,9 @@ document.addEventListener("click",function(e){
     if(cg.back)go("review",Object.assign({cid:cg.cid},cg.back));else go("done",{cid:cg.cid,msg:"Report submitted",sub:"Your supervisor was notified."});return}
 
   /* medications */
-  case"give":{var c4=C.client(cg.cid),md=byId(c4.meds,b.getAttribute("data-m"));s.mar.push({id:C.uid(),clientId:c4.id,medId:md.id,day:C.dayKey(0),status:"given",at:now(),by:m.name,byId:m.id,reason:""});C.log("med.given",{homeId:c4.homeId,clientId:c4.id,staffId:m.id});render();toast(md.name+" recorded as given");return}
-  case"notgiven":ui.sheet={kind:"reason",mid:b.getAttribute("data-m"),v:v};render();return;
-  case"reasonsave":{var why=val("why");if(!why){ui.sheet.err="Add what happened so your supervisor and nurse can follow up.";render();return}var c5=C.client(cg.cid);s.mar.push({id:C.uid(),clientId:c5.id,medId:ui.sheet.mid,day:C.dayKey(0),status:ui.sheet.v,at:now(),by:m.name,byId:m.id,reason:why});C.log("med."+ui.sheet.v,{homeId:c5.homeId,clientId:c5.id,staffId:m.id});ui.sheet=null;render();toast("Saved. Your supervisor was alerted.");return}
+  case"give":{var c4=C.client(cg.cid),md=byId(c4.meds,b.getAttribute("data-m")),slot=b.getAttribute("data-s");if(C.marFor(c4.id,md.id,slot)){toast("This dose is already recorded");render();return}s.mar.push({id:C.uid(),clientId:c4.id,medId:md.id,day:C.dayKey(0),slot:slot,status:"given",at:now(),by:m.name,byId:m.id,reason:""});C.log("med.given",{homeId:c4.homeId,clientId:c4.id,staffId:m.id});render();toast(md.name+" recorded as given");return}
+  case"notgiven":ui.sheet={kind:"reason",mid:b.getAttribute("data-m"),slot:b.getAttribute("data-s"),v:v};render();return;
+  case"reasonsave":{var why=val("why");if(!why){ui.sheet.err="Add what happened so your supervisor and nurse can follow up.";render();return}var c5=C.client(cg.cid);if(C.marFor(c5.id,ui.sheet.mid,ui.sheet.slot)){ui.sheet=null;toast("This dose is already recorded");render();return}s.mar.push({id:C.uid(),clientId:c5.id,medId:ui.sheet.mid,day:C.dayKey(0),slot:ui.sheet.slot,status:ui.sheet.v,at:now(),by:m.name,byId:m.id,reason:why});C.log("med."+ui.sheet.v,{homeId:c5.homeId,clientId:c5.id,staffId:m.id});ui.sheet=null;render();toast("Saved. Your supervisor was alerted.");return}
   case"prngive":ui.sheet={kind:"prn",mid:b.getAttribute("data-m")};render();return;
   case"prnsave":{var pw=val("prnwhy");if(!pw){ui.sheet.err="Add why it was needed.";render();return}var c6=C.client(cg.cid);s.mar.push({id:C.uid(),clientId:c6.id,medId:ui.sheet.mid,day:C.dayKey(0),prn:true,status:"given",at:now(),by:m.name,byId:m.id,reason:pw,effect:""});C.log("med.given",{homeId:c6.homeId,clientId:c6.id,staffId:m.id,prn:true});ui.sheet=null;render();toast("Recorded. Check back on how it worked.");return}
   case"prneffect":ui.sheet={kind:"effect",rid:nid};render();return;
@@ -259,10 +263,10 @@ document.addEventListener("click",function(e){
     C.client(cid).goals.push({id:C.uid(),text:gt,area:tp?tp.split("|")[0]:"General",often:val("goften"),target:val("gtarget"),start:C.dt(now()),steps:val("gsteps").split("\n").map(function(x){return x.trim()}).filter(Boolean)});
     C.log("goal.added",{homeId:C.client(cid).homeId,clientId:cid});render();toast("Goal added. It now appears in shift notes.");return}
   case"stopgoal":{var gg=byId(C.client(cid).goals,nid);gg.stopped=C.dt(now());render();toast("Goal stopped");return}
-  case"addmed":{var mn=val("md-name"),dose=val("md-dose"),kind=val("md-kind"),time=val("md-time"),prn=val("md-prn");
-    if(!mn||!dose){toast("Add the medication name and dose");return}if(kind==="sched"&&!time){toast("Add the scheduled time");return}if(kind==="prn"&&!prn){toast("Add the as-needed instructions");return}
-    var cl2=C.client(cid);cl2.meds.push({id:C.uid(),name:mn,dose:dose,route:val("md-route")||"By mouth",time:kind==="sched"?time:"",prn:kind==="prn"?prn:"",note:val("md-note"),since:C.dt(now())});
-    cl2.medHistory.push({at:C.dt(now()),what:"Started "+mn+", "+dose+(kind==="prn"?" as needed":" at "+C.t12(time))+" (added by "+m.name+")"});render();toast("Medication added");return}
+  case"addmed":{var mn=val("md-name"),dose=val("md-dose"),kind=val("md-kind"),times=C.parseTimes(val("md-time")),prn=val("md-prn");
+    if(!mn||!dose){toast("Add the medication name and dose");return}if(kind==="sched"&&!times){toast("Couldn't read the times. Use something like 8am, 8pm");return}if(kind==="sched"&&!times.length){toast("Add the scheduled times");return}if(kind==="prn"&&!prn){toast("Add the as-needed instructions");return}
+    var cl2=C.client(cid);cl2.meds.push({id:C.uid(),name:mn,dose:dose,route:val("md-route")||"By mouth",times:kind==="sched"?times:[],prn:kind==="prn"?prn:"",note:val("md-note"),since:C.dt(now())});
+    cl2.medHistory.push({at:C.dt(now()),what:"Started "+mn+", "+dose+(kind==="prn"?" as needed":" at "+times.map(C.t12).join(", "))+" (added by "+m.name+")"});render();toast("Medication added");return}
   case"stopmed":{var cl3=C.client(cid),mm=byId(cl3.meds,nid);mm.stopped=C.dt(now());cl3.medHistory.push({at:C.dt(now()),what:"Stopped "+mm.name+" (by "+m.name+")"});render();toast("Medication stopped");return}
   case"addcase":{var ct=val("cnote");if(!ct)return;C.client(cid).caseNotes.push({at:C.dt(now()),by:m.name,text:ct});render();toast("Case note saved");return}
 

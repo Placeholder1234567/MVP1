@@ -5,11 +5,15 @@
  * The browser records audio with MediaRecorder so transcription works across
  * browsers instead of depending on SpeechRecognition support.
  */
+const guard = require("./_guard.js");
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST." });
   }
+  // Not authentication (there are no accounts yet): same-site check + rate limit. See _guard.js.
+  if (!guard(req, res, { limit: 20, windowMs: 10 * 60 * 1000 })) return;
   const key = process.env.OPENAI_API_KEY;
   if (!key) return res.status(500).json({ error: "Transcription isn't configured on the server." });
   try {

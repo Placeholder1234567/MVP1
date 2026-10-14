@@ -17,7 +17,7 @@ Caregivers chart on their phones. Every screen is designed for a 375px viewport 
 The primary charting path is: speak naturally, let Lomi transcribe and draft, review the structured output, sign. Target: reduce charting from 15-20 minutes to under 5 minutes. The fallback (type it yourself) is always one tap away.
 
 ### Offline-everything
-Every screen renders from local data (PowerSync wa-sqlite + OPFS). Writes persist locally and sync on reconnect. No spinners, no "you're offline" dead ends. A subtle sync indicator in the app bar shows sync state: a small dot (green = briefly shown after sync completes, amber = changes pending, hidden = steady state, nothing pending).
+Every screen renders from local data (PowerSync wa-sqlite + OPFS). Writes persist locally and sync on reconnect. No spinners, no "you're offline" dead ends. A subtle sync indicator in the app bar shows sync state, as defined in frontend-spec-2.md §8.1: nothing when synced, a small amber dot when changes are pending, an "Offline" pill when offline.
 
 ### Feels new, not foreign
 The goal is not to clone Therap. The goal is to keep the mental model (person-centered charting, T-Log structure, ISP Data Collection, GER workflow) while making every interaction faster, cleaner, and more pleasant. Staff should feel like they upgraded, not like they switched.
@@ -104,7 +104,7 @@ This is the core charting experience. Every design decision optimizes for this p
 
 4. **Tap Speak.** The browser requests microphone access (first time only). MediaRecorder starts. The orb rings begin pulsing. A waveform animation (10 vertical bars with staggered CSS keyframe animations) appears below the orb. The button label changes to "Pause."
 
-5. **Speak naturally.** The caregiver talks as they would to a coworker at shift change: "Marcus had a good lunch, he ate all his chicken and rice. He was in a great mood all afternoon. We worked on his toothbrushing goal twice, he needed a verbal prompt both times. No health issues." Audio chunks are sent to the transcription service (production: Azure OpenAI Whisper) via a server route (or queued locally if offline). The transcript streams into a textarea labeled "Live transcript" below the waveform.
+5. **Speak naturally.** The caregiver talks as they would to a coworker at shift change: "Marcus had a good lunch, he ate all his chicken and rice. He was in a great mood all afternoon. We worked on his toothbrushing goal twice, he needed a verbal prompt both times. No health issues." When the caregiver taps Pause or Done, the recording is uploaded once to the transcription service (production: Azure OpenAI Whisper) and the text appears in the "Transcript" textarea below the waveform. Transcription is batch, not streaming (ai-voice-analysis.md). Offline, the recording is kept on the device and transcribed on reconnect.
 
 6. **Tap Done or Pause.** Recording stops. The transcript is editable -- the caregiver can fix names or add details. Below the textarea: a link "Write it myself instead" (skips AI, goes directly to a blank review form).
 
@@ -171,7 +171,7 @@ If the caregiver has not clocked in:
   - If location not yet requested: "Find my location" button.
   - If location denied: "Location access was denied. You can still choose your home." with manual home selection.
 
-**Offline behavior:** Renders entirely from local data. Clock-in is persisted locally. Coverage offer acceptance is queued for sync.
+**Offline behavior:** Renders entirely from local data. Clock-in is persisted locally. Accepting a coverage offer requires connectivity (the first person to accept gets the shift, so it can't be queued); offline, the button reads "Needs internet".
 
 **Therap-preset differences:** None. The Today screen uses no charting terminology.
 
@@ -251,8 +251,8 @@ When the AI is processing, the entire compose screen is replaced by:
 - No controls visible -- the caregiver waits (typically 3-8 seconds).
 
 **Key interactions:**
-- Tap Speak -> requests mic permission (first time), starts MediaRecorder, begins streaming audio to Whisper. Button label becomes "Pause."
-- Tap Pause -> stops recording but keeps transcript. Button reverts to "Speak" for additional recording segments.
+- Tap Speak -> requests mic permission (first time), starts MediaRecorder (32 kbps, auto-stops at 5 minutes). Button label becomes "Pause."
+- Tap Pause -> stops recording, uploads the clip for transcription, and appends the text to the transcript. Button reverts to "Speak" for additional recording segments.
 - Edit transcript -> direct text editing in the textarea.
 - Tap "Done, write my note" -> sends to AI, shows thinking state, transitions to Review.
 - Tap "Write it myself instead" -> skips to Review with empty sections.
@@ -317,7 +317,7 @@ When the AI is processing, the entire compose screen is replaced by:
 - Title: "Sign this note?"
 - Explanation: "Once signed, it goes to your supervisor. Later changes are saved as amendments."
 - Checkbox: "I confirm this note is accurate and based on what I saw during my shift."
-- Button: "Sign as [full name]" (disabled until checkbox is checked).
+- Button: "Sign as [full name]" (always enabled; if the box isn't checked, an inline error says "Check the box to confirm the note is accurate." This click-to-validate pattern matches the MVP and frontend-spec-2.md and is easier for screen-reader users than a disabled button).
 - Cancel: "Keep editing."
 
 **Key interactions:**
@@ -346,7 +346,7 @@ When the AI is processing, the entire compose screen is replaced by:
 **Layout (mobile, top to bottom):**
 - **App bar.** Back button. Title: "Medications" (or "eMAR"). Subtitle: person's name.
 - **Safety callout.** Warm-tinted card with info icon: "Check the right person, medication, dose, time and route against the label before giving."
-- **Scheduled section.** Header: "Scheduled today." Medications sorted by scheduled time (earliest first). Each medication is a card:
+- **Scheduled section.** Header: "Scheduled today." One card per **dose slot**, sorted by time (earliest first). A twice-daily medication has two cards (e.g. 8:00am and 8:00pm), recorded separately. Each card:
   - **Header row.** Left: medication name (bold, 17px), below in muted text: dose, route, time (12-hour), notes. Right: status pill.
     - Not recorded: "Due" pill (due style).
     - Given: "Given" pill (ok style). Below: "Given at 8:14am by [name]."
@@ -383,7 +383,7 @@ When the AI is processing, the entire compose screen is replaced by:
 **Key interactions:**
 - "Mark as given" -> immediately records as given (current timestamp, current user). Status pill updates. Buttons disappear. Entry is irrevocable per constitution.
 - "Refused" or "Held" -> opens reason sheet. After saving, status updates and supervisor is notified.
-- "Give as needed" -> opens PRN sheet. After recording, a follow-up prompt appears after a configurable interval (default 30 minutes) as a push notification: "How is [name] after [medication]?"
+- "Give as needed" -> opens PRN sheet. After recording, a follow-up prompt appears after a configurable interval (default 30 minutes) as a push notification: "Guad: A follow-up is due. Tap to record it." (no name or medication in the push; details appear in the app, per notifications.md)
 
 **Offline behavior:** All MAR actions persist locally. Supervisor notifications queue for sync.
 
@@ -550,7 +550,7 @@ The Notes tab shows a split layout: note list on the left, selected note detail 
 - Approve -> note status changes to `approved`. Note disappears from attention list. Audit trail updated.
 - Send back -> note status changes to `returned` with the supervisor's comment. The caregiver sees "Fix" on their Today screen and the supervisor's comment when they open the note.
 
-**Offline behavior:** Approval and send-back actions persist locally and sync on reconnect.
+**Offline behavior:** Approval and send-back require connectivity (offline-sync.md, "What Requires Connectivity"); the buttons read "Needs internet" while offline. Reading notes works offline.
 
 **Therap-preset differences:** "Shift note" becomes "T-Log," "Behavior note" becomes "GER." "Approve note" becomes "Approve T-Log." Section labels follow Therap ordering.
 
@@ -647,7 +647,7 @@ Each home has a team channel visible to all staff and supervisors assigned to th
 | `GoalPicker` | Goal trial recorder with level buttons, trial display, not-attempted toggle | `goal`, `trials[]`, `notAttempted`, `reason` |
 | `LomiOrb` | Animated lemon SVG with two concentric pulsing rings | `size`, `live` (boolean, activates recording animation) |
 | `ProgressBar` | Horizontal bar showing fractional completion | `done`, `total` |
-| `SyncIndicator` | Small dot showing sync state (green=just synced, amber=pending, hidden=steady state) | `status: 'synced'\|'pending'\|'current'` |
+| `SyncIndicator` | Sync state per frontend-spec-2.md §8.1 (none / amber dot / Offline pill) | `status: 'synced'\|'pending'\|'offline'` |
 | `Callout` | Colored banner card for warnings, info, errors | `variant: 'warn'\|'info'\|'bad'`, children |
 | `Waveform` | CSS-animated vertical bars simulating audio visualization | `active` (boolean) |
 | `Avatar` | Circle with initials, optional size variants | `initials`, `size: 'sm'\|'md'\|'lg'` |
@@ -854,10 +854,10 @@ On the review screen, Lomi supports three additional input modes beyond the init
 
 The app never shows a blocking "you're offline" screen. Instead:
 
-- **Sync dot in app bar.** Visible only when relevant:
-  - Green dot (briefly): appears for 2-3 seconds after pending changes finish syncing, then hides. Confirms successful sync.
-  - Amber dot: changes pending sync (tappable, shows count: "3 changes waiting to sync").
-  - No dot: steady state -- nothing pending, connected. This is the default.
+- **Sync indicator in app bar** (canonical spec: frontend-spec-2.md §8.1):
+  - Nothing shown when synced. This is the default.
+  - Amber dot: changes pending or syncing (tappable, shows count: "3 changes waiting to sync").
+  - "Offline" pill: device is offline. Never red; being offline is normal.
 - **Feature-specific messaging.** When a specific feature requires connectivity:
   - Lomi voice recording: "Needs internet for voice" tooltip on disabled Speak button.
   - Lomi AI drafting: "You're offline. Lomi will write your note when you reconnect, or you can write it yourself now."
@@ -944,4 +944,4 @@ Key UX-relevant color rules:
 - Page background is warm cream (`--bg: #FFFCF3`), NOT pure white. This is the signature Guad warmth.
 - Lomi's yellow (`--lemon: #FFD66B`) is the only yellow element in the UI, making the lemon icon instantly recognizable.
 - Success/approved uses `--ok` (green). Errors/refused uses `--bad` (red). Held medications use warn style (amber) -- distinct from refused.
-- Dark mode is fully defined via `[data-theme="guad-dark-off"]` or `prefers-color-scheme: dark`.
+- Dark mode is defined via `[data-theme="guad-dark-off"]`. The `prefers-color-scheme` path in styles.css is disabled (`max-width:0px` guard) until dark mode is turned on in the rebuild.

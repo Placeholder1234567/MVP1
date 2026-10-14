@@ -1,5 +1,8 @@
 # Verification Report
 
+> **Historical snapshot.** This report describes an earlier version of the specs. Most findings were fixed afterwards, and the October 2026 review (commits on branch `fix/spec-review-findings`) fixed more. Don't work from this list; run `node .specify/lint.js` and `bash .specify/tests/rls/run.sh` for the current state.
+
+
 > Post-fix verification by 30 agents checking cross-spec consistency
 
 ## Summary

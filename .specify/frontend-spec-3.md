@@ -220,16 +220,7 @@ Three urgency bands, each rendered as a section within `<div class="list card">`
 
 Informational band is collapsed by default: "Show X informational items" expander link.
 
-**Batch Actions Bar (above attention list when >= 2 notes pending):** *(Rebuild target -- not in current MVP)*
-```
-  display: flex
-  gap: 10px
-  align-items: center
-  padding: 8px 0
-
-  "Approve all X notes" button (.btn.sm)
-  Muted text: "Review individually below"
-```
+**No batch approval.** Each note must be opened and read before it can be approved (the review is what state auditors check). To keep review fast, the note detail has "Approve and next" and keyboard shortcuts (`A` approve, `S` send back, `J`/`K` next/previous) instead.
 
 **Attention Row Anatomy:**
 ```
@@ -242,7 +233,7 @@ Informational band is collapsed by default: "Show X informational items" expande
            + chevron SVG (18px, var(--faint))
   </button>
 
-  Inline action (for notes): "Approve" button directly on the row
+  Notes rows open the note detail (no inline approve: the note must be read first)
   Inline action (for meds): "Mark followed up" inline
 ```
 
@@ -279,8 +270,8 @@ Informational band is collapsed by default: "Show X informational items" expande
 |        | ---- NEEDS ACTION ----                               |
 | ====== | | Oak St: Tomorrow PM shift      [pill: Coverage]    |
 | [AK]   | | Lisinopril refused: John D     [pill: Medication] |
-| David  | | Shift note from Aisha K        [Approve]          |
-| Admin  | | Shift note from Marcus J       [Approve]          |
+| David  | | Shift note from Aisha K        [pill: Review]     |
+| Admin  | | Shift note from Marcus J       [pill: Review]     |
 | Switch | +----------------------------------------------------+
 |        | v Show 2 informational items                         |
 +--------+------------------------------------------------------+
@@ -378,20 +369,7 @@ The notes screen uses a split-pane layout on desktop (list left, detail right) a
     Buttons: "Approve note" (.btn.sm) + "Send back" (.btn.sec.sm)
 ```
 
-**Batch Approval (when >= 2 notes have status "submitted"):** *(Rebuild target -- not in current MVP. Note: batch approval has data integrity implications; consider whether approving multiple notes without individual review conflicts with the review-each-note principle implied by the split-pane design.)*
-```
-  Banner above note list:
-    display: flex
-    align-items: center
-    justify-content: space-between
-    padding: 10px 16px
-    background: var(--sky)
-    border-radius: 14px
-    margin-bottom: 8px
-
-    Left: "X notes ready for review" (14px 600)
-    Right: "Approve all" (.btn.sm)
-```
+**Approve and next:** after approving or sending back, the detail pane moves to the next note waiting for review. There is no "approve all": approving notes nobody read defeats the review step.
 
 **ASCII Wireframe -- Note Review (Desktop):**
 
@@ -1905,17 +1883,8 @@ See section 4.1 for full specification.
 ```
 
 **Sync Status Indicator** **NEW**:
-```
-  Position: app bar, right side
-  Size: 8px diameter dot
 
-  States:
-    Synced: no dot visible (clean state)
-    Pending: amber dot, tappable → "3 changes waiting to sync"
-    Offline: gray dot with "Offline" tooltip
-
-  NEVER: red banner, disabled inputs, blocking spinner, word "error" for offline
-```
+Defined in frontend-spec-2.md §8.1 (canonical): no indicator when synced, 6px amber dot when changes are pending or syncing, a small "Offline" pill when offline, never red for connectivity.
 
 **Draft Saved Indicator** **NEW**:
 ```
@@ -2098,7 +2067,7 @@ SHARED ROUTES
 | Primary nav | Bottom tabs (Today / Notes / Shifts / Me) | Left sidebar (grouped sections) |
 | Secondary nav | Contextual sheets + page pushes | Split panes + horizontal tabs |
 | Lomi access | "Talk to Lomi" button above tabs / in sidebar | Lomi summary card on overview |
-| Quick actions | Sheet overlays for med pass, goal scoring | Inline approve/reject in list rows |
+| Quick actions | Sheet overlays for med pass, goal scoring | "Approve and next" in the note detail (notes are read before approval) |
 | Back | Native browser/gesture + explicit back arrow | Sidebar item selection (lateral) |
 
 **Maximum Navigation Depth:**
@@ -2222,7 +2191,7 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 | vitalFlags() threshold logic | app-core.js lines 102-105 | Clinically correct threshold checking. Wire to better visual indicators (inline alerts on blur, not just on save). |
 | Draft-review-sign workflow | app-caregiver.js review screen | AI assists but never submits. Human attestation is trust-critical. The sign confirmation sheet with checkbox is correct. |
 | Prompt level system (7 levels) | app-core.js line 7, LEVELS array | Industry-standard IDD terminology. Independent through Full physical plus Refused. The SHORT mapping for display is correct. |
-| Dark mode palette | styles.css `[data-theme="guad-dark-off"]` selector | Well-designed (deep navy #12122E, warm tints). Just needs to be enabled by removing the max-width:0px gate. |
+| Dark mode mechanism | styles.css `[data-theme="guad-dark-off"]` selector + custom properties | Keep the token-swap approach and enable it. **Which palette** (current navy vs the warm-neutral proposal in frontend-spec-1.md §10.2) is an open design decision; until it's made, the shipped navy palette stays. |
 | prefers-reduced-motion support | styles.css `@media (prefers-reduced-motion: reduce)` rules | Accessibility baseline that must be maintained and extended to all new animations. |
 | Existing accessibility (aria attributes, focus-visible) | Throughout styles.css and JS | The current prototype has solid ARIA: aria-current, aria-pressed, aria-label, role="group", :focus-visible. Maintain and extend. |
 | Mobile-first with desktop sidebar at 900px | styles.css `@media (min-width:900px)` rules | Correct responsive strategy. Current single breakpoint at 900px works; 640/1024 are rebuild targets. |
@@ -2230,6 +2199,8 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 ---
 
 ## 12. What Competitors Get Wrong (And How Guad Fixes It)
+
+> **Unverified claim.** Based on research from training data up to May 2025 (see the methodology note in competitive-research.md), not a live market check. competitive-research.md itself lists Remarkable Health as offering voice-to-text documentation, and general home-care scheduling tools already auto-offer open shifts. Verify with current sources before using "nobody else does this" in sales or investor material.
 
 | # | Competitor Problem | Impact | Guad's Solution |
 |---|---|---|---|
@@ -2254,7 +2225,7 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 
 | # | Task | Priority | Rationale |
 |---|---|---|---|
-| 1 | Design system tokens as CSS custom properties | P0 | Foundation for all visual consistency. Migrate from single styles.css to token layer + component files. Fix --faint to #706E94 for WCAG AA. |
+| 1 | Design system tokens as CSS custom properties | P0 | Foundation for all visual consistency. Migrate from single styles.css to token layer + component files. Fix --faint to #706E96 for WCAG AA. |
 | 2 | Core layout shells: CaregiverShell, SupervisorShell | P0 | Bottom tabs + sidebar patterns. Responsive breakpoints at 640/1024px. |
 | 3 | Page header (AppBar), bottom sheet (Sheet), toast (Toast) | P0 | Used on every screen. Focus trap, swipe dismiss, scrim. |
 | 4 | Button, Input, Card, List components | P0 | All variants, all states per this spec. 44px minimum touch targets. |
@@ -2270,12 +2241,12 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 | # | Task | Priority | Rationale |
 |---|---|---|---|
 | 11 | Shift note creation flow (manual text first) | P0 | The core documentation workflow. Compose -> review sections -> sign. |
-| 12 | Voice-to-note with Lomi (streaming transcription) | P0 | The #1 competitive differentiator. MediaRecorder API + WebSocket to transcription service. Offline fallback: record audio, transcribe later, use rules-based draft immediately. |
+| 12 | Voice-to-note with Lomi (batch transcription) | P0 | The #1 competitive differentiator. MediaRecorder records, the audio is uploaded once when the DSP stops, then Whisper and the draft pipeline run (ai-voice-analysis.md chose batch over real-time streaming). Offline fallback: record audio, transcribe later, use rules-based draft immediately. |
 | 13 | Goal/ISP scoring interface | P0 | Prompt level pill buttons (44px min-height). Trial tracking. Score computation. |
 | 14 | Medication administration (eMAR cards) | P0 | Card-based mobile view. "Mark as given" one-tap. Refused/held with reason sheet. |
 | 15 | Health vital entry with threshold alerts | P0 | Vitals/seizure/illness/visit segmented control. Inline out-of-range alerts on blur. |
 | 16 | Supervisor overview dashboard | P0 | KPI cards with deltas, grouped attention queue, Lomi summary card. |
-| 17 | Note review and approval (split pane) | P0 | Supervisor reviews, approves, or sends back with comment. Batch approve. |
+| 17 | Note review and approval (split pane) | P0 | Supervisor reviews, approves, or sends back with comment. "Approve and next" plus keyboard shortcuts; no batch approve. |
 | 18 | Therap CSV import tools | P1 | #1 switching barrier. Import individual demographics, ISP goals, medication lists, staff rosters from Therap CSV exports. Move from Phase 4 to Phase 2. |
 
 ### Phase 3: Full Features (Weeks 9-12)
@@ -2304,8 +2275,8 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 | 33 | Controlled substance two-staff witness in MAR | P2 | Required by state regulations for Schedule II-V medications. |
 | 34 | PWA install flow | P1 | Prompt on mobile browsers. "Add to home screen" banner. |
 | 35 | Performance optimization for budget devices | P0 | Remove backdrop-filter:blur. Add color-mix() fallbacks. Test on Samsung Galaxy A14 (2GB RAM). Target: FCP < 2s, TTI < 3s on 3G. |
-| 36 | Configurable note templates | P2 | Agency-level template builder. Section ordering, required/optional toggles. |
-| 37 | Family/guardian read-only portal | P2 | Read-only view of shift notes, goal progress, health summaries. Separate auth flow. |
+| 36 | ~~Configurable note templates~~ | Post-v1 | Out of scope for v1 (prd.md non-goal 7: no custom form builder). Revisit after launch. |
+| 37 | ~~Family/guardian read-only portal~~ | Post-v1 | Out of scope for v1 (prd.md non-goal 5: no family portal). Revisit after launch. |
 | 38 | Cmd+K command palette (desktop) | P2 | Power-user differentiator. Quick actions and global search. |
 | 39 | Charting preset system (Therap terminology) | P1 | Agency-level toggle: Shift Note = T-Log, Incident = GER, Messages = SComm, etc. |
 | 40 | Celebration micro-animations for goal milestones | P2 | When all trials are Independent: card border flashes green, scale-up checkmark. Respect prefers-reduced-motion. |
@@ -2319,9 +2290,9 @@ These issues in the current prototype must be resolved regardless of rebuild tim
 | # | Fix | File | Current | Change To |
 |---|---|---|---|---|
 | 1 | Enable dark mode | styles.css `@media (prefers-color-scheme: dark)` | `max-width:0px` disables dark mode | Remove gate; add `data-theme` toggle |
-| 2 | Fix --faint contrast | styles.css `:root` `--faint` | #8B89AA (3.27:1, fails AA) | #706E94 (4.70:1, passes AA) |
+| 2 | Fix --faint contrast | styles.css `:root` `--faint` | #8B89AA (3.27:1, fails AA) | #706E96 (4.70:1, passes AA) |
 | 3 | Restrict .btn.lemon usage | styles.css `.btn.lemon` | Lemon bg button (11.5:1 contrast -- passes AAA, earlier 2.1:1 claim was incorrect) | Keep class but restrict to Lomi brand elements only |
-| 4 | Increase .levels button | styles.css `.levels button` | min-height: 36px | min-height: 48px |
+| 4 | Increase .levels button | styles.css `.levels button` | min-height: 36px | min-height: 44px |
 | 5 | Increase .btn.sm | styles.css `.btn.sm` | min-height: 42px | min-height: 44px |
 | 6 | Increase .trial button | styles.css `.trial button` | 28x28px | 44x44px touch target (visual 28px, padded hit area) |
 | 7 | Increase .seg button | styles.css `.seg button` | min-height: 42px | min-height: 44px |

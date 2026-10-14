@@ -21,7 +21,7 @@ Lomi does not speak. All Lomi output is text on screen. No TTS, no voice synthes
 ### Initial Draft (brain dump → parallel pipeline → review screen)
 
 ```
-Caregiver taps "Talk to Lomi" → records voice (≤60s)
+Caregiver taps "Talk to Lomi" → records voice (≤5 min, 32 kbps)
   │
   ▼
 POST /api/transcribe → Azure OpenAI Whisper v3 → transcript
@@ -100,7 +100,7 @@ BAAs are required and must be executed before any PHI processing with:
 
 | Subprocessor | Service | PHI Exposure |
 |---|---|---|
-| AWS | Bedrock (Claude) | Client first name + goal text in prompts |
+| AWS | Bedrock (Claude) | Caregiver transcript (health, behavior, meals, medications as spoken) + client first name + goal text |
 | Microsoft | Azure OpenAI (Whisper) | Voice recordings containing shift descriptions |
 | Supabase | Database, Auth | All stored PHI |
 | Twilio | SMS | Shift times and home names only (never client names or health data) |
@@ -108,7 +108,7 @@ BAAs are required and must be executed before any PHI processing with:
 
 ### PHI Minimization (Minimum Necessary Standard)
 
-- **In prompts**: Only client first name and goal text are sent to the model. No last names, DOBs, SSNs, diagnoses, medication names, or guardian information appear in AI prompts.
+- **In prompts**: Guad adds only the client's **first name** and their goal text (and behavior plan types for behavior notes). It never adds last names, DOBs, IDs, the diagnoses list, medication lists or guardian information. The caregiver's transcript is sent as spoken, and it **is PHI**: it routinely describes health, behavior, meals and medications. That's why AWS (Bedrock) and Azure (Whisper) BAAs must be in place before any real data reaches Lomi. Calling the minimization "first name only" would understate the exposure.
 - **In transcripts**: Voice recordings may contain PHI spoken by the caregiver. Audio is processed in memory by Whisper and never persisted to disk, object storage, or any durable medium.
 - **Transcript text**: Held in browser memory during the drafting session. Saved only as part of the final signed note content in the `notes.content` JSONB column, protected by RLS.
 - **Chat messages**: Held in browser memory during the session. Not persisted independently. Content that Lomi routes into note sections is saved as part of the note, same as any edit.
@@ -141,12 +141,12 @@ Every AI invocation is logged to the `audit_log` table with:
 The primary charting path. Caregiver speaks freely about their shift — activities, meals, mood, goals, anything — in whatever order they want. Lomi processes the full transcript and populates all sections.
 
 1. Caregiver taps the Lomi orb on the person detail screen
-2. MediaRecorder captures audio (webm or mp4, max 60s)
+2. MediaRecorder captures audio (webm or mp4, `audioBitsPerSecond: 32000`, auto-stop at 5 minutes; 5 minutes is about 1.2 MB, under the request limit)
 3. Audio sent to Whisper for transcription
 4. Transcript sent to the parallel draft pipeline (§ Parallel Draft Pipeline)
 5. Review screen renders with all sections populated
 
-This mode handles the ~80% case: a straightforward shift where the caregiver remembers most things and speaks for 1-3 minutes.
+This mode handles the ~80% case: a straightforward shift where the caregiver remembers most things and speaks for 1-3 minutes. The 5-minute cap leaves room for longer shifts.
 
 ### Mode 2: Per-Box Editing
 
@@ -257,9 +257,9 @@ Output: `{ flags: Array<{ phrase, tip }>, incident: { detected, summary }, gaps:
 
 **4. Clinical Prose Drafter (Sonnet)**
 
-The main drafting call. Takes the full transcript and the classifier output (when available — Sonnet does not block on Haiku) and writes professional clinical prose for each section.
+The main drafting call. Takes the full transcript and writes professional clinical prose for each section. It runs in parallel with the Haiku calls, so it does **not** receive their output; the classifier's sentence-to-section map is used only by the fallback and by `route`.
 
-Input: `{ transcript: string, person: string, classified?: Array<{ sentence, section }> }`
+Input: `{ transcript: string, person: string }`
 Output: `{ activities: string, meals: string, mood: string, health: string }`
 
 ### Result Merge
@@ -289,7 +289,9 @@ The server merges the four outputs into a single response:
 }
 ```
 
-If a Haiku call fails, the Sonnet drafter's output is used alone — Sonnet can handle classification and goal matching, just with slightly lower accuracy. The Haiku calls are performance optimizations, not hard dependencies.
+If a Haiku call fails, the Sonnet drafter's output is used alone. The flag/incident detector then falls back to the rules in `lomi.js`, and goals are left for the caregiver to score. The Haiku calls are optimizations, not hard dependencies.
+
+**Keeping goals and prose consistent:** goal trials come only from the goal matcher, and the drafter is told not to restate prompt levels or goal outcomes in the prose sections. Otherwise the prose could say "he refused" while the trials say "Independent", and the caregiver might sign both. The review screen shows the matcher's trials in the goal picker, where the caregiver confirms them.
 
 ## Task Specifications
 
@@ -703,10 +705,8 @@ The server handles the two-step process (route → rewrite) internally. The clie
 
 ### Endpoint: POST /api/lomi/summary
 
-Unchanged from MVP.
-
 **Request:** `{ task: "summary", data: DaySnapshot }`
-**Response:** `{ text: string, fallback: boolean }`
+**Response:** `{ summary: string, highlights: Array<{ text: string }>, recommendations: Array<{ text: string }>, fallback: boolean }` (highlights and recommendations are empty arrays unless the agency has `analytics_advanced`; see Task: summary above)
 
 ### Endpoint: POST /api/transcribe
 
@@ -716,7 +716,7 @@ Unchanged from MVP.
 **Response:** `{ text: string }`
 
 **Validation:**
-- `audio` must be a non-empty base64 string, max 3,500,000 characters (~2.6 MB decoded)
+- `audio` must be a non-empty base64 string, max 3,500,000 characters (~2.6 MB decoded; 5 minutes at 32 kbps is ~1.2 MB)
 - `mimeType` must start with `audio/`; defaults to `audio/webm` if missing
 - Supported formats: `audio/webm`, `audio/mp4`
 
@@ -737,7 +737,7 @@ The production system extends this module with:
 
 ## Rate Limiting
 
-Rate limits enforced at the server level via BullMQ rate limiter.
+Rate limits enforced at the server level by `rateLimitMiddleware` (Redis sliding window per profile and per agency; trpc-router.md).
 
 | Scope | Limit | Window | Enforcement |
 |---|---|---|---|
@@ -747,7 +747,7 @@ Rate limits enforced at the server level via BullMQ rate limiter.
 | Per user: chat routes | 30 | 1 hour | Token bucket per `profile_id` |
 | Per agency: all AI calls | 500 | 1 hour | Token bucket per `agency_id` |
 | Audio file size | 3.5 MB (base64) | per request | Request validation |
-| Audio duration | 60 seconds | per request | Whisper rejects longer files |
+| Audio duration (brain dump) | 5 minutes | per request | Client auto-stops; server rejects longer audio |
 | Per-box audio duration | 30 seconds | per request | Client-side enforcement |
 | Input text | 8000 chars | per request | Request validation |
 | Chat message | 2000 chars | per message | Request validation |

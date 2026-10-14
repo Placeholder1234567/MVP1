@@ -46,7 +46,7 @@ The MVP stores **all application data as a single JSON object** in the browser's
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Database | Supabase Postgres (minimum version tracked in `supabase/config.toml`) | 30 normalized tables, RLS, realtime subscriptions |
+| Database | Supabase Postgres (minimum version tracked in `supabase/config.toml`) | 37 normalized tables, RLS, realtime subscriptions |
 | Auth | Supabase Auth | Email/password, magic link, SSO, MFA, JWT with agency_id claim |
 | ORM | Drizzle | Type-safe schema definition, migration generation |
 | Internal API | tRPC | End-to-end typed frontend-to-backend communication |
@@ -62,7 +62,7 @@ The MVP stores **all application data as a single JSON object** in the browser's
 
 - **Tenant isolation**: Every table has `agency_id` FK + RLS policy. Cross-tenant access is impossible at the Postgres level.
 - **Real authentication**: Supabase Auth with JWT, session expiry, MFA for supervisor/admin.
-- **Immutable audit log**: Append-only `audit_log` table. No UPDATE/DELETE by application code. 6-year retention.
+- **Immutable audit log**: Append-only `audit_log` table. No UPDATE/DELETE by application code. 7-year retention (exceeds HIPAA's 6-year minimum).
 - **Offline-first**: PowerSync syncs via server-authoritative last-write-wins. Writes persist locally in encrypted OPFS, sync on reconnect.
 - **Normalized schema**: Client health, goals, medications, and case notes each in dedicated tables with proper FKs and indexes.
 - **UUID primary keys**: `uuid_generate_v4()` -- no collisions.
@@ -84,7 +84,7 @@ The MVP is a prototype containing only synthetic test data entered during develo
 | Reason | Detail |
 |--------|--------|
 | No real data exists | MVP contains only developer-entered test scenarios |
-| Schema incompatibility | MVP uses nested JSON objects; production uses 30 normalized tables |
+| Schema incompatibility | MVP uses nested JSON objects; production uses 37 normalized tables |
 | ID format change | MVP uses 8-char random strings; production uses UUIDs |
 | No auth mapping | MVP has no user accounts; production requires Supabase Auth UIDs |
 | Compliance risk | Any automated data transfer from an unauthenticated plaintext store would create audit complications |
@@ -201,7 +201,7 @@ The MVP is a prototype containing only synthetic test data entered during develo
 | `name` | string | `medications.name` | text | Direct map |
 | `dose` | string | `medications.dose` | text | Direct map |
 | `route` | string | `medications.route` | text | Direct map |
-| `time` | string | `medications.scheduled_time` | time | Renamed |
+| `time` | string | `medications.scheduled_times` | time[] | Renamed and made an array (one entry per daily dose; the MVP's single time becomes a one-element array) |
 | `prn` | boolean | `medications.prn_instructions` | text | Changed from flag to instructions text |
 | `notes` | string | `medications.notes` | text | Direct map |
 | `stopped` | boolean | `medications.stopped_at` | timestamptz | Changed from flag to timestamp |
@@ -265,7 +265,8 @@ The MVP stores schedule as a deeply nested object: `{ [homeId]: { [yyyy-mm-dd]: 
 | `clientId` | string | `notes.client_id` | uuid FK | Renamed |
 | `homeId` | string | `notes.home_id` | uuid FK | Renamed |
 | `by` | string | `notes.author_name` | text | Renamed |
-| `day` | string | `notes.day` | date | Type change |
+| `day` | string | `notes.day` | date | Type change. The shift's start date. |
+| -- | -- | `notes.shift` | enum (shift_key) | New. am, pm or on; each shift writes its own note |
 | `type` | string | `notes.type` | enum (note_type) | Same values: shift, behavior |
 | `status` | string | `notes.status` | enum (note_status) | Expanded: draft, submitted, approved, returned |
 | `activities` | string | `notes.content->activities` | jsonb field | Moved into content JSONB |
@@ -348,6 +349,8 @@ The MVP stores schedule as a deeply nested object: `{ [homeId]: { [yyyy-mm-dd]: 
 | `clientId` | string | `mar_records.client_id` | uuid FK | Renamed |
 | `medId` | string | `mar_records.medication_id` | uuid FK | Renamed |
 | `day` | string | `mar_records.day` | date | Type change |
+| -- | -- | `mar_records.scheduled_time` | time | New. The dose slot (one of `medications.scheduled_times`); null for PRN |
+| -- | -- | `mar_records.conflict_with` | uuid FK (self) | New. Set when two devices recorded the same dose slot offline |
 | `status` | string | `mar_records.status` | enum (mar_status) | Typed enum (given, refused, held) |
 | `byId` | string | `mar_records.recorded_by` | uuid FK | Renamed |
 | `byName` | string | `mar_records.recorded_by_name` | text | Renamed |
@@ -471,7 +474,7 @@ The MVP stores attendance as a nested object: `{ [yyyy-mm-dd]: { [clientId]: { s
 | `inAt` | ISO string | `clock_records.clock_in_at` | timestamptz | Renamed |
 | `outAt` | ISO string | `clock_records.clock_out_at` | timestamptz | Renamed |
 | `verified` | boolean | `clock_records.verified` | boolean | Direct map |
-| `manual` | boolean | `clock_records.manual_override` | boolean | Renamed |
+| `manual` | boolean | `clock_records.verified` | boolean | **Not** `manual_override`. In the MVP, `manual: true` means "clocked in outside the check-in area", which in production is `verified = false` (computed by the server). `manual_override` means a supervisor created or corrected the record. |
 | `distance` | number | `clock_records.distance_meters` | real | Renamed |
 | `lat` | number | `clock_records.clock_in_lat` | real | Renamed. GPS coordinates persisted for EVV compliance. |
 | `lng` | number | `clock_records.clock_in_lng` | real | Renamed. GPS coordinates persisted for EVV compliance. |
@@ -555,7 +558,7 @@ Complete table of every field that was renamed between the MVP and the productio
 | `distance` | clocks[] | `distance_meters` | clock_records | Units in name |
 | `type` | events[] | `event_type` | events | Avoid reserved word |
 | `viaLomi` | schedule | `via_lomi` | schedule_slots | snake_case convention |
-| `time` | client meds | `scheduled_time` | medications | Clarity |
+| `time` | client meds | `scheduled_times` | medications | Clarity; now an array for multiple daily doses |
 | `prn` | client meds | `prn_instructions` | medications | Changed from boolean to text |
 | `stopped` | client meds | `stopped_at` | medications | Changed from boolean to timestamp |
 | `stopped` | client goals | `stopped_at` | goals | Changed from boolean to timestamp |
@@ -571,7 +574,7 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | Table | Purpose | Why It Did Not Exist in MVP |
 |-------|---------|----------------------------|
 | `agencies` | Multi-tenant root. Every row in every other table references an agency. Stores name, slug, charting preset, subscription tier, settings. | MVP was single-agency with a bare `{ name }` object. |
-| `audit_log` | HIPAA-required immutable record of every data mutation. Captures table, record ID, action (INSERT/UPDATE/DELETE), old values, new values, user, IP, user agent. 6-year retention. | MVP had `events[]` for analytics but no structured audit trail and no immutability. |
+| `audit_log` | HIPAA-required immutable record of every data mutation. Captures table, record ID, action (INSERT/UPDATE/DELETE), old values, new values, user, IP, user agent. 7-year retention. | MVP had `events[]` for analytics but no structured audit trail and no immutability. |
 | `notifications` | Tracks every notification (push, SMS, email) sent to a user. Status lifecycle: pending, sent, delivered, read. Links to triggering record (incident, coverage request, etc.). | MVP had no notification system. Coverage messages were posted inline as chat messages. |
 | `notification_preferences` | Per-user, per-notification-type channel preferences (push, SMS, email toggles). | MVP had no user preferences. |
 | `sync_checkpoints` | PowerSync offline sync state per user per table. Stores last sync timestamp and checkpoint token for incremental sync. | MVP had no sync -- all data local only. |
@@ -596,7 +599,7 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | SvelteKit project init | `npm create svelte@latest`, Svelte 5 runes mode, TypeScript strict, Vite | Repo with `src/`, `static/`, `svelte.config.js` |
 | Supabase project setup | Create project, enable Auth (email/password + magic link), configure JWT claims for `agency_id` | Supabase dashboard configured, env vars set |
 | Drizzle ORM setup | Install `drizzle-orm` + `drizzle-kit`, copy `schema.ts` from `.specify/`, configure `drizzle.config.ts` | `npx drizzle-kit push` succeeds |
-| Schema push | Push all 30 tables to local Supabase Postgres | All tables created with indexes |
+| Schema push | Push all 37 tables to local Supabase Postgres | All tables created with indexes |
 | RLS policies | Apply all policies from `.specify/rls.sql` | `SELECT * FROM pg_policies` shows complete coverage |
 | Auth integration | Supabase Auth client in SvelteKit hooks, session management, role extraction from JWT | Login/logout works, roles propagate |
 | Seed script | Faker.js-based seed (see Section 8) | `npm run db:seed` populates dev database |

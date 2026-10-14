@@ -10,6 +10,7 @@
  *   - rate limiting and request logging without storing note text in logs.
  */
 const { build } = require("../src/prompts.js");
+const guard = require("./_guard.js");
 
 const MODEL = process.env.LOMI_MODEL || "claude-sonnet-5-5";
 const MAX_INPUT = 8000;
@@ -22,7 +23,9 @@ module.exports = async function handler(req, res) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return res.status(500).json({ error: "Lomi isn't configured on the server." });
 
+  // Not authentication (there are no accounts yet): same-site check + rate limit. See _guard.js.
   // TODO: verify the caller's session here once authentication is added.
+  if (!guard(req, res, { limit: 30, windowMs: 10 * 60 * 1000 })) return;
 
   const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
   const task = body.task;

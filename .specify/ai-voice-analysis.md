@@ -23,7 +23,7 @@ This is the current MVP approach, extended with parallelism and per-section edit
 
 ```
 Caregiver taps "Talk to Lomi"
-  → records voice (MediaRecorder, webm/mp4, ≤60s)
+  → records voice (MediaRecorder, webm/mp4, ≤5 min at 32 kbps)
   → POST /api/transcribe → Azure OpenAI Whisper → transcript text
   → client builds prompt (prompts.js)
   → POST /api/lomi → AWS Bedrock Claude → structured JSON

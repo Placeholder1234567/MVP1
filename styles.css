@@ -79,6 +79,8 @@ button.row:hover,a.row:hover{background:color-mix(in srgb,var(--sky) 55%,transpa
 .pill.due{background:var(--lemon);color:#1C1B4B}
 .pill.ok{background:var(--ok-bg);color:var(--ok)}
 .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.pill.warn{background:#FFF3CD;color:#8F5F00} /* Held medication: amber, distinct from refused (4.98:1) */
+:root[data-theme="guad-dark-off"] .pill.warn{background:#2A2418;color:#E8B84A}
 .pill.info{background:var(--sky);color:var(--blue)}
 .btn{border:0;border-radius:999px;min-height:52px;padding:0 22px;font-weight:600;font-size:16px;background:var(--blue);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:10px}
 .btn:hover{background:var(--blue-d)}

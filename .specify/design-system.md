@@ -123,7 +123,7 @@ Applied via `[data-theme="guad-dark-off"]`. (The `prefers-color-scheme: dark` me
 
 ### Pills / Badges
 - `font-size: 12.5px`, `font-weight: 700`, `padding: 4px 10px`, `border-radius: 999px`
-- Variants: `.due` (lemon bg), `.ok` (green bg), `.bad` (red bg), `.info` (sky bg)
+- Variants: `.due` (lemon bg), `.ok` (green bg), `.bad` (red bg), `.info` (sky bg), `.warn` (amber: `background:#FFF3CD; color:#8F5F00`, 4.98:1). Use `.warn` for **Held** medications so they look different from **Refused** (`.bad`).
 
 ### Avatars
 - `44x44px`, circle, `background: var(--sky)`, `color: var(--blue)`, `font-weight: 700`, `font-size: 15px`

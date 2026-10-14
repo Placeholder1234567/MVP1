@@ -38,11 +38,25 @@ function firstName(id){var p=staff(id);return p?p.name.split(" ")[0]:"Someone"}
 function clientsIn(hid){return S.clients.filter(function(c){return hid==="all"||c.homeId===hid})}
 function activeClock(sid){for(var i=S.clocks.length-1;i>=0;i--){var c=S.clocks[i];if(c.staffId===sid&&!c.outAt)return c}return null}
 function cgHome(){var c=activeClock(S.session.userId);return c?c.homeId:null}
-function isToday(iso){return iso&&iso.slice(0,10)===new Date().toISOString().slice(0,10)}
-function shiftNote(cid){for(var i=S.notes.length-1;i>=0;i--){var n=S.notes[i];if(n.clientId===cid&&n.type==="shift"&&n.day===dayKey(0))return n}return null}
+// Compare in local time: toISOString() is UTC, which made evening entries look like "tomorrow".
+function isToday(iso){if(!iso)return false;var d=new Date(iso);return dayKey(0,d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"))===dayKey(0)}
+// The shift happening now. An overnight shift belongs to the day it started, so 2am is the previous day's "on" shift.
+function currentShift(){var h=new Date().getHours();if(h>=7&&h<15)return {k:"am",day:dayKey(0)};if(h>=15&&h<23)return {k:"pm",day:dayKey(0)};return {k:"on",day:h>=23?dayKey(0):dayKey(-1)}}
+// Each shift writes its own note. Notes saved before shifts were tracked match any shift.
+function shiftNote(cid){var cs=currentShift();for(var i=S.notes.length-1;i>=0;i--){var n=S.notes[i];if(n.clientId===cid&&n.type==="shift"&&n.day===cs.day&&(!n.shift||n.shift===cs.k))return n}return null}
 function scheduledMeds(c){return c.meds.filter(function(m){return !m.prn&&!m.stopped})}
-function marFor(cid,mid){for(var i=S.mar.length-1;i>=0;i--){var r=S.mar[i];if(r.clientId===cid&&r.medId===mid&&!r.prn&&r.day===dayKey(0))return r}return null}
-function medsDue(c){return scheduledMeds(c).filter(function(m){return !marFor(c.id,m.id)})}
+// Daily dose times. Medications saved with a single `time` count as one dose.
+function medTimes(m){return (m.times&&m.times.length?m.times:(m.time?[m.time]:[])).slice().sort()}
+// One MAR record per dose slot. Records saved before slots were tracked count for the first slot.
+function marFor(cid,mid,slot){var m=null,c=client(cid);if(c)m=byId(c.meds,mid);var first=m?medTimes(m)[0]:null;
+  for(var i=S.mar.length-1;i>=0;i--){var r=S.mar[i];if(r.clientId===cid&&r.medId===mid&&!r.prn&&r.day===dayKey(0)&&(r.slot?r.slot===slot:slot===first))return r}return null}
+function doseSlots(c){var out=[];scheduledMeds(c).forEach(function(m){medTimes(m).forEach(function(t){out.push({m:m,slot:t})})});return out.sort(function(a,b){return a.slot<b.slot?-1:a.slot>b.slot?1:0})}
+function medsDue(c){return doseSlots(c).filter(function(d){return !marFor(c.id,d.m.id,d.slot)})}
+// "8am, 8:30pm, 20:00" -> ["08:00","20:30","20:00"]; null if any part can't be read.
+function parseTimes(text){var out=[],bad=false;String(text||"").split(/[,;]+/).map(function(x){return x.trim()}).filter(Boolean).forEach(function(x){
+  var m=x.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);if(!m){bad=true;return}var h=+m[1],mi=+(m[2]||0),ap=(m[3]||"").toLowerCase();
+  if(ap){if(h<1||h>12){bad=true;return}h=h%12+(ap==="pm"?12:0)}if(h>23||mi>59){bad=true;return}
+  var t=String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0");if(out.indexOf(t)<0)out.push(t)});return bad?null:out.sort()}
 function att(cid){return (S.attendance[dayKey(0)]||{})[cid]}
 function score(tr){if(!tr||!tr.length)return"";var k=tr.filter(function(t){return t==="Independent"}).length;return k+" of "+tr.length+" independent"}
 function slot(hid,day,k){var h=S.schedule[hid]||(S.schedule[hid]={});var d=h[day]||(h[day]={});return d[k]||null}
@@ -122,8 +136,8 @@ function download(name,text,done){
 
 global.GuadCore={S:function(){return S},setS:function(x){S=x},LEVELS:LEVELS,SHORT:SHORT,SERVICES:SERVICES,TEMPLATES:TEMPLATES,SHIFTS:SHIFTS,
   now:now,tm:tm,dt:dt,esc:esc,uid:uid,t12:t12,pl:pl,byId:byId,initials:initials,dayKey:dayKey,dayLabel:dayLabel,weekStart:weekStart,shiftDef:shiftDef,save:save,log:log,
-  me:me,isOffice:isOffice,home:home,client:client,staff:staff,firstName:firstName,clientsIn:clientsIn,activeClock:activeClock,cgHome:cgHome,isToday:isToday,shiftNote:shiftNote,
-  scheduledMeds:scheduledMeds,marFor:marFor,medsDue:medsDue,att:att,score:score,slot:slot,setSlot:setSlot,weeklyShifts:weeklyShifts,unreadFor:unreadFor,markRead:markRead,post:post,
+  me:me,isOffice:isOffice,home:home,client:client,staff:staff,firstName:firstName,clientsIn:clientsIn,activeClock:activeClock,cgHome:cgHome,isToday:isToday,shiftNote:shiftNote,currentShift:currentShift,
+  scheduledMeds:scheduledMeds,marFor:marFor,medsDue:medsDue,medTimes:medTimes,doseSlots:doseSlots,parseTimes:parseTimes,att:att,score:score,slot:slot,setSlot:setSlot,weeklyShifts:weeklyShifts,unreadFor:unreadFor,markRead:markRead,post:post,
   eligibility:eligibility,startCoverage:startCoverage,acceptCoverage:acceptCoverage,declineCoverage:declineCoverage,offersFor:offersFor,notifRules:notifRules,vitalFlags:vitalFlags,
   normalizeDraft:normalizeDraft,csv:csv,download:download,Geo:Geo};
 })(window);

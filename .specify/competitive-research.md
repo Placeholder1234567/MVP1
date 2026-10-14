@@ -198,7 +198,7 @@ Therap IS actively using AI -- this is no longer a gap:
 | **Emerging** | Qualifacts (AI-assisted docs), Medisked (analytics) |
 | **Minimal/None** | Brittco, iCareManager, Setworks, MITC, AWARDS |
 
-**Key insight:** No IDD platform offers voice-to-structured-note with real-time AI drafting. Guad's Lomi is genuinely unique.
+**Key insight (unverified, training data to May 2025):** We found no IDD platform offering voice-to-structured-note with real-time AI drafting, though Remarkable Health (above) offers voice-to-text and AI-suggested content, so the gap may be narrower than it looks. Guad's Lomi is genuinely unique.
 
 ### Technology Stack Comparison
 
@@ -224,7 +224,7 @@ Therap IS actively using AI -- this is no longer a gap:
 ### What NO Competitor Does Well (Guad's White Space)
 1. **Voice-to-structured-note with AI** -- Lomi is unique in IDD
 2. **Real-time vague language detection** and coaching during documentation
-3. **AI-powered shift coverage automation** with automatic staff matching
+3. **AI-powered shift coverage automation** with automatic staff matching (not seen in IDD charting tools; general home-care scheduling products do auto-offer open shifts, so verify before claiming it as unique)
 4. **Caregiver-first mobile experience** -- most competitors are supervisor/admin-first
 5. **Sub-5-minute documentation workflow** -- vs 30-60 minutes in Therap
 6. **Live AI-generated supervisor summaries** with "needs attention" feed

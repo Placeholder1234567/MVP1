@@ -11,13 +11,13 @@ Before writing any code, read the relevant `.specify/` files:
 | File | Contains |
 |------|----------|
 | `constitution.md` | Non-negotiable engineering principles (14 rules). Read this first. |
-| `schema.ts` | Drizzle pgTable definitions for all 30 tables. This is the single source of truth for the data model. |
+| `schema.ts` | Drizzle pgTable definitions for all 37 tables. This is the single source of truth for the data model. |
 | `services.md` | Service boundaries, data ownership matrix, dependency graph, BullMQ job registry. |
 | `trpc-router.md` | Every tRPC procedure: input/output types, required role, behavior. |
 | `charting-ux.md` | Screen-by-screen UX spec, component catalog, accessibility requirements, charting preset system. |
 | `ai-pipeline.md` | Lomi AI: prompts, model config, fallback strategy, HIPAA compliance, rate limits. |
 | `security.md` | Threat model, auth flows, PHI inventory, encryption, breach response, BAA matrix. |
-| `rls.sql` | Row-Level Security policies for every table. |
+| `rls.sql` | Row-Level Security policies for every table, plus integrity triggers (privileged columns, note transitions, MAR immutability, server-side clock verification, audit). Tested by `tests/rls/run.sh`. |
 | `openapi.yaml` | External API spec (EVV, reports, exports, webhooks). |
 | `notifications.md` | Notification types, channels, escalation rules, user preferences. |
 | `offline-sync.md` | PowerSync sync rules, conflict resolution, data lifecycle on device. |
@@ -74,7 +74,7 @@ Lomi outputs are always shown in a review UI. AI-generated content is flagged (`
 
 ### 6. Supabase Auth only
 
-All authentication flows go through Supabase Auth. Never store tokens in `localStorage`. Use `httpOnly` cookies via SvelteKit hooks. Never implement custom JWT generation, custom session management, or set auth cookies from application code. Role-based access (caregiver, supervisor, admin) is enforced via Supabase Auth metadata and RLS policies.
+All authentication flows go through Supabase Auth. Never store tokens in `localStorage` or `sessionStorage`. Session cookies are managed only by `@supabase/ssr` in `hooks.server.ts`. The browser holds the short-lived access token in memory, because PowerSync and Realtime need it (security.md, Session Management). Never implement custom JWT generation, custom session management, or set auth cookies from application code. Role-based access (caregiver, supervisor, admin) is enforced via Supabase Auth metadata and RLS policies.
 
 ### 7. Charting presets are cosmetic only
 
@@ -82,7 +82,7 @@ The `charting_preset` agency config (`"therap"` or `"default"`) changes UI label
 
 ### 8. MAR entries are irrevocable
 
-Once a MAR entry is recorded as `given`, it cannot be deleted -- only amended with a correction entry referencing the original. This maintains a complete medication administration history for regulatory compliance.
+Once a MAR entry is recorded (given, refused or held), it cannot be edited or deleted -- only amended with a new correction entry whose `amends_id` references the original. This matches constitution principle 13; the `mar_records_immutable` trigger enforces it. This maintains a complete medication administration history for regulatory compliance.
 
 ### 9. tRPC internal, OpenAPI external
 
@@ -129,12 +129,12 @@ API keys, service credentials, database connection strings, Twilio tokens, and A
 1. Create a directory under `src/lib/server/services/` with `index.ts`, `<name>.queries.ts`, and `<name>.types.ts`.
 2. Every exported function receives `agencyId` as its first argument and passes it to all Drizzle queries.
 3. Import from other services via their `index.ts` exports (same-process function calls, not network hops).
-4. Call `audit.logMutation()` after every INSERT, UPDATE, DELETE on PHI tables.
+4. Don't write audit rows yourself for table changes: the `audit_row_change` trigger (rls.sql) records every INSERT/UPDATE/DELETE on audited tables. Call `audit.logEvent()` only for actions that don't change a row (PHI reads, exports, AI invocations).
 5. Document the service in `services.md`: responsibility, owned tables, key functions, dependencies, BullMQ jobs.
 
 ### Working with PowerSync (offline data)
 
-1. Never call Supabase client directly for data that needs offline support.
+1. Never call the Supabase client directly for data that needs offline support. Offline writes are uploaded through `sync.upload` (trpc-router.md), which runs the owning service's code.
 2. Use PowerSync reactive queries in Svelte stores (`$lib/stores/sync.ts`).
 3. Generate UUIDs client-side for new records (enables offline creation).
 4. Design mutations to be idempotent where possible (upserts on natural keys).
@@ -156,12 +156,14 @@ Reference these when implementing validation, forms, and business logic:
 - **Shifts:** AM (07:00-15:00), PM (15:00-23:00), ON (23:00-07:00)
 - **Prompt levels (ISP goals):** Independent, Verbal prompt, Gestural prompt, Model, Partial physical, Full physical, Refused
 - **Services (attendance):** In-home support, Day program, Community outing, etc.
-- **Vital limits:** tempHi 100.4, tempLo 95, pulseHi 100, pulseLo 50, sysHi 140, sysLo 90, diaHi 90, diaLo 60
-- **Incident types:** Seizure, Medication error, Injury, Fall, Elopement, Left without staff, Property damage, Behavioral, Other
-- **Incident severity:** low, medium, high
+- **Vital limits:** tempHi 100.4, tempLo 95, pulseHi 100, pulseLo 50, sysHi 140, sysLo 90, diaHi 90, diaLo 60. Operators: temp, systolic and diastolic flag at `>=` the high limit; pulse flags at `> 100` (tachycardia is defined as over 100); all lows flag at `<`.
+- **Shift notes:** one per person per shift (am, pm, on). `notes.day` is the shift's start date, so an overnight note written at 2am belongs to the previous day.
+- **Medications:** `scheduled_times` is an array; each dose slot gets its own MAR record.
+- **Incident types:** Fall, Injury, Seizure, Medication error, Left without staff, Behavior with harm, Property damage, Other (matches `incident_type` in schema.ts)
+- **Incident severity:** Low, Medium, High (title case, matches `incident_severity` in schema.ts)
 - **Note statuses:** draft -> submitted -> approved | returned
 - **Coverage statuses:** searching -> filled | unfilled
-- **MAR statuses:** given, refused, held (given is irrevocable)
+- **MAR statuses:** given, refused, held (all irrevocable; corrections are amendments)
 
 ## Code Style
 

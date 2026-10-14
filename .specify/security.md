@@ -8,15 +8,15 @@ Guad operates as a Business Associate under HIPAA. This document defines the sec
 
 | # | Threat | Likelihood | Impact | Mitigation |
 |---|--------|-----------|--------|------------|
-| T1 | **Insider access to PHI** — A staff member views client records outside their assigned homes, or a terminated employee retains access. | High | High | Supabase RLS enforces home-scoped access for caregivers at the Postgres level. On termination, `profiles.active` is set to `false` and the Supabase Auth session is revoked, which is the primary deactivation mechanism. **Note:** RLS policies do not currently check `profiles.active` — session revocation is the sole enforcement. Adding an `active = true` check to the `current_user_home_ids()` helper function is recommended as defense-in-depth (see rls.sql). Audit log captures every PHI read. |
-| T2 | **Device theft or loss** — A caregiver's phone is stolen while logged in, exposing offline-cached PHI in PowerSync OPFS. | High | High | Session timeout after 12 hours of inactivity (configurable per agency, minimum 15 minutes for high-security). PowerSync OPFS is encrypted at rest with a key derived from the authenticated session. On logout or session expiry, local OPFS data is wiped. PIN/biometric lock required to resume a backgrounded session (PWA lifecycle hook). |
-| T3 | **Session hijacking** — An attacker steals a JWT or refresh token via XSS, MITM, or physical access to a shared device. | Medium | Critical | The Supabase JS client holds the access token in memory (required for PowerSync sync authentication and Supabase Realtime). The access token is short-lived (1 hour). Refresh tokens rotate on every use (Supabase default). The access token is never persisted to `localStorage` or `sessionStorage`. TLS 1.3 enforced on all connections. Content Security Policy headers block inline scripts and mitigate XSS. Session revocation propagates within 60 seconds via Supabase Realtime. |
-| T4 | **API abuse** — An attacker or rogue integration hammers the tRPC or OpenAPI endpoints to exfiltrate data, brute-force auth, or cause denial of service. | Medium | High | Rate limiting on all endpoints: 100 req/min per user for tRPC, 100 req/min per API key for OpenAPI. Supabase Auth rate-limits login attempts (5 failures lock the account for 15 minutes). OpenAPI keys are scoped to specific endpoints and agency. tRPC procedures validate input with Zod schemas. All OpenAPI responses are paginated (max 100 records per page). Export endpoints log every invocation to audit_log. |
+| T1 | **Insider access to PHI** — A staff member views client records outside their assigned homes, or a terminated employee retains access. | High | High | Supabase RLS enforces home-scoped access for caregivers at the Postgres level. On termination, `profiles.active` is set to `false` and the Supabase Auth session is revoked, which is the primary deactivation mechanism. `current_user_home_ids()` in rls.sql also requires `active = true`, so a deactivated user's token stops returning clinical rows even before it expires. Users cannot widen their own access: a trigger blocks non-admins from changing `home_ids`, `role` or `med_certified` on their own profile. Audit log captures every PHI read. |
+| T2 | **Device theft or loss** — A caregiver's phone is stolen while logged in, exposing offline-cached PHI in PowerSync OPFS. | High | High | Session timeout after 12 hours of inactivity (configurable per agency, minimum 15 minutes for high-security). PowerSync OPFS is encrypted at rest with a random per-device key; only a PIN-wrapped copy is stored on the device (offline-sync.md, "Local database encryption key"). PIN/biometric lock is required to open the app or resume a backgrounded session; after 5 wrong PINs the wrapped key is deleted. Deactivating the device on the server deletes the server copy of the key. Local data is deleted on logout only once all changes have synced. |
+| T3 | **Session hijacking** — An attacker steals a JWT or refresh token via XSS, MITM, or physical access to a shared device. | Medium | Critical | The refresh token lives in a cookie managed by `@supabase/ssr` in `hooks.server.ts` (Secure, SameSite=Lax). The browser gets a short-lived (1 hour) access token from the server and holds it in memory only, because PowerSync and Supabase Realtime need it. Refresh tokens rotate on every use (Supabase default). No token is ever written to `localStorage` or `sessionStorage`. TLS 1.3 enforced on all connections. Content Security Policy headers block inline scripts and mitigate XSS. Session revocation propagates within 60 seconds via Supabase Realtime. |
+| T4 | **API abuse** — An attacker or rogue integration hammers the tRPC or OpenAPI endpoints to exfiltrate data, brute-force auth, or cause denial of service. | Medium | High | Rate limiting on all endpoints: 100 req/min per user for tRPC, 30 req/min per API key for OpenAPI (60/hour for bulk export). Supabase Auth rate-limits login attempts (5 failures lock the account for 15 minutes). OpenAPI keys are scoped to specific endpoints and agency. tRPC procedures validate input with Zod schemas. All OpenAPI responses are paginated (max 100 records per page; max 1,000 for bulk export). Export endpoints log every invocation to audit_log. |
 | T5 | **Data exfiltration via exports** — A privileged user (admin/supervisor) exports client data as CSV/PDF and shares it outside the organization. | Medium | High | All export actions are logged in audit_log with the export format, record count, and filter criteria. Exports are watermarked with the requesting user's name and timestamp. Export access is restricted to supervisor and admin roles. Agencies can disable export functionality per role via `agencies.settings`. Large exports (>500 records) require a second confirmation step. |
 | T6 | **Stored XSS** — An attacker injects malicious scripts via note content, messages, or incident descriptions that execute when rendered in supervisor views. | Medium | High | All user-generated content is rendered via Svelte's default auto-escaping (no `{@html}`). Content Security Policy headers block inline scripts (`script-src 'self'`). Zod input validation on tRPC procedures sanitizes inputs. Supervisor review screens render note content as text, not HTML. |
-| T7 | **CSRF** — An attacker tricks an authenticated user's browser into making state-changing requests to the tRPC API. | Low | High | SvelteKit uses `SameSite=Strict` cookies for session context. tRPC procedures require valid JWT in the Authorization header. No state-changing operations use GET requests. CORS is restricted to the application's own origin. |
+| T7 | **CSRF** — An attacker tricks an authenticated user's browser into making state-changing requests to the tRPC API. | Low | High | Session cookies set by `@supabase/ssr` are `SameSite=Lax`. tRPC procedures require the access token in the Authorization header (a cross-site form can't add it), and the server rejects requests whose `Origin` isn't the app's own. No state-changing operations use GET requests. CORS is restricted to the application's own origin. |
 | T8 | **Supply chain attack** — A compromised npm dependency exfiltrates PHI or injects malicious code into the production build. | Low | Critical | `npm audit` runs in CI on every build. Dependencies are pinned with `package-lock.json`. Renovate/Dependabot monitors for CVEs. Production builds use `npm ci` (no deviation from lockfile). CSP headers limit exfiltration vectors. PHI is never present in the build output (server-side only). |
-| T9 | **Ransomware or malware on caregiver devices** — A caregiver's personal phone is infected, compromising the cached OPFS database or intercepting PHI in memory. | Medium | High | PowerSync OPFS is encrypted with SQLCipher (AES-256-CBC). Session-scoped encryption key is not stored on disk. PWA isolation limits malware access to browser sandbox. Minimum OS version requirements (iOS 16.4+, Android 10+) ensure current security patches. PHI in memory is transient and cleared on logout/session expiry. |
+| T9 | **Ransomware or malware on caregiver devices** — A caregiver's personal phone is infected, compromising the cached OPFS database or intercepting PHI in memory. | Medium | High | PowerSync OPFS is encrypted (SQLCipher-style AES-256; confirm the encrypted wa-sqlite build before launch). The database key is never stored on disk in plaintext; only a PIN-wrapped copy is. PWA isolation limits malware access to browser sandbox. Minimum OS version requirements (iOS 16.4+, Android 10+) ensure current security patches. PHI in memory is transient and cleared on logout/session expiry. |
 | T10 | **IDOR via UUID guessing** — An attacker attempts to access records by guessing or enumerating UUIDs in API requests. | Low | High | UUIDs are v4 (122 bits of entropy, infeasible to guess). All queries are scoped by `agency_id` via RLS at the Postgres level — even a valid UUID from another agency returns no rows. tRPC procedures validate input with Zod UUID schemas. Rate limiting on API endpoints prevents enumeration. |
 | T11 | **Social engineering / phishing targeting magic link auth** — An attacker sends a phishing email mimicking the magic link flow to harvest credentials or session tokens. | Medium | Medium | Magic link emails are sent only via Supabase Auth with a verified sender domain. Links expire after 1 hour. Links are single-use (consumed on first click). MFA is required for supervisor and admin roles, limiting the impact of a compromised magic link. Security awareness training covers phishing recognition. |
 | T12 | **Prompt injection via Lomi AI inputs** — A caregiver (or attacker with a caregiver's session) crafts voice or text input designed to manipulate Lomi's AI behavior, bypass safety rules, or extract system prompt content. | Low | Medium | Lomi prompts use structured templates with clear system/user message separation. AI output always goes through the review UI — no auto-submission. Output is constrained to clinical prose sections (activities, meals, mood, health) with Zod schema validation. Model output that fails schema validation falls back to rules-based drafting. No tool use or function calling is enabled for Lomi. |
@@ -34,10 +34,11 @@ Guad operates as a Business Associate under HIPAA. This document defines the sec
 ### Session Management
 
 - Supabase Auth issues a short-lived JWT (1 hour) and a long-lived refresh token.
-- The Supabase JS client holds the access token in memory. It is **not** persisted to `localStorage` or `sessionStorage`. The access token must be accessible to client-side JavaScript for PowerSync sync authentication and Supabase Realtime WebSocket connections. Mitigations: short-lived (1 hour), CSP headers prevent XSS, no durable client-side storage.
+- Session cookies are managed by `@supabase/ssr` in `hooks.server.ts`; application code never builds or sets auth cookies itself.
+- The access token is handed to the client and kept in memory only (never `localStorage` or `sessionStorage`), because PowerSync and Supabase Realtime need it in JavaScript. Mitigations: short-lived (1 hour), strict CSP against XSS, no durable client-side storage.
 - Refresh token rotation: each use of a refresh token invalidates the old one and issues a new pair.
 - Session expiry: 12 hours of inactivity (no API calls). Configurable per agency down to 15 minutes.
-- On logout: Supabase Auth session is revoked server-side, local PowerSync OPFS cache is cleared, service worker cache is purged of PHI-containing responses.
+- On logout: Supabase Auth session is revoked server-side and the service worker cache is purged. The local PowerSync database is deleted once its upload queue is empty; if changes are still unsynced (offline), the app locks instead and deletes the database after the next successful sync (offline-sync.md §7).
 
 ### JWT Custom Claims
 
@@ -77,7 +78,7 @@ Row-Level Security (RLS) is enforced at the Postgres level. The matrix below sho
 | Resource | Caregiver | Supervisor | Admin |
 |----------|-----------|------------|-------|
 | **agencies** | Read own | Read own | Read + Update own |
-| **profiles** | Read own agency (home-filtered); Update own profile | Read own agency; Update own profile | Read + Write own agency |
+| **profiles** | Read own agency (home-filtered); Update own name, phone, avatar only | Read own agency; Update own name, phone, avatar only | Read + Write own agency |
 | **homes** | Read assigned homes | Read + Update all agency homes | Full CRUD |
 | **clients** | Read/Write clients in assigned homes | Read/Write all agency clients | Full CRUD |
 | **client_health_info** | Read clients in assigned homes | Read/Write all agency | Full CRUD |
@@ -87,25 +88,30 @@ Row-Level Security (RLS) is enforced at the Postgres level. The matrix below sho
 | **medication_history** | Read clients in assigned homes | Read + Insert all agency | Full CRUD |
 | **notes** | Create own; Read all notes in assigned homes; Update own notes in draft/returned status | Read/Write all agency; Approve/Return notes | Full CRUD |
 | **note_goals** | Create/Read/Update own draft notes' goals | Read/Write all agency | Full CRUD |
-| **note_history** | Read own notes' history | Read all agency | Read + Insert (append-only) |
+| **note_history** | Read own notes' history | Read all agency | Read only (written by trigger) |
 | **incidents** | Create own; Read in assigned homes; Update own open incidents | Read/Write all agency; Close incidents | Full CRUD |
-| **mar_records** | Create (if med_certified); Read assigned homes | Read/Write all agency | Full CRUD (no DELETE — amend only) |
+| **mar_records** | Create (if med_certified); Read assigned homes | Read all agency; Create; set `acknowledged` only | Same as supervisor (no edits, no DELETE — amend only) |
 | **health_entries** | Create; Read assigned homes | Read/Write all agency | Full CRUD |
 | **attendance** | Create; Read assigned homes | Read/Write all agency | Full CRUD |
 | **messages** | Read/Write in assigned homes | Read/Write all agency | Full CRUD |
 | **coverage_requests** | Read assigned homes; Create callout for own shifts | Read/Write all agency | Full CRUD |
-| **coverage_candidates** | Read/Reply to own candidacy | Read/Write all agency | Full CRUD |
+| **coverage_candidates** | Read own candidacy; reply via coverage.accept/decline (server) | Read/Write all agency | Full CRUD |
 | **coverage_steps** | Read assigned homes | Read + Insert all agency (append-only) | Read + Insert (append-only — coverage steps are an immutable audit trail) |
-| **clock_records** | Create/Read/Update own | Read/Write all agency; Acknowledge overrides | Full CRUD |
+| **clock_records** | Create/Read own; Update own open record to clock out only (verification computed by server) | Read/Write all agency; Acknowledge overrides | Full CRUD |
 | **schedule_slots** | Read assigned homes | Read/Write all agency | Full CRUD |
-| **events** | Read assigned homes | Read all agency | Read all agency |
-| **audit_log** | No access | Read own agency | Read own agency (no UPDATE/DELETE ever) |
-| **notifications** | Read/Update own | Read/Update own | Read all agency |
+| **events** | Read assigned homes | Read all agency | Read all agency (written by server only) |
+| **audit_log** | No access | Read own agency | Read own agency (written by trigger only; no INSERT/UPDATE/DELETE by any user) |
+| **notifications** | Read/Update own (created by server only) | Read/Update own | Read all agency |
 | **notification_preferences** | Read/Write own | Read/Write own | Read/Write all agency |
 | **sync_checkpoints** | Read/Write own | Read/Write own | Read/Write all agency |
 | **case_notes** | Create own; Read/Update own in assigned homes | Read/Write all agency | Full CRUD |
 | **referrals** | No access | Read/Write own agency | Full CRUD |
 | **rooms** | Read assigned homes | Read/Write all agency | Full CRUD |
+| **device_tokens** | Read/Write own | Read/Write own | Read/Write own |
+| **user_settings** | Read/Write own | Read/Write own | Read/Write own |
+| **email_suppressions** | No access | No access | Read + Delete (server adds rows) |
+| **api_keys, webhooks, webhook_deliveries** | No access | No access | Full access (keys revoked, not deleted) |
+| **report_jobs** | No access | Read own agency (server creates and updates) | Same as supervisor |
 
 ---
 
@@ -154,11 +160,13 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 - URL parameters or query strings
 - Error monitoring payloads (Sentry, LogRocket, etc.)
 - SMS message bodies (shift info only: home name, time — never client names or health data)
+- Push notification payloads (generic title + notification ID only; FCM is not a BAA-covered service)
+- Browser speech-recognition APIs (e.g., Chrome's Web Speech API sends audio to Google; it is never used)
 - Email notification bodies (references use opaque IDs, links to authenticated app)
 - Service worker cache (only static assets and non-PHI API responses)
 - Git repositories, CI/CD logs, deployment logs
 
-**Re-identification risk note:** Push notifications for incidents include the incident type (e.g., "Seizure", "Fall") and home name. In small group homes with 1-4 clients, this combination could identify the individual. This risk is accepted because push notifications are delivered only to authenticated staff devices (not via SMS or email), and staff already have authorized access to the clinical data. For homes with fewer than 3 clients, agencies may consider using generic incident categories in push notifications.
+**Re-identification risk note:** In small group homes, even an incident type plus home name ("Seizure at Oak House") can identify the person. Push payloads therefore carry no event details at all (see notifications.md §1). Details appear only inside the authenticated app.
 
 ---
 
@@ -177,7 +185,7 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 |-------|-----------|----------------|
 | Supabase Postgres | AES-256 (managed by Supabase/AWS) | AWS KMS, keys rotated annually |
 | Supabase backups | AES-256 server-side encryption | Same KMS key hierarchy |
-| PowerSync OPFS (device) | SQLCipher (AES-256-CBC) | Key derived from authenticated session token |
+| PowerSync OPFS (device) | SQLCipher-style AES-256 (confirm encrypted wa-sqlite build) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2); server copy deleted on deactivation |
 | AWS Bedrock | AES-256 (AWS managed) | AWS KMS |
 | Redis (BullMQ) | TLS in transit; AES-256 at rest (required — use managed Redis with encryption enabled; unencrypted Redis deployments must not be used in production) | Provider KMS |
 
@@ -287,10 +295,11 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 | Vendor | Service | PHI Exposed | BAA Status |
 |--------|---------|------------|------------|
 | **Supabase** | Managed Postgres, Auth, Realtime, Storage | Yes — all PHI at rest, auth tokens | Required. Supabase offers BAA on Pro plan and above. **Must be executed before production launch.** |
-| **AWS (Bedrock)** | Claude AI for note drafting | Yes — client first name and goal text in prompts only. No last names, health data, medications, or clinical content. See ai-pipeline.md PHI Minimization section for exact scope. | Required. AWS provides BAA as part of the AWS BAA program (HIPAA Eligible Services). **Must be executed before enabling Lomi note drafting.** |
+| **AWS (Bedrock)** | Claude AI for note drafting | Yes — the caregiver's transcript (which can describe health, behavior, meals and medications), plus the client's first name and goal text. No last names, DOBs, IDs, diagnoses list or guardian info are added by Guad. See ai-pipeline.md PHI Minimization. | Required. AWS provides BAA as part of the AWS BAA program (HIPAA Eligible Services). **Must be executed before enabling Lomi note drafting.** |
 | **Azure (OpenAI)** | Whisper for transcription | Yes — audio may contain client names, health info | Required. Azure provides BAA for Azure OpenAI Service. **Must be executed before enabling voice transcription.** |
 | **Twilio** | SMS for shift coverage, notifications | Minimal — shift times, home names. **No client names or health data in SMS body.** | Required (belt-and-suspenders). Twilio offers HIPAA-eligible messaging. |
 | **Amazon SES** | Transactional email | Minimal — notification triggers only. Email bodies contain links, not PHI. | Required. Covered under AWS BAA. |
+| **Google (Firebase Cloud Messaging)** | Push notification delivery | No — by design. Push payloads carry only a generic title ("Guad: Action needed"), a notification ID and a deep link. The app fetches details after the user opens it and signs in. Incident types, client names and medication details are never in a push payload. | Not required while payloads stay PHI-free. If any PHI is ever added to push payloads, FCM is not BAA-covered and must not be used. |
 | **PowerSync** | Offline sync engine | Yes — synced PHI tables cached locally | Required. PowerSync offers BAA for healthcare customers. **Must be executed before production launch.** |
 | **Vercel** (or hosting provider) | SvelteKit application hosting | No PHI at rest (server-side rendering may process PHI in memory) | Required (precautionary). Vercel offers BAA on Enterprise plan. |
 | **Redis provider** (e.g., Upstash) | BullMQ job queue | Minimal — job payloads may contain record IDs, never raw PHI | Recommended. Structure job payloads to contain only IDs; workers fetch PHI from Postgres at execution time. |
@@ -302,6 +311,7 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 - [ ] Azure BAA executed (OpenAI Whisper)
 - [ ] Twilio BAA executed
 - [ ] PowerSync BAA executed
+- [ ] Confirm push payloads contain no PHI (automated test in notifications.md §12)
 - [ ] Hosting provider BAA executed
 - [ ] Redis provider BAA executed or PHI excluded from payloads
 - [ ] All BAAs stored in secure document management (not in git repo)
@@ -322,14 +332,14 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 ### Local SQLite Encryption
 
 - PowerSync uses wa-sqlite compiled with SQLCipher, providing AES-256-CBC encryption for the local OPFS database.
-- The encryption key is derived from the user's authenticated session and is not stored in plaintext on the device.
-- If the session expires, the encryption key is lost and the local database becomes inaccessible.
+- The key is a random per-device key issued by the server at first sign-in. It is held in memory and stored on disk only wrapped with a PIN-derived key, so caregivers can reopen the app offline across token expiry without losing unsynced work.
+- Five wrong PINs delete the wrapped key; the database can then only be reopened by signing in online. Deactivating the user or device deletes the server copy of the key.
 
 ### Data Cleared on Logout
 
-On explicit logout or session expiry, the following are cleared:
+On explicit logout, the following are cleared (session expiry only drops the in-memory key; see offline-sync.md §7):
 
-1. PowerSync OPFS database is deleted (`indexedDB.deleteDatabase()` and OPFS directory removal).
+1. PowerSync OPFS database is deleted (OPFS directory removal) **once the upload queue is empty**. If changes are unsynced, the app locks instead and deletes the database after the next successful sync.
 2. Service worker cache is purged of any API responses.
 3. All in-memory Svelte stores are reset.
 4. Supabase Auth session is revoked server-side (invalidates refresh token).
