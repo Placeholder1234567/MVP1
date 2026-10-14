@@ -10,7 +10,7 @@ Before writing any code, read the relevant `.specify/` files:
 
 | File | Contains |
 |------|----------|
-| `constitution.md` | Non-negotiable engineering principles (14 rules). Read this first. |
+| `constitution.md` | Non-negotiable engineering principles (15 rules). Read this first. |
 | `schema.ts` | Drizzle pgTable definitions for all 37 tables. This is the single source of truth for the data model. |
 | `services.md` | Service boundaries, data ownership matrix, dependency graph, job registry (Cloud Tasks). |
 | `infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, database session setup, jobs, local dev, cost. |

@@ -221,11 +221,17 @@ guad/
 │   │   ├── sync/
 │   │   │   ├── connector.ts                  # PowerSync connector: ID token (via /auth/sync-token after reload), uploads via sync.upload
 │   │   │   └── schema.ts                     # PowerSync client schema (mirrors the synced tables)
-│   │   ├── utils/
-│   │   │   ├── date.ts                       # Date formatting, day keys (YYYY-MM-DD), shift time boundaries
-│   │   │   ├── geo.ts                        # Haversine distance, location request helpers
+│   │   ├── domain/                           # Pure business rules shared by device and server (constitution principle 15). Imports nothing from db, server, browser APIs or UI.
+│   │   │   ├── shifts.ts                     # Shift boundaries (AM 07-15, PM 15-23, ON 23-07), currentShift, shift day (ON belongs to the day it starts)
+│   │   │   ├── dose-slots.ts                 # Scheduled times -> dose slots, meds due now, matching MAR records to slots
+│   │   │   ├── note-lifecycle.ts             # Allowed note status transitions (same rules as the notes_enforce_transition trigger)
+│   │   │   ├── geo.ts                        # Haversine distance, geofence check, rankHomes
 │   │   │   ├── vitals.ts                     # Vital limit checks: tempHi 100.4, tempLo 95, pulseHi 100, pulseLo 50, sysHi 140, sysLo 90, diaHi 90, diaLo 60
-│   │   │   └── eligibility.ts               # Coverage eligibility engine: trained, available, not over hours, nearby
+│   │   │   └── eligibility.ts                # Coverage eligibility engine: trained, available, not over hours, nearby
+│   │   ├── utils/                            # App helpers that may use browser or SvelteKit APIs (not shared rules)
+│   │   │   ├── date.ts                       # Date formatting, day keys (YYYY-MM-DD)
+│   │   │   ├── location.ts                   # Browser geolocation request helper (calls domain/geo for the math)
+│   │   │   └── has-feature.ts                # Feature entitlement check (entitlements.md)
 │   │   └── types/
 │   │       └── index.ts                      # Shared TypeScript types (InferSelectModel/InferInsertModel from schema)
 │   ├── routes/
@@ -308,11 +314,15 @@ guad/
 │   │   │   ├── clock.test.ts
 │   │   │   ├── intake.test.ts
 │   │   │   └── audit.test.ts
-│   │   ├── utils/                            # Unit tests for utility functions
-│   │   │   ├── date.test.ts
+│   │   ├── domain/                           # Unit tests for shared business rules (no database, no browser)
+│   │   │   ├── shifts.test.ts
+│   │   │   ├── dose-slots.test.ts
+│   │   │   ├── note-lifecycle.test.ts
 │   │   │   ├── geo.test.ts
 │   │   │   ├── vitals.test.ts
 │   │   │   └── eligibility.test.ts
+│   │   ├── utils/                            # Unit tests for app helpers
+│   │   │   └── date.test.ts
 │   │   └── ai/                               # Unit tests for prompt building, fallback logic
 │   │       ├── prompts.test.ts
 │   │       └── fallback.test.ts

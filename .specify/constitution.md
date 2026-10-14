@@ -52,6 +52,13 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 
 14. **All UI meets WCAG 2.1 AA.** Touch targets are minimum 44x44px. Every interactive element is keyboard-navigable and screen-reader-announced. Color is never the sole indicator of state. Accessibility is tested in CI via axe-core.
 
+15. **Module boundaries stay clean so the app can split later.** Guad starts as one SvelteKit app (web and worker are two Cloud Run services built from the same image). To keep a later move to a monorepo (`apps/*`, `packages/*`) a matter of moving folders, these import rules are enforced by ESLint (`no-restricted-imports`) in CI:
+    - `src/lib/domain/` holds pure business rules used on both the device and the server (shifts, dose slots, note transitions, geofence math, vital limits, coverage eligibility). It imports nothing outside `src/lib/domain/`: no database, no server code, no browser APIs, no Svelte. The device and the server must never implement these rules separately.
+    - Services are imported only through their `index.ts`; one service never imports another's `*.queries.ts`.
+    - Database access lives only in `src/lib/server/db/` and service `*.queries.ts` files.
+    - Job handlers (`src/lib/server/jobs/`) call services, never UI code or routes.
+    - Client code never imports from `src/lib/server/` (SvelteKit also blocks this at build time).
+
 ## Technology Decisions
 
 | Decision | Choice | Rationale | Alternative Considered |

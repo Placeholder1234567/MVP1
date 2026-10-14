@@ -95,6 +95,11 @@ These are absolute. Do not deviate.
 
 ## Conventions
 
+### Module boundaries (constitution principle 15)
+- Shared business rules go in `src/lib/domain/` and import nothing outside it (no db, server, browser or Svelte). Phone and server use the same functions.
+- Import services only through their `index.ts`. Database access only in `src/lib/server/db/` and `*.queries.ts`.
+- Job handlers call services, never UI code. ESLint enforces these rules.
+
 ### File naming
 - kebab-case for TypeScript files: `charting-preset.ts`, `coverage-timeout.ts`
 - PascalCase for Svelte components: `GoalPicker.svelte`, `NoteReview.svelte`
