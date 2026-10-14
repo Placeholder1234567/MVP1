@@ -1,4 +1,6 @@
-# Guad
+# Guad MVP (prototype)
+
+> This folder is the vanilla-JS prototype. The production app is being rebuilt at the repo root (see `../CLAUDE.md` and `../.specify/`).
 
 Documentation, scheduling and AI-assisted shift coverage for agencies that support people with intellectual and developmental disabilities. Lomi is Guad's AI assistant.
 
@@ -45,6 +47,7 @@ No build step: it's plain HTML, CSS and JavaScript.
 ## Run it locally
 
 ```bash
+cd mvp
 npx vercel dev         # serves the site and /api/lomi at http://localhost:3000
 ```
 
@@ -69,7 +72,7 @@ member stops recording.
 ## Deploy to Vercel
 
 1. Push this folder to your GitHub repo.
-2. In Vercel, import the repo (no framework preset needed).
+2. In Vercel, import the repo and set **Root Directory** to `mvp` (no framework preset needed).
 3. Add `ANTHROPIC_API_KEY` under Project Settings → Environment Variables.
 4. Deploy. The app is served at `/`, and Lomi runs at `/api/lomi`.
 

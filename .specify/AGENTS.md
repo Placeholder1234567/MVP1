@@ -33,19 +33,19 @@ Before writing any code, read the relevant `.specify/` files:
 
 ## MVP Reference Implementation
 
-The working MVP prototype lives in the project root. **Read these files before building any UI component** — they contain the actual implementation logic, interaction patterns, and rendering behavior that the new SvelteKit build must replicate:
+The working MVP prototype lives in `mvp/`. Other specs cite these files without the folder (e.g. `styles.css:101`, `src/app-core.js`); those always mean the copy under `mvp/`. **Read these files before building any UI component** — they contain the actual implementation logic, interaction patterns, and rendering behavior that the new SvelteKit build must replicate:
 
 | File | What it contains | Read it when |
 |------|-----------------|--------------|
-| `styles.css` | **Complete design system.** Every CSS custom property, color, font, radius, shadow, animation, layout. This is the visual identity — port it exactly. | Any UI work |
-| `src/app-caregiver.js` | Caregiver screens: Today view, person detail, note compose (voice + Lomi orb), note review (sections, goal picker, flags, incident detection), MAR, health entry, incident wizard, messages, shifts, profile. | Building caregiver routes |
-| `src/app-office.js` | Supervisor dashboard: overview stats, schedule grid, note review/approve/send-back, incident review, medication table, people management (goals, meds, attendance, case notes), analytics, reports, setup. | Building supervisor routes |
-| `src/app-core.js` | Business logic and constants: vital thresholds, shift labels, prompt levels, services list, coverage engine, note normalization, CSV export, date helpers. | Implementing services or validation |
-| `src/app-main.js` | Event handling, rendering loop, state management, clock-in/out flow, Lomi draft/summary flow, note signing, incident submission, all user actions. | Understanding interaction flows |
-| `src/store.js` | Data model (emptyState shape), localStorage persistence, seed data generator. | Understanding data structures |
-| `src/lomi.js` | AI client: draft/summarize functions, rules-based fallback, vague word detection, incident regex. | Implementing Lomi service |
-| `src/prompts.js` | Prompt templates for shift notes, behavior notes, summaries. Exact prompt text. | Implementing AI pipeline |
-| `src/geo.js` | Haversine distance, currentPosition wrapper, rankHomes, formatDistance. | Implementing clock-in geofence |
+| `mvp/styles.css` | **Complete design system.** Every CSS custom property, color, font, radius, shadow, animation, layout. This is the visual identity — port it exactly. | Any UI work |
+| `mvp/src/app-caregiver.js` | Caregiver screens: Today view, person detail, note compose (voice + Lomi orb), note review (sections, goal picker, flags, incident detection), MAR, health entry, incident wizard, messages, shifts, profile. | Building caregiver routes |
+| `mvp/src/app-office.js` | Supervisor dashboard: overview stats, schedule grid, note review/approve/send-back, incident review, medication table, people management (goals, meds, attendance, case notes), analytics, reports, setup. | Building supervisor routes |
+| `mvp/src/app-core.js` | Business logic and constants: vital thresholds, shift labels, prompt levels, services list, coverage engine, note normalization, CSV export, date helpers. | Implementing services or validation |
+| `mvp/src/app-main.js` | Event handling, rendering loop, state management, clock-in/out flow, Lomi draft/summary flow, note signing, incident submission, all user actions. | Understanding interaction flows |
+| `mvp/src/store.js` | Data model (emptyState shape), localStorage persistence, seed data generator. | Understanding data structures |
+| `mvp/src/lomi.js` | AI client: draft/summarize functions, rules-based fallback, vague word detection, incident regex. | Implementing Lomi service |
+| `mvp/src/prompts.js` | Prompt templates for shift notes, behavior notes, summaries. Exact prompt text. | Implementing AI pipeline |
+| `mvp/src/geo.js` | Haversine distance, currentPosition wrapper, rankHomes, formatDistance. | Implementing clock-in geofence |
 
 **The MVP is the ground truth for how features behave.** The `.specify/` docs describe the architecture of the new system; the MVP code shows the actual UX logic to preserve. When the spec and the MVP code disagree on behavior, flag it — don't silently pick one.
 

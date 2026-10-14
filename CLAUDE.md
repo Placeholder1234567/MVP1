@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-> **The SvelteKit app isn't set up yet.** The commands below are for the rebuild. Today the repo holds the vanilla-JS MVP (run it with `npx vercel dev`, see README.md) and the specs in `.specify/`. Spec checks you can run now:
+> **The SvelteKit app isn't set up yet.** The commands below are for the rebuild. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`) and the specs in `.specify/`. Spec checks you can run now:
 >
 > - `node .specify/lint.js`: cross-spec consistency
 > - `bash .specify/tests/rls/run.sh`: applies `schema.ts` + `rls.sql` to a throwaway Postgres (needs Docker) and runs the RLS and integrity-trigger tests
@@ -31,19 +31,19 @@ npm run dev                 # SvelteKit dev server at http://localhost:5173 + Fi
 
 ## MVP Reference (read before building UI)
 
-The working MVP prototype is in the project root. These files are the ground truth for how features look and behave:
+The working MVP prototype is in `mvp/` (run it with `cd mvp && npx vercel dev`). These files are the ground truth for how features look and behave. Other specs cite these files without the folder (e.g. `styles.css:101`, `src/app-core.js`); those always mean the copy under `mvp/`.
 
 | File | Read it for |
 |------|------------|
-| `styles.css` | **Complete visual identity** — every color, font, radius, shadow, animation. Port exactly. |
-| `src/app-caregiver.js` | Caregiver screens, interactions, rendering logic |
-| `src/app-office.js` | Supervisor dashboard, review flows, management screens |
-| `src/app-core.js` | Business logic, constants (vitals, shifts, prompt levels), helpers |
-| `src/app-main.js` | Event handling, state management, all user action flows |
-| `src/store.js` | Data model shape, seed data |
-| `src/lomi.js` | AI client, rules-based fallback, vague word detection |
-| `src/prompts.js` | Exact prompt templates for AI drafting |
-| `src/geo.js` | Geofence logic (haversine, rankHomes) |
+| `mvp/styles.css` | **Complete visual identity** — every color, font, radius, shadow, animation. Port exactly. |
+| `mvp/src/app-caregiver.js` | Caregiver screens, interactions, rendering logic |
+| `mvp/src/app-office.js` | Supervisor dashboard, review flows, management screens |
+| `mvp/src/app-core.js` | Business logic, constants (vitals, shifts, prompt levels), helpers |
+| `mvp/src/app-main.js` | Event handling, state management, all user action flows |
+| `mvp/src/store.js` | Data model shape, seed data |
+| `mvp/src/lomi.js` | AI client, rules-based fallback, vague word detection |
+| `mvp/src/prompts.js` | Exact prompt templates for AI drafting |
+| `mvp/src/geo.js` | Geofence logic (haversine, rankHomes) |
 
 **When the spec and MVP code disagree on behavior, flag it — don't silently pick one.**
 
@@ -184,28 +184,28 @@ PUBLIC_POWERSYNC_URL=            # PowerSync service URL
 
 | Task | Read first (file, lines, section) |
 |------|-----------|
-| Working on shift note compose/review | `src/app-caregiver.js`, `frontend-spec-2.md` lines 114-442 (§3.2 Shift Note Creation), `ai-pipeline.md` |
-| Working on goal/ISP scoring | `src/app-caregiver.js`, `frontend-spec-2.md` lines 443-527 (§3.3 Goal/ISP Scoring) |
-| Working on medications/MAR | `src/app-caregiver.js`, `frontend-spec-2.md` lines 528-676 (§3.4 Medication Administration), `charting-ux.md` (section 4.5) |
-| Working on vitals entry | `src/app-caregiver.js`, `frontend-spec-2.md` lines 677-779 (§3.5 Health Vital Entry) |
-| Working on incident reports | `src/app-caregiver.js`, `frontend-spec-2.md` lines 780-912 (§3.6 Incident Report Wizard) |
+| Working on shift note compose/review | `mvp/src/app-caregiver.js`, `frontend-spec-2.md` lines 114-442 (§3.2 Shift Note Creation), `ai-pipeline.md` |
+| Working on goal/ISP scoring | `mvp/src/app-caregiver.js`, `frontend-spec-2.md` lines 443-527 (§3.3 Goal/ISP Scoring) |
+| Working on medications/MAR | `mvp/src/app-caregiver.js`, `frontend-spec-2.md` lines 528-676 (§3.4 Medication Administration), `charting-ux.md` (section 4.5) |
+| Working on vitals entry | `mvp/src/app-caregiver.js`, `frontend-spec-2.md` lines 677-779 (§3.5 Health Vital Entry) |
+| Working on incident reports | `mvp/src/app-caregiver.js`, `frontend-spec-2.md` lines 780-912 (§3.6 Incident Report Wizard) |
 | Working on messaging/SComm | `frontend-spec-2.md` lines 913-967 (§3.7 Messages/SComm) |
-| Working on clock-in/timekeeping | `src/app-main.js`, `src/geo.js`, `frontend-spec-2.md` lines 968-1060 (§3.8 Clock In/Out), `services.md` |
+| Working on clock-in/timekeeping | `mvp/src/app-main.js`, `mvp/src/geo.js`, `frontend-spec-2.md` lines 968-1060 (§3.8 Clock In/Out), `services.md` |
 | Working on person detail view | `frontend-spec-2.md` lines 1061-1167 (§3.9 Person Detail View) |
 | Working on caregiver nav | `frontend-spec-2.md` lines 1168-1213 (§3.10 Bottom Tab Navigation) |
-| Working on Lomi AI UX | `src/lomi.js`, `src/prompts.js`, `ai-pipeline.md`, `frontend-spec-2.md` lines 1214-1559 (§6 AI/Lomi UX) |
+| Working on Lomi AI UX | `mvp/src/lomi.js`, `mvp/src/prompts.js`, `ai-pipeline.md`, `frontend-spec-2.md` lines 1214-1559 (§6 AI/Lomi UX) |
 | Working on offline/PWA UX | `offline-sync.md`, `frontend-spec-2.md` lines 1560-1867 (§8 Offline & PWA UX) |
-| Working on supervisor overview | `src/app-office.js`, `frontend-spec-3.md` lines 22-276 (§4.1 Overview Dashboard) |
-| Working on note review/approval | `src/app-office.js`, `frontend-spec-3.md` lines 277-425 (§4.2 Note Review & Approval) |
-| Working on schedule management | `src/app-office.js`, `frontend-spec-3.md` lines 426-558 (§4.3 Schedule Management) |
+| Working on supervisor overview | `mvp/src/app-office.js`, `frontend-spec-3.md` lines 22-276 (§4.1 Overview Dashboard) |
+| Working on note review/approval | `mvp/src/app-office.js`, `frontend-spec-3.md` lines 277-425 (§4.2 Note Review & Approval) |
+| Working on schedule management | `mvp/src/app-office.js`, `frontend-spec-3.md` lines 426-558 (§4.3 Schedule Management) |
 | Working on analytics/reports | `frontend-spec-3.md` lines 559-736 (§4.4 Analytics, §4.5 Reports) |
 | Working on staff/individual mgmt | `frontend-spec-3.md` lines 737-1040 (§4.6 Staff, §4.7 Individual, §4.8 Agency Settings) |
-| Working on any UI component | `styles.css`, `design-system.md`, `frontend-spec-1.md` lines 448-604 (§2.7 Component Tokens), `frontend-spec-3.md` lines 1041-2017 (§5 Component Library) |
+| Working on any UI component | `mvp/styles.css`, `design-system.md`, `frontend-spec-1.md` lines 448-604 (§2.7 Component Tokens), `frontend-spec-3.md` lines 1041-2017 (§5 Component Library) |
 | Working on design system tokens | `frontend-spec-1.md` lines 23-445 (§2 Design System: colors, type, spacing, elevation, radius, motion) |
 | Working on accessibility | `frontend-spec-1.md` lines 607-752 (§9 Accessibility) |
 | Working on dark mode | `frontend-spec-1.md` lines 755-1016 (§10 Dark Mode) |
 | Working on navigation/routing | `frontend-spec-3.md` lines 2018-2161 (§7 Navigation & IA) |
-| Working on scheduling/coverage | `src/app-office.js`, `src/app-core.js`, `services.md`, `trpc-router.md` |
+| Working on scheduling/coverage | `mvp/src/app-office.js`, `mvp/src/app-core.js`, `services.md`, `trpc-router.md` |
 | Working on client intake | `services.md` (Intake Service), `trpc-router.md` (intake section) |
 | Working on auth or roles | `security.md`, `rls.sql`, `trpc-router.md` (context + middleware) |
 | Working on notifications | `notifications.md`, `services.md` (Notification Service) |
