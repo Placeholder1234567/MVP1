@@ -4,8 +4,11 @@ guad/
 │   │   ├── server/
 │   │   │   ├── db/
 │   │   │   │   ├── schema.ts                # Drizzle pgTable definitions (source of truth for all types)
-│   │   │   │   ├── index.ts                  # Drizzle client instance (connection + RLS session setup)
+│   │   │   │   ├── index.ts                  # Drizzle client (Cloud SQL connector) + withUser()/withService() transaction helpers that set the role and app.claims
 │   │   │   │   └── migrate.ts                # Migration runner (drizzle-kit push/migrate)
+│   │   │   ├── identity.ts                   # Firebase Admin SDK: session cookies, custom tokens, custom claims, revocation
+│   │   │   ├── aws.ts                        # SES + End User Messaging SMS clients via workload identity federation (no stored keys)
+│   │   │   ├── seed.ts                       # Development seed data, synthetic only (migration-plan.md §8)
 │   │   │   ├── trpc/
 │   │   │   │   ├── router.ts                 # Root appRouter (merges all domain routers)
 │   │   │   │   ├── context.ts                # TRPCContext: userId, agencyId, role, homeIds, medCertified, db
@@ -109,12 +112,12 @@ guad/
 │   │   │   │       └── audit.types.ts
 │   │   │   ├── ai/
 │   │   │   │   ├── lomi.ts                   # draftNote, transcribeAudio, summarizeDay, suggestGoalTrials (stateless processor)
-│   │   │   │   ├── transcribe.ts             # Azure OpenAI Whisper integration (HIPAA-eligible)
+│   │   │   │   ├── transcribe.ts             # Google Speech-to-Text v2 (Chirp) integration, under the Google Cloud BAA
 │   │   │   │   ├── prompts.ts                # Prompt templates for shift/behavior/summary tasks (single source of truth)
 │   │   │   │   └── fallback.ts               # Rules-based offline fallback: sentence classification, vague language detection, incident detection
 │   │   │   └── jobs/
-│   │   │       ├── queue.ts                  # BullMQ queues: ai, scheduling, timekeeping, notifications:push|sms|email|escalation|digest, reports, maintenance
-│   │   │       ├── worker.ts                 # Job processor entry point
+│   │   │       ├── queue.ts                  # enqueue()/cancel() over Cloud Tasks queues: ai, scheduling, timekeeping, notifications-push|sms|email|escalation|digest, reports, maintenance; in-process driver for local dev
+│   │   │       ├── worker.ts                 # Routes /api/jobs/[name] requests to handlers (OIDC-verified, idempotent)
 │   │   │       └── handlers/
 │   │   │           ├── draft.ts              # DraftJob: async AI note draft generation
 │   │   │           ├── transcribe.ts         # TranscribeJob: async audio transcription
@@ -209,10 +212,15 @@ guad/
 │   │   ├── config/
 │   │   │   └── charting-preset.ts            # getLabels(preset): label map for therap vs default terminology
 │   │   ├── stores/
-│   │   │   ├── auth.ts                       # Auth state: Supabase session, current user profile, role
+│   │   │   ├── auth.ts                       # Auth state: signed-in user, current profile, role
 │   │   │   ├── sync.ts                       # PowerSync connection, reactive queries, sync status
 │   │   │   ├── ui.ts                         # UI state: active tab, open sheets, selected home
 │   │   │   └── preset.ts                     # Reactive charting preset labels derived from agency config
+│   │   ├── auth/
+│   │   │   └── firebase.ts                   # Firebase Auth SDK client (inMemoryPersistence), sign-in helpers
+│   │   ├── sync/
+│   │   │   ├── connector.ts                  # PowerSync connector: ID token (via /auth/sync-token after reload), uploads via sync.upload
+│   │   │   └── schema.ts                     # PowerSync client schema (mirrors the synced tables)
 │   │   ├── utils/
 │   │   │   ├── date.ts                       # Date formatting, day keys (YYYY-MM-DD), shift time boundaries
 │   │   │   ├── geo.ts                        # Haversine distance, location request helpers
@@ -222,8 +230,11 @@ guad/
 │   │       └── index.ts                      # Shared TypeScript types (InferSelectModel/InferInsertModel from schema)
 │   ├── routes/
 │   │   ├── (auth)/
-│   │   │   ├── login/+page.svelte            # Email/password login, magic link option
+│   │   │   ├── login/+page.svelte            # Email/password login, email link option, TOTP MFA step
 │   │   │   └── setup/+page.svelte            # First-run agency setup: name, first home, admin profile
+│   │   ├── auth/
+│   │   │   ├── session/+server.ts            # POST: exchange ID token for session cookie; DELETE: sign out + revoke
+│   │   │   └── sync-token/+server.ts         # POST: Firebase custom token for PowerSync (requires a valid session cookie)
 │   │   ├── (app)/
 │   │   │   ├── +layout.svelte                # Auth guard, PowerSync init, nav shell (caregiver vs supervisor)
 │   │   │   ├── +layout.server.ts             # Session validation, agency/profile loading
@@ -246,6 +257,8 @@ guad/
 │   │   │   └── settings/+page.svelte         # Agency settings, staff management, home geofencing
 │   │   └── api/
 │   │       ├── trpc/[...path]/+server.ts     # tRPC handler (all internal frontend-to-backend communication)
+│   │       ├── jobs/[name]/+server.ts        # Job handlers called by Cloud Tasks / Cloud Scheduler (worker service only)
+│   │       ├── webhooks/aws/                 # SNS endpoints, signature-verified: sms-inbound, sms-events, ses-events
 │   │       └── v1/                           # External OpenAPI 3.1 routes (EVV, reports, exports, webhooks)
 │   │           ├── evv/
 │   │           │   ├── visits/+server.ts      # GET /api/v1/evv/visits, GET /api/v1/evv/visits/[visitId]
@@ -255,13 +268,14 @@ guad/
 │   │           ├── export/
 │   │           │   └── [type]/+server.ts      # GET /api/v1/export/[type] (bulk CSV/JSON)
 │   │           └── webhooks/+server.ts        # CRUD + test + deliveries for webhook subscriptions
-│   ├── hooks.server.ts                       # Supabase Auth session resolution, request logging, CORS, CSP headers
+│   ├── hooks.server.ts                       # Session cookie verification (Identity Platform), request logging, CORS, CSP headers
 │   ├── hooks.client.ts                       # PowerSync init, service worker registration, error boundary
 │   └── app.html                              # HTML shell with CSP meta, manifest link, theme-color
 ├── .specify/                                 # Architecture specs (this directory)
 │   ├── constitution.md                       # Non-negotiable engineering principles
+│   ├── infrastructure.md                     # Hosting and vendors (Google Cloud + AWS messaging), sign-in, jobs, local dev, cost
 │   ├── schema.ts                             # Drizzle pgTable definitions (37 tables, source of truth)
-│   ├── services.md                           # Service boundaries, data ownership, dependency graph, BullMQ registry
+│   ├── services.md                           # Service boundaries, data ownership, dependency graph, job registry
 │   ├── trpc-router.md                        # Full tRPC procedure specification (20 routers, input/output types)
 │   ├── charting-ux.md                        # Screen specs, voice-to-note flow, component catalog, accessibility
 │   ├── ai-pipeline.md                        # Lomi AI: draft/transcribe/summarize, prompts, fallback, HIPAA compliance
@@ -274,10 +288,13 @@ guad/
 │   ├── AGENTS.md                             # Coding agent instructions (any AI tool)
 │   ├── lint.js                               # Cross-spec consistency linter (node .specify/lint.js)
 │   └── tests/rls/                            # Postgres RLS + integrity trigger tests (bash .specify/tests/rls/run.sh)
-├── supabase/
-│   ├── migrations/                           # SQL migrations generated by Drizzle (never hand-edit)
-│   ├── seed.sql                              # Development seed data (demo agency, homes, staff, clients)
-│   └── config.toml                           # Supabase local dev config (auth, storage, functions)
+├── drizzle/                                  # SQL migrations generated by Drizzle (never hand-edit)
+├── powersync/
+│   ├── service.yaml                          # PowerSync config: Postgres source, Postgres bucket storage, Identity Platform JWKS
+│   └── sync-rules.yaml                       # Sync rules (offline-sync.md §4)
+├── docker-compose.yml                        # Local stack: Postgres 16 (logical replication), PowerSync, Mailpit
+├── Dockerfile                                # One image for the web and worker Cloud Run services
+├── firebase.json                             # Firebase Auth emulator config (local dev)
 ├── drizzle.config.ts                         # Drizzle Kit config: schema path, connection, migration output
 ├── tests/
 │   ├── unit/
@@ -320,7 +337,7 @@ guad/
 │   ├── sw.js                                 # Service worker: app shell cache, offline navigation, FCM push registration
 │   ├── icons/                                # PWA icons (192x192, 512x512, maskable)
 │   └── lomi.svg                              # Lomi lemon SVG asset
-├── svelte.config.js                          # SvelteKit config: adapter, preprocess, alias ($lib)
+├── svelte.config.js                          # SvelteKit config: adapter-node (Cloud Run), preprocess, alias ($lib)
 ├── vite.config.ts                            # Vite config: vitest, PowerSync OPFS worker, WASM
 ├── tsconfig.json                             # TypeScript config: strict, paths
 ├── package.json                              # Dependencies, scripts (dev, build, test, db:generate, db:push, lint)
