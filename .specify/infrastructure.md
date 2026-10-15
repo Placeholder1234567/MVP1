@@ -102,7 +102,7 @@ Everything runs on a laptop with Docker. No cloud account is needed to build fea
 | Cloud SQL | `postgres:16` container with `wal_level=logical` |
 | PowerSync | `journeyapps/powersync-service` container, Postgres bucket storage |
 | Identity Platform | Firebase Auth emulator (`firebase emulators:start --only auth`) |
-| Cloud Tasks / Scheduler | In-process driver: `jobs.enqueue()` calls the handler after the delay; cron runs from `node-cron` |
+| Cloud Tasks / Scheduler | In-process driver: `jobs.enqueue()` calls the handler after the delay; cron runs from `croner` |
 | Vertex AI, Speech-to-Text | Real APIs on a dev project with synthetic data, or the rules-based fallback with no key |
 | SES / SMS | Mailpit container for email; SMS written to the console |
 | Cloud Storage | Local folder |

@@ -106,8 +106,9 @@ const cloudTasks: Driver = {
 		}
 	},
 	async cancel(queue, taskName) {
+		const parent = queuePath(queue);
 		try {
-			await client!.deleteTask({ name: `${queuePath(queue)}/tasks/${taskName}` });
+			await client!.deleteTask({ name: `${parent}/tasks/${taskName}` });
 		} catch (e) {
 			if ((e as { code?: number }).code === 5) return; // NOT_FOUND: already ran or never queued
 			throw e;

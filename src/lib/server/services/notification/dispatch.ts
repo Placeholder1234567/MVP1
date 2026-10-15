@@ -53,7 +53,7 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 			stats.sent++;
 		} catch (e) {
 			// The reason is logged by name only; addresses and tokens are never logged.
-			console.error(`notification ${row.id} ${channel} failed: ${(e as Error).message}`);
+			console.error(`notification ${row.id} ${channel} failed: ${(e as Error).name}`);
 			await withService((tx) => markDelivery(tx, row.id, { status: 'failed' }));
 			stats.failed++;
 		}
