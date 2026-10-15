@@ -155,9 +155,10 @@ import { signInWithCustomToken } from 'firebase/auth';
 export class GuadConnector implements PowerSyncBackendConnector {
   /**
    * Called by PowerSync to obtain an auth token for the sync connection.
-   * Returns an Identity Platform ID token (held in memory only). PowerSync
-   * verifies it against Google's JWKS and reads token_parameters
-   * (agency_id, role, profile_id) for bucket routing.
+   * Returns a token held in memory only: an Identity Platform ID token in
+   * production (PowerSync verifies it against Google's JWKS), or a dev-only
+   * PowerSync token with the local Auth emulator. It carries only the user
+   * ID; the sync streams look up the profile live (section 4).
    */
   async fetchCredentials() {
     if (!auth.currentUser) {
@@ -217,25 +218,21 @@ export class GuadConnector implements PowerSyncBackendConnector {
 User signs in via Identity Platform (Firebase Auth SDK)
          │
          v
-Server creates the session cookie; the ID token carries custom claims
-set by the server under `parameters`:
-  - agency_id (uuid)
-  - role (caregiver | supervisor | admin)
-  - profile_id (uuid)
+Server creates the HttpOnly session cookie (/auth/session)
          │
          v
-PowerSync connector gets the in-memory ID token (or a fresh one
-via /auth/sync-token after a reload)
+PowerSync connector calls /auth/sync-token (the cookie proves who it is):
+  production: Firebase custom token -> signInWithCustomToken -> 1-hour ID token
+  local dev:  1-hour PowerSync token signed with the dev-only key
          │
          v
-PowerSync service validates the token signature against Google's JWKS
-(client_auth: jwks_uri = securetoken JWKS, audience = Firebase project ID)
+PowerSync verifies the token
+  production: jwks_uri = Google securetoken JWKS, audience = project ID
+  local dev:  static HS256 key in powersync/service.yaml, audience guad-local
          │
          v
-Sync rules evaluate JWT claims to determine bucket membership:
-  - agency_id  -> which agency's data
-  - role       -> caregiver (home-scoped) vs supervisor/admin (agency-wide)
-  - profile_id -> user-specific records (clock_records, notifications)
+Sync streams look up the caller's active profile by auth_uid = auth.user_id()
+and pick agency-, home- and user-scoped rows from it (section 4)
          │
          v
 PowerSync streams matching rows to client wa-sqlite
@@ -262,283 +259,142 @@ export const appSchema = new Schema({
 
 ---
 
-## 4. Sync Rules (sync_rules.yaml)
+## 4. Sync Streams (powersync/sync-config.yaml)
 
-Sync rules define which rows each authenticated user receives. Rules are organized into **buckets** -- logical groupings that PowerSync evaluates per-user based on JWT claims. The sync rules file lives on the PowerSync service and is not accessible to the client.
+Sync Streams define which rows each signed-in user receives. This section is the source of truth: `npm run sync:rules` copies the YAML below into `powersync/sync-config.yaml`, and CI fails if the two differ.
 
-### JWT Parameters Available in Sync Rules
+**How access is decided.** The token PowerSync verifies carries only the user's ID (`auth.user_id()`, the Identity Platform UID). Every stream looks up the caller's `profiles` row live, with `auth_uid = auth.user_id() AND active = true`, and reads the agency, role and homes from it. So:
 
-```yaml
-# Extracted by PowerSync from the Identity Platform ID token. The server sets
-# the custom claim { parameters: { agency_id, role, profile_id } } with the
-# Admin SDK; PowerSync exposes it as token_parameters.
-# token_parameters:
-#   user_id:    request.user_id()        # Identity Platform UID (sub)
-#   agency_id:  token_parameters.agency_id
-#   role:       token_parameters.role
-#   profile_id: token_parameters.profile_id
-```
+- **Deactivation takes effect within seconds.** Setting `profiles.active = false` empties every stream for that user, and PowerSync removes the rows from the device on its next sync. Nothing waits for a token to expire. (Measured locally: about 3 seconds.)
+- **Role and home changes apply immediately** for the same reason. No custom claims, no token refresh.
+- **Caregivers** get home-scoped data for the homes in their `home_ids`. **Supervisors and admins** get every home in their agency. This mirrors the RLS policies in rls.sql.
 
-### Bucket: `global`
+Synced to everyone in the agency (reference data, small): the agency, its homes, goal templates and staff profiles. `mfa_enabled` is deliberately not synced.
 
-Reference data that all authenticated users in an agency receive. No time window -- synced in full. Low volume, rarely changes.
+Time windows: tables with `device_sync = true` filters are windowed by `SyncWindowJob` (section 7); clinical data keeps 30 days on the device, transient data 7.
+
+PowerSync's older "Sync Rules" format (bucket definitions with `token_parameters`) is deprecated and can't expand an array column such as `home_ids`, which is why this uses Sync Streams (PowerSync Service 1.24+; we pin 1.26.1).
 
 ```yaml
-bucket_definitions:
-  global:
-    parameters:
-      - SELECT token_parameters.agency_id AS agency_id
+config:
+  edition: 3
 
-    data:
-      # Agency configuration, charting preset, settings
-      - SELECT id, name, slug, charting_preset, settings, subscription_tier,
-               created_at, updated_at
-        FROM agencies
-        WHERE id = bucket.agency_id
-
-      # All homes in the agency (needed for schedule views, coverage)
-      - SELECT id, agency_id, name, address, lat, lng, radius,
-               created_at, updated_at
-        FROM homes
-        WHERE agency_id = bucket.agency_id
-
-      # Reusable goal templates
-      - SELECT id, agency_id, area, text, steps, is_default,
-               created_at, updated_at
-        FROM goal_templates
-        WHERE agency_id = bucket.agency_id
-
-      # All staff profiles in the agency (needed for coverage candidates,
-      # author names on notes, schedule display)
-      # Note: mfa_enabled intentionally omitted -- security metadata not
-      # needed for offline caregiving operations. MFA status is checked
-      # server-side during auth, not on-device.
-      - SELECT id, agency_id, auth_uid, email, phone, name, initials,
-               role, home_ids, med_certified, avatar_url, active,
-               created_at, updated_at
-        FROM profiles
-        WHERE agency_id = bucket.agency_id
-```
-
-### Bucket: `home_data`
-
-Clinical and operational data scoped to homes. **Caregivers receive only their assigned homes.** Supervisors and admins receive all homes in the agency. Time-windowed tables use a 30-day window for clinical data and 7-day window for transient data.
-
-```yaml
-  home_data:
-    parameters:
-      # For caregivers: one bucket instance per assigned home
-      - SELECT unnest(home_ids) AS home_id,
-               token_parameters.agency_id AS agency_id
-        FROM profiles
-        WHERE id = token_parameters.profile_id
-          AND role = 'caregiver'
-      # For supervisors and admins: one bucket instance per agency home
-      - SELECT id AS home_id,
-               agency_id
-        FROM homes
-        WHERE agency_id = token_parameters.agency_id
-          AND token_parameters.role IN ('supervisor', 'admin')
-
-    # Data queries select from ONE table and filter only on columns of that
-    # table. There are no JOINs, subqueries or time functions: classic
-    # PowerSync sync rules don't support them, and time functions would make
-    # bucket contents change without any row changing. Instead:
-    #   - child tables carry a denormalized home_id (always set by trigger
-    #     from the parent row; see rls.sql "Denormalized home_id")
-    #   - time windows use the device_sync flag, which SyncWindowJob sets to
-    #     false nightly once a row is older than its window (section 7)
-    # Verify against the PowerSync version you deploy; if Sync Streams with
-    # subqueries are available they can replace some of this, but the
-    # denormalized design works either way.
-
-    data:
-      # Clients assigned to this home (no time window -- always synced)
-      - SELECT id, agency_id, home_id, name, first_name, initials,
-               info, behaviors, active, created_at, updated_at
-        FROM clients
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-
-      # Client health info (no time window -- reference data)
-      - SELECT id, agency_id, client_id, home_id, allergies, conditions,
-               diet, doctor, guardian, dob, created_at, updated_at
-        FROM client_health_info
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-
-      # Goals for clients in this home (no time window)
-      - SELECT id, agency_id, client_id, home_id, area, text, steps,
-               frequency, target, started_at, stopped_at,
-               created_at, updated_at
-        FROM goals
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-
-      # Medications for clients in this home (no time window)
-      - SELECT id, agency_id, client_id, home_id, name, dose, route,
-               scheduled_times, prn_instructions, notes,
-               started_at, stopped_at, created_at, updated_at
-        FROM medications
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-
-      # Schedule slots -- past 30 + future days (device_sync)
-      - SELECT id, agency_id, home_id, day, shift, assigned_to, status,
-               via_lomi, created_at, updated_at
-        FROM schedule_slots
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Messages -- 90-day window (device_sync)
-      - SELECT id, agency_id, home_id, from_name, body, sent_at,
-               created_by, created_at, updated_at
-        FROM messages
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Notes -- 30-day window (device_sync)
-      - SELECT id, agency_id, client_id, home_id, author_id, author_name,
-               day, shift, type, content, status, supervisor_comment,
-               lomi_drafted, created_by, created_at, updated_at
-        FROM notes
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Note goals -- follow their note's window (device_sync)
-      - SELECT id, agency_id, note_id, goal_id, home_id, trials,
-               not_attempted, reason, created_at, updated_at
-        FROM note_goals
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Incidents -- 30-day window (device_sync)
-      - SELECT id, agency_id, client_id, home_id, author_id, author_name,
-               type, severity, occurred_at, location, description,
-               antecedent, injured, injury_detail, staff_action,
-               medical_followup, witnesses, notified_parties, status,
-               followup_notes, created_by, created_at, updated_at
-        FROM incidents
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # MAR records -- 30-day window (device_sync)
-      - SELECT id, agency_id, client_id, home_id, medication_id, day,
-               scheduled_time, status, recorded_at, recorded_by,
-               recorded_by_name, reason, effect, is_prn, acknowledged,
-               amends_id, conflict_with, created_by, created_at, updated_at
-        FROM mar_records
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Health entries -- 30-day window (device_sync)
-      - SELECT id, agency_id, client_id, home_id, kind, data, recorded_at,
-               recorded_by, flags, acknowledged, created_by,
-               created_at, updated_at
-        FROM health_entries
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Attendance -- 30-day window (device_sync)
-      - SELECT id, agency_id, client_id, home_id, day, services,
-               recorded_at, recorded_by, recorded_by_name, created_by,
-               created_at, updated_at
-        FROM attendance
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Coverage requests -- 7-day window (device_sync)
-      - SELECT id, agency_id, home_id, day, shift, called_out_by,
-               reason, status, filled_by, created_by,
-               created_at, updated_at
-        FROM coverage_requests
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Coverage steps -- follow their request's window (device_sync)
-      - SELECT id, agency_id, coverage_request_id, home_id,
-               description, occurred_at, created_at, updated_at
-        FROM coverage_steps
-        WHERE home_id = bucket.home_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-```
-
-### Bucket: `user_data`
-
-Per-user records that are private to the authenticated user.
-
-```yaml
-  user_data:
-    parameters:
-      - SELECT token_parameters.profile_id AS profile_id,
-               token_parameters.agency_id AS agency_id
-
-    data:
-      # Clock records -- 30-day window, own records only
-      # Note: Supervisors and admins get all agency clock records via
-      # the admin_clock_data bucket below, not here. This query provides
-      # the user's own records regardless of role.
-      - SELECT id, agency_id, profile_id, home_id, clock_in_at,
-               clock_out_at, verified, manual_override, distance_meters,
-               acknowledged, created_at, updated_at
-        FROM clock_records
-        WHERE profile_id = bucket.profile_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Notifications -- 7-day window, own only
-      - SELECT id, agency_id, profile_id, type, title, body, channel,
-               status, sent_at, read_at, reference_id, reference_type,
-               created_at, updated_at
-        FROM notifications
-        WHERE profile_id = bucket.profile_id
-          AND agency_id = bucket.agency_id
-          AND device_sync = true
-
-      # Notification preferences -- own only, no time window
-      - SELECT id, agency_id, profile_id, notification_type,
-               push_enabled, sms_enabled, email_enabled,
-               created_at, updated_at
-        FROM notification_preferences
-        WHERE profile_id = bucket.profile_id
-          AND agency_id = bucket.agency_id
-
-      # User settings -- own row (theme, quiet hours, disclosure counters)
-      - SELECT id, agency_id, profile_id, theme, quiet_hours_start,
-               quiet_hours_end, disclosure, created_at, updated_at
-        FROM user_settings
-        WHERE profile_id = bucket.profile_id
-          AND agency_id = bucket.agency_id
-```
-
-### Bucket: `admin_clock_data`
-
-All clock records in the agency, for supervisors and admins only. Separated from `user_data` to use role-based filtering in the parameters section (matching the pattern used by `home_data`), avoiding duplicate rows with the per-user clock query.
-
-```yaml
-  admin_clock_data:
-    parameters:
-      - SELECT token_parameters.agency_id AS agency_id
-        WHERE token_parameters.role IN ('supervisor', 'admin')
-
-    data:
-      # All clock records in the agency -- 30-day window
-      - SELECT id, agency_id, profile_id, home_id, clock_in_at,
-               clock_out_at, verified, manual_override, distance_meters,
-               acknowledged, created_at, updated_at
-        FROM clock_records
-        WHERE agency_id = bucket.agency_id
-          AND device_sync = true
+streams:
+  agencies:
+    auto_subscribe: true
+    query: >-
+      SELECT id, name, slug, charting_preset, settings, subscription_tier, created_at, updated_at FROM agencies
+      WHERE id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  homes:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, name, address, lat, lng, radius, created_at, updated_at FROM homes
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  goal_templates:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, area, text, steps, is_default, created_at, updated_at FROM goal_templates
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  profiles:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, auth_uid, email, phone, name, initials, role, home_ids, med_certified, avatar_url, active, created_at, updated_at FROM profiles
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  clients:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, name, first_name, initials, info, behaviors, active, created_at, updated_at FROM clients
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  client_health_info:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, allergies, conditions, diet, doctor, guardian, dob, created_at, updated_at FROM client_health_info
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  goals:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, area, text, steps, frequency, target, started_at, stopped_at, created_at, updated_at FROM goals
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  medications:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, name, dose, route, scheduled_times, prn_instructions, notes, started_at, stopped_at, created_at, updated_at FROM medications
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  schedule_slots:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, day, shift, assigned_to, status, via_lomi, created_at, updated_at FROM schedule_slots
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  messages:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, from_name, body, sent_at, created_by, created_at, updated_at FROM messages
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  notes:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, author_id, author_name, day, shift, type, content, status, supervisor_comment, lomi_drafted, created_by, created_at, updated_at FROM notes
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  note_goals:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, note_id, goal_id, home_id, trials, not_attempted, reason, created_at, updated_at FROM note_goals
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  incidents:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, author_id, author_name, type, severity, occurred_at, location, description, antecedent, injured, injury_detail, staff_action, medical_followup, witnesses, notified_parties, status, followup_notes, created_by, created_at, updated_at FROM incidents
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  mar_records:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, medication_id, day, scheduled_time, status, recorded_at, recorded_by, recorded_by_name, reason, effect, is_prn, acknowledged, amends_id, conflict_with, created_by, created_at, updated_at FROM mar_records
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  health_entries:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, kind, data, recorded_at, recorded_by, flags, acknowledged, created_by, created_at, updated_at FROM health_entries
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  attendance:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, day, services, recorded_at, recorded_by, recorded_by_name, created_by, created_at, updated_at FROM attendance
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  coverage_requests:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, day, shift, called_out_by, reason, status, filled_by, created_by, created_at, updated_at FROM coverage_requests
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  coverage_steps:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, coverage_request_id, home_id, description, occurred_at, created_at, updated_at FROM coverage_steps
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  clock_records:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, home_id, clock_in_at, clock_out_at, verified, manual_override, distance_meters, acknowledged, created_at, updated_at FROM clock_records
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true) AND device_sync = true
+  notifications:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, type, title, body, channel, status, sent_at, read_at, reference_id, reference_type, created_at, updated_at FROM notifications
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true) AND device_sync = true
+  notification_preferences:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, notification_type, push_enabled, sms_enabled, email_enabled, created_at, updated_at FROM notification_preferences
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  user_settings:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, theme, quiet_hours_start, quiet_hours_end, disclosure, created_at, updated_at FROM user_settings
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  clock_records_admin_clock_data:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, home_id, clock_in_at, clock_out_at, verified, manual_override, distance_meters, acknowledged, created_at, updated_at FROM clock_records
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')) AND device_sync = true
 ```
 
 ### Tables Never Synced to Client
@@ -721,8 +577,8 @@ Purging removes data from the local wa-sqlite database only. Server data is unaf
 | **Account deactivation** (`profiles.active = false`) | Server revokes the session and deletes the server copy of the device's database key. On the next connection, writes still in the queue are uploaded with the deactivated user's identity and flagged for supervisor review (they are clinical records made while the person was working) before local data is cleared. |
 | **App backgrounded** (mobile PWA, 5+ minutes) | PIN/biometric required to resume. After 5 wrong PINs the wrapped key is deleted. Local data stays encrypted until an online sign-in re-fetches the key; it is not deleted while the queue is non-empty. |
 | **Browser tab closed** | The Identity Platform session cookie (HttpOnly) survives. On re-open the client calls `/auth/sync-token` and gets a fresh short-lived ID token (kept in memory only). If the session cookie has expired, the user signs in again; unsynced local data is kept. |
-| **Role change** (e.g., caregiver promoted to supervisor) | Server updates the custom claims and revokes refresh tokens. On next token refresh, PowerSync re-evaluates sync rules. New bucket data begins syncing. Old restricted-scope data remains until replaced by wider-scope sync. |
-| **Home assignment change** (caregiver moved to different home) | Server updates `profiles.home_ids`. On next token refresh, sync rules produce new bucket parameters. Data for the old home is purged. Data for the new home begins syncing. |
+| **Role change** (e.g., caregiver promoted to supervisor) | Server updates `profiles.role`. The sync streams read the role live, so wider-scope data starts syncing within seconds; no token refresh is needed. |
+| **Home assignment change** (caregiver moved to different home) | Server updates `profiles.home_ids`. Within seconds the streams drop the old home's rows from the device and start syncing the new home. |
 
 ---
 

@@ -2,13 +2,13 @@
 
 ## Quick Start
 
-> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, sign-in (Identity Platform session cookies, Auth emulator locally) and tRPC (`auth.me`, `agency.get`, `home.list`, `home.get`); PowerSync comes next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
+> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, sign-in (Identity Platform session cookies, Auth emulator locally) tRPC (`auth.me`, `agency.get`, `home.list`, `home.get`) and the server side of PowerSync (Sync Streams, local service, scoping tests); the browser PowerSync client and `sync.upload` come next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
 
 ```bash
 npm install
 cp .env.example .env
-npm run db:up               # Local Postgres 16 + Mailpit (infrastructure.md §6); PowerSync joins in Phase 2
-npm run db:setup            # Drizzle migrations, then .specify/rls.sql (policies, triggers) and grants
+npm run db:up               # Local Postgres 16, PowerSync (:8080) and Mailpit (infrastructure.md §6)
+npm run db:setup            # Drizzle migrations, .specify/rls.sql (policies, triggers), grants, PowerSync role + publication
 npm run dev:auth            # Firebase Auth emulator (separate terminal; needs Java 11+)
 npm run db:seed             # Synthetic demo agency + 5 staff; password is DEV_PASSWORD in src/lib/server/seed.ts
 npm run dev                 # SvelteKit dev server at http://localhost:5173
@@ -31,6 +31,8 @@ npm run dev                 # SvelteKit dev server at http://localhost:5173
 | `npm run lint` | ESLint (incl. import boundaries) + svelte-check |
 | `npm run format` | Prettier |
 | `npm run spec:lint` / `spec:rls-test` | Spec consistency linter / SQL-level RLS tests |
+| `npm run sync:rules` | Regenerate `powersync/sync-config.yaml` from `offline-sync.md` §4 (CI checks they match) |
+| `npm run sync:probe -- <email>` | Show what PowerSync would sync to a seeded user (row counts only) |
 
 ## MVP Reference (read before building UI)
 

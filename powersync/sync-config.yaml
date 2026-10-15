@@ -1,0 +1,120 @@
+# Generated from .specify/offline-sync.md §4 by scripts/sync-rules.mjs. Edit the spec, then regenerate.
+config:
+  edition: 3
+
+streams:
+  agencies:
+    auto_subscribe: true
+    query: >-
+      SELECT id, name, slug, charting_preset, settings, subscription_tier, created_at, updated_at FROM agencies
+      WHERE id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  homes:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, name, address, lat, lng, radius, created_at, updated_at FROM homes
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  goal_templates:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, area, text, steps, is_default, created_at, updated_at FROM goal_templates
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  profiles:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, auth_uid, email, phone, name, initials, role, home_ids, med_certified, avatar_url, active, created_at, updated_at FROM profiles
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  clients:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, name, first_name, initials, info, behaviors, active, created_at, updated_at FROM clients
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  client_health_info:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, allergies, conditions, diet, doctor, guardian, dob, created_at, updated_at FROM client_health_info
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  goals:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, area, text, steps, frequency, target, started_at, stopped_at, created_at, updated_at FROM goals
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  medications:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, name, dose, route, scheduled_times, prn_instructions, notes, started_at, stopped_at, created_at, updated_at FROM medications
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
+  schedule_slots:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, day, shift, assigned_to, status, via_lomi, created_at, updated_at FROM schedule_slots
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  messages:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, from_name, body, sent_at, created_by, created_at, updated_at FROM messages
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  notes:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, author_id, author_name, day, shift, type, content, status, supervisor_comment, lomi_drafted, created_by, created_at, updated_at FROM notes
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  note_goals:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, note_id, goal_id, home_id, trials, not_attempted, reason, created_at, updated_at FROM note_goals
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  incidents:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, author_id, author_name, type, severity, occurred_at, location, description, antecedent, injured, injury_detail, staff_action, medical_followup, witnesses, notified_parties, status, followup_notes, created_by, created_at, updated_at FROM incidents
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  mar_records:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, medication_id, day, scheduled_time, status, recorded_at, recorded_by, recorded_by_name, reason, effect, is_prn, acknowledged, amends_id, conflict_with, created_by, created_at, updated_at FROM mar_records
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  health_entries:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, kind, data, recorded_at, recorded_by, flags, acknowledged, created_by, created_at, updated_at FROM health_entries
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  attendance:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, client_id, home_id, day, services, recorded_at, recorded_by, recorded_by_name, created_by, created_at, updated_at FROM attendance
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  coverage_requests:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, day, shift, called_out_by, reason, status, filled_by, created_by, created_at, updated_at FROM coverage_requests
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  coverage_steps:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, coverage_request_id, home_id, description, occurred_at, created_at, updated_at FROM coverage_steps
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  clock_records:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, home_id, clock_in_at, clock_out_at, verified, manual_override, distance_meters, acknowledged, created_at, updated_at FROM clock_records
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true) AND device_sync = true
+  notifications:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, type, title, body, channel, status, sent_at, read_at, reference_id, reference_type, created_at, updated_at FROM notifications
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true) AND device_sync = true
+  notification_preferences:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, notification_type, push_enabled, sms_enabled, email_enabled, created_at, updated_at FROM notification_preferences
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  user_settings:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, theme, quiet_hours_start, quiet_hours_end, disclosure, created_at, updated_at FROM user_settings
+      WHERE profile_id IN (SELECT id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+  clock_records_admin_clock_data:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, profile_id, home_id, clock_in_at, clock_out_at, verified, manual_override, distance_meters, acknowledged, created_at, updated_at FROM clock_records
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')) AND device_sync = true

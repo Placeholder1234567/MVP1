@@ -603,7 +603,7 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 | Drizzle ORM setup | Install `drizzle-orm` + `drizzle-kit`, copy `schema.ts` from `.specify/`, configure `drizzle.config.ts` | `npx drizzle-kit push` succeeds |
 | Schema push | Push all 37 tables to local Postgres | All tables created with indexes |
 | RLS policies | Apply all policies from `.specify/rls.sql` | `SELECT * FROM pg_policies` shows complete coverage |
-| Auth integration | Firebase Auth SDK (in-memory) + Admin SDK session cookies in SvelteKit hooks, custom claims, `withUser()` DB helper | Login/logout works, roles propagate, RLS tests pass through the app |
+| Auth integration | Firebase Auth SDK (in-memory) + Admin SDK session cookies in SvelteKit hooks, `withUser()` DB helper | Login/logout works, roles propagate, RLS tests pass through the app |
 | Seed script | Faker.js-based seed (see Section 8) | `npm run db:seed` populates dev database |
 | CI pipeline | GitHub Actions: lint, type-check, unit test, Drizzle schema validation | Green CI on every push |
 

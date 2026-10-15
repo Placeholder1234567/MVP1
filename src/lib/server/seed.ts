@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { closeDb, withService } from './db';
 import { agencies, clients, homes, medications, profiles } from './db/schema';
-import { createIdentity, deleteIdentity, setSyncClaims } from './identity';
+import { createIdentity, deleteIdentity } from './identity';
 
 export const DEV_PASSWORD = 'guad-dev-only-1';
 
@@ -146,10 +146,6 @@ async function main() {
 			}
 		]);
 	});
-
-	for (const s of staff) {
-		await setSyncClaims(s.uid, { agency_id: agencyId, role: s.role, profile_id: s.profileId });
-	}
 
 	console.log(`Seeded "Sunrise Demo Agency" with ${staff.length} staff. Sign in with any of:`);
 	for (const s of staff) console.log(`  ${s.email.padEnd(22)} ${s.role}`);

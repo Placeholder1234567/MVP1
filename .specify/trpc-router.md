@@ -85,7 +85,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 |---|---|---|---|---|---|
 | `staff.list` | query | `{ homeId?: uuid, role?: user_role, active?: boolean }` | `Array<{ id, name, email, phone, initials, role, homeIds, medCertified, active }>` | supervisor | Lists staff members. Filterable by home assignment, role, and active status. |
 | `staff.get` | query | `{ id: uuid }` | `{ id, name, email, phone, initials, role, homeIds, medCertified, mfaEnabled, active, createdAt }` | supervisor | Returns a single staff profile with full details. |
-| `staff.invite` | mutation | `{ email: string, name: string, role: user_role, homeIds: uuid[], medCertified?: boolean }` | `{ id, email, name, role }` | admin | Creates an Identity Platform user and a profiles row, and sets the user's custom claims. Sends an email invitation (password-setup link) via SES. |
+| `staff.invite` | mutation | `{ email: string, name: string, role: user_role, homeIds: uuid[], medCertified?: boolean }` | `{ id, email, name, role }` | admin | Creates an Identity Platform user and a profiles row. Sends an email invitation (password-setup link) via SES. |
 | `staff.update` | mutation | `{ id: uuid, role?: user_role, homeIds?: uuid[], medCertified?: boolean, active?: boolean }` | `{ id, role, homeIds, medCertified, active, updatedAt }` | admin | Updates staff role, home assignments, med certification, or active status. Deactivating a staff member does not delete their data. |
 
 ### client

@@ -40,14 +40,13 @@ Identity is provided by Google Cloud Identity Platform (Firebase Auth). See infr
 - Session length: the session cookie lasts 12 hours (absolute), configurable per agency down to 15 minutes. Inactivity locks the app sooner on mobile (see Session Timeout Policy). Identity Platform session cookies can't be extended, so the user signs in again when one expires; unsynced local data is kept.
 - On logout: the server clears the cookie and revokes the user's refresh tokens (Admin SDK `revokeRefreshTokens`), and the service worker cache is purged. The local PowerSync database is deleted once its upload queue is empty; if changes are still unsynced (offline), the app locks instead and deletes the database after the next successful sync (offline-sync.md §7).
 
-### Identity Claims
+### Identity and Access Claims
 
-The ID token carries custom claims under `parameters`, used by PowerSync sync rules:
-- `agency_id` (uuid) — tenant isolation key, set at account creation, immutable by the user.
-- `role` (string) — `caregiver`, `supervisor`, or `admin`. Changed only by admins via a server-side function.
-- `profile_id` (uuid) — the user's `profiles.id`, for ownership checks.
+Tokens carry only the user ID. Nothing about agency, role or homes is put in a token, so there are no claims to go stale or to forge:
+- **Database:** for every request the server loads the profile by `auth_uid` and sets the Postgres session claims (`agency_id`, `role`, `profile_id`) from that row (rls.sql header).
+- **Offline sync:** PowerSync's sync streams look up the same active profile by `auth_uid` (offline-sync.md §4).
 
-These claims are set only by the server with the Admin SDK (`setCustomUserClaims`) and cannot be modified by the client. The database does not trust them: for every request the server loads the profile by `auth_uid` and sets the Postgres session claims from that row (rls.sql header).
+Changing a user's role, homes or active status takes effect on their next request and within seconds for sync.
 
 ### MFA Policy
 

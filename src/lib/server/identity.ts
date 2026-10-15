@@ -4,6 +4,7 @@
 // its own tokens (constitution principle 7).
 import { getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getAuth, type Auth, type DecodedIdToken } from 'firebase-admin/auth';
+import { SignJWT } from 'jose';
 
 /** Session cookie lifetime. security.md: 12 hours, agencies may shorten it. */
 export const SESSION_MAX_MS = 12 * 60 * 60 * 1000;
@@ -24,13 +25,6 @@ function auth(): Auth {
 		app = getApps()[0] ?? initializeApp(projectId ? { projectId } : undefined);
 	}
 	return getAuth(app);
-}
-
-/** Claims PowerSync reads as token_parameters.* (offline-sync.md §4). */
-export interface SyncClaims {
-	agency_id: string;
-	role: 'caregiver' | 'supervisor' | 'admin';
-	profile_id: string;
 }
 
 export class SignInError extends Error {
@@ -84,21 +78,39 @@ export async function revokeSessions(uid: string): Promise<void> {
 }
 
 /**
- * A Firebase custom token the browser exchanges for an in-memory ID token,
- * which PowerSync uses. Only called after the session cookie was verified.
+ * What the browser needs to get a PowerSync token, after the session cookie
+ * was verified:
+ * - production: a Firebase custom token, exchanged with signInWithCustomToken
+ *   for a 1-hour Identity Platform ID token that PowerSync verifies against
+ *   Google's JWKS;
+ * - local dev with the Auth emulator: the emulator's tokens are unsigned, so
+ *   the server signs a 1-hour PowerSync token with the dev-only key that
+ *   powersync/service.yaml trusts. Never used outside the emulator.
+ *
+ * Either way the token carries only the user ID; the sync streams look up the
+ * profile (agency, role, homes, active) live (offline-sync.md §4).
  */
-export async function createSyncToken(uid: string): Promise<string> {
-	return auth().createCustomToken(uid);
-}
+export type SyncCredential =
+	| { kind: 'custom-token'; customToken: string }
+	| { kind: 'powersync-token'; token: string; expiresAt: string };
 
-/**
- * Sets the claims PowerSync routes on, then revokes refresh tokens so the
- * next token carries them. Call when a profile is created or its role,
- * homes or agency change.
- */
-export async function setSyncClaims(uid: string, claims: SyncClaims): Promise<void> {
-	await auth().setCustomUserClaims(uid, { parameters: claims });
-	await auth().revokeRefreshTokens(uid);
+export const DEV_POWERSYNC_AUDIENCE = 'guad-local';
+const DEV_POWERSYNC_KID = 'guad-local-1';
+
+export async function createSyncCredential(uid: string): Promise<SyncCredential> {
+	const devKey = process.env.PS_DEV_JWT_KEY;
+	if (process.env.FIREBASE_AUTH_EMULATOR_HOST && devKey) {
+		const expires = new Date(Date.now() + 60 * 60 * 1000);
+		const token = await new SignJWT({})
+			.setProtectedHeader({ alg: 'HS256', kid: DEV_POWERSYNC_KID })
+			.setSubject(uid)
+			.setAudience(DEV_POWERSYNC_AUDIENCE)
+			.setIssuedAt()
+			.setExpirationTime(expires)
+			.sign(Buffer.from(devKey, 'base64url'));
+		return { kind: 'powersync-token', token, expiresAt: expires.toISOString() };
+	}
+	return { kind: 'custom-token', customToken: await auth().createCustomToken(uid) };
 }
 
 export interface NewIdentity {
