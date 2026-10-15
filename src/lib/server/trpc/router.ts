@@ -1,16 +1,25 @@
 import { router } from './middleware.ts';
 import { agencyRouter } from './routers/agency.ts';
 import { authRouter } from './routers/auth.ts';
+import { attendanceRouter, healthRouter, incidentRouter } from './routers/care.ts';
 import { deviceRouter } from './routers/device.ts';
 import { homeRouter } from './routers/home.ts';
+import { marRouter, medicationRouter } from './routers/mar.ts';
+import { noteRouter } from './routers/note.ts';
 import { syncRouter } from './routers/sync.ts';
 
 // Root router (trpc-router.md). One router per domain, added as they're built.
 export const appRouter = router({
 	auth: authRouter,
 	agency: agencyRouter,
+	attendance: attendanceRouter,
 	device: deviceRouter,
+	health: healthRouter,
 	home: homeRouter,
+	incident: incidentRouter,
+	mar: marRouter,
+	medication: medicationRouter,
+	note: noteRouter,
 	sync: syncRouter
 });
 

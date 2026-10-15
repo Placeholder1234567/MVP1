@@ -2,7 +2,7 @@
 // (constitution principle 13); corrections are new records with amendsId.
 import { z } from 'zod';
 import { addDays, hhmm, localTime, medTimes } from '../../../domain/index.ts';
-import type { Tx } from '../../db';
+import { asService, type Tx } from '../../db';
 import { pgConstraint, pgCode, ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { notifyHomeSupervisors } from '../notification/index.ts';
@@ -10,7 +10,11 @@ import {
 	findMarRecord,
 	findMedication,
 	findSlotOriginal,
-	insertMarRecord
+	insertMarRecord,
+	findDoseForEffect,
+	selectMar,
+	selectMedications,
+	setMarFields
 } from './medication.queries';
 
 export const NewDose = z.object({
@@ -125,4 +129,67 @@ export async function recordDose(
 		referenceType: 'mar_records'
 	});
 	return { result: 'conflict', conflictWith: original.id, otherName: original.recordedByName };
+}
+
+/**
+ * Records the observed effect of an as-needed dose, once (mar.recordEffect).
+ * Caregivers can't update MAR rows under RLS, so after checking the dose is
+ * visible to the caller (their homes), the update runs as app_service; the
+ * mar_records_immutable trigger still allows only the effect column, once.
+ */
+export async function recordEffect(
+	tx: Tx,
+	agencyId: string,
+	user: CurrentUser,
+	id: string,
+	effect: string
+): Promise<{ updatedAt: Date | null }> {
+	const text = z.string().trim().min(1, 'Describe the effect').max(500).parse(effect);
+	const dose = await findDoseForEffect(tx, agencyId, id);
+	if (!dose) throw new ServiceError('NOT_FOUND', 'Dose not found');
+	if (!dose.isPrn)
+		throw new ServiceError('RULE_VIOLATION', 'Effects are recorded for as-needed doses only');
+	if (dose.status !== 'given') throw new ServiceError('RULE_VIOLATION', 'This dose was not given');
+	if (dose.effect) throw new ServiceError('RULE_VIOLATION', 'The effect was already recorded');
+	if (user.role === 'caregiver' && !user.medCertified) {
+		throw new ServiceError('FORBIDDEN', 'Only med-certified staff can record medications');
+	}
+	const updatedAt = await asService(tx, (t) => setMarFields(t, agencyId, id, { effect: text }));
+	return { updatedAt };
+}
+
+/** Supervisor sign-off on a dose, especially refused or held ones (mar.acknowledge). */
+export async function acknowledgeDose(
+	tx: Tx,
+	agencyId: string,
+	user: CurrentUser,
+	id: string
+): Promise<{ updatedAt: Date | null }> {
+	if (user.role === 'caregiver')
+		throw new ServiceError('FORBIDDEN', 'Only supervisors can acknowledge doses');
+	const updatedAt = await setMarFields(tx, agencyId, id, { acknowledged: true });
+	if (!updatedAt) throw new ServiceError('NOT_FOUND', 'Dose not found');
+	return { updatedAt };
+}
+
+/** A person's MAR for a day or range, with medication details (mar.list). Defaults to today. */
+export function listMar(
+	tx: Tx,
+	agencyId: string,
+	user: CurrentUser,
+	clientId: string,
+	range?: { from: string; to: string }
+) {
+	const today = localTime(new Date(), user.timeZone).day;
+	return selectMar(tx, agencyId, clientId, range ?? { from: today, to: today });
+}
+
+/** A person's medications; stopped ones only when asked (medication.list). */
+export function listMedications(
+	tx: Tx,
+	agencyId: string,
+	clientId: string,
+	includeStopped = false
+) {
+	return selectMedications(tx, agencyId, clientId, includeStopped);
 }

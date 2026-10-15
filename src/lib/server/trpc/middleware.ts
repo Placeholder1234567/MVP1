@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
+import { ZodError } from 'zod';
+import { ServiceError } from '../errors.ts';
 import { withUser, type Tx } from '../db/index.ts';
 import { hasRole, type Role } from '../services/auth/index.ts';
 import type { Context } from './context.ts';
@@ -33,14 +35,55 @@ export const createCallerFactory = t.createCallerFactory;
  * runs the procedure inside withUser(), so ctx.db is a transaction where RLS
  * and the integrity triggers apply with this user's claims.
  */
-const authed = t.middleware(({ ctx, next }) => {
+class Rollback extends Error {}
+
+const authed = t.middleware(async ({ ctx, next }) => {
 	const user = ctx.user;
 	if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in to continue' });
-	return withUser(user.claims, ctx.request, (db: Tx) => next({ ctx: { user, db } }));
+	// next() reports a failed procedure as a result, not a throw. Throw so the
+	// transaction rolls back instead of committing a half-done change.
+	const run = (db: Tx) => next({ ctx: { user, db } });
+	let result: Awaited<ReturnType<typeof run>> | undefined;
+	try {
+		return await withUser(user.claims, ctx.request, async (db: Tx) => {
+			result = await run(db);
+			if (!result.ok) throw new Rollback();
+			return result;
+		});
+	} catch (e) {
+		if (e instanceof Rollback && result) return result;
+		throw e;
+	}
+});
+
+const CODES = {
+	VALIDATION_FAILED: 'BAD_REQUEST',
+	RULE_VIOLATION: 'CONFLICT',
+	NOT_FOUND: 'NOT_FOUND',
+	FORBIDDEN: 'FORBIDDEN'
+} as const;
+
+/** Service rule errors become the matching tRPC errors, with their PHI-free message. */
+const serviceErrors = t.middleware(async ({ next }) => {
+	const result = await next();
+	if (!result.ok) {
+		const cause = result.error.cause;
+		if (cause instanceof ServiceError) {
+			throw new TRPCError({ code: CODES[cause.code], message: cause.message, cause });
+		}
+		if (cause instanceof ZodError) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Some of the information is invalid',
+				cause
+			});
+		}
+	}
+	return result;
 });
 
 /** Procedures for signed-in users. ctx.user and ctx.db are always set. */
-export const userProcedure = t.procedure.use(authed);
+export const userProcedure = t.procedure.use(serviceErrors).use(authed);
 
 /** roleMiddleware (trpc-router.md §2): caregiver < supervisor < admin. */
 export function roleProcedure(minRole: Role) {

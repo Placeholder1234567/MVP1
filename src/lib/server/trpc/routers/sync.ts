@@ -10,6 +10,9 @@ import type { CurrentUser } from '../../services/auth/index.ts';
 import { createNote, updateNote } from '../../services/charting/index.ts';
 import { recordDose } from '../../services/medication/index.ts';
 import { sendMessage } from '../../services/message/index.ts';
+import { findAttendanceDay, saveAttendance } from '../../services/attendance/index.ts';
+import { createHealthEntry } from '../../services/health/index.ts';
+import { createIncident } from '../../services/incident/index.ts';
 import { router, userProcedure } from '../middleware.ts';
 
 /** Codes in offline-sync.md Appendix B. */
@@ -42,6 +45,9 @@ type Op = z.infer<typeof Op>;
 /** Device columns are SQLite: booleans arrive as 0/1, JSON as text. */
 const flag = (v: unknown) => v === true || v === 1 || v === '1';
 const str = (v: unknown) => (v == null ? undefined : String(v));
+/** Arrays and objects arrive as JSON text from SQLite. */
+const json = <T>(v: unknown, fallback: T): T =>
+	v == null ? fallback : typeof v === 'string' ? (JSON.parse(v) as T) : (v as T);
 
 interface Outcome {
 	notice?: { code: 'MAR_CONFLICT'; message: string };
@@ -114,8 +120,90 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				sentAt: str(d!.sent_at) as unknown as Date | undefined
 			});
 		}
+	},
+	// Goal trials are rows of their own on the device; on the server they are
+	// part of the note, so they go through the note's update rules.
+	note_goals: {
+		PUT: (tx, user, { data: d = {} }) => saveNoteGoal(tx, user, d!),
+		PATCH: async () => {
+			throw new Reject('NOT_ALLOWED_OFFLINE', 'Re-save the goal with its note.');
+		}
+	},
+	health_entries: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			await createHealthEntry(tx, user.agencyId, user, {
+				id,
+				clientId: str(d!.client_id)!,
+				kind: str(d!.kind) as 'vitals',
+				data: json(d!.data, {}),
+				recordedAt: str(d!.recorded_at) as unknown as Date | undefined
+			});
+		}
+	},
+	incidents: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			await createIncident(tx, user.agencyId, user, {
+				id,
+				clientId: str(d!.client_id)!,
+				type: str(d!.type) as 'Other',
+				severity: (str(d!.severity) as 'Low' | undefined) ?? 'Low',
+				occurredAt: str(d!.occurred_at) as unknown as Date,
+				location: str(d!.location),
+				description: str(d!.description) ?? '',
+				antecedent: str(d!.antecedent),
+				injured: str(d!.injured),
+				injuryDetail: str(d!.injury_detail),
+				staffAction: str(d!.staff_action),
+				medicalFollowup: str(d!.medical_followup),
+				witnesses: str(d!.witnesses),
+				notifiedParties: json(d!.notified_parties, [])
+			});
+		}
+	},
+	attendance: {
+		// Both PUT and PATCH merge services into the day's record (never replace).
+		PUT: (tx, user, { id, data: d = {} }) => saveDay(tx, user, id, d!),
+		PATCH: (tx, user, { id, data: d = {} }) => saveDay(tx, user, id, d!)
 	}
 };
+
+async function saveNoteGoal(tx: Tx, user: CurrentUser, d: Record<string, unknown>) {
+	await updateNote(
+		tx,
+		user.agencyId,
+		user,
+		str(d.note_id)!,
+		{
+			goals: [
+				{
+					goalId: str(d.goal_id)!,
+					trials: json(d.trials, []),
+					notAttempted: flag(d.not_attempted),
+					reason: str(d.reason) ?? null
+				}
+			]
+		},
+		{ fromOfflineQueue: true }
+	);
+}
+
+async function saveDay(tx: Tx, user: CurrentUser, id: string, d: Record<string, unknown>) {
+	// An edit (PATCH) carries only the changed columns, usually just services.
+	let clientId = str(d.client_id);
+	let day = str(d.day);
+	if (!clientId || !day) {
+		const existing = await findAttendanceDay(tx, user.agencyId, id);
+		if (!existing) throw new ServiceError('NOT_FOUND', 'Attendance record not found');
+		clientId = existing.clientId;
+		day = existing.day;
+	}
+	await saveAttendance(tx, user.agencyId, user, {
+		id,
+		clientId,
+		day,
+		services: json(d.services, [])
+	});
+}
 
 /** Maps an error to a rejection, or rethrows it (unexpected: the client retries). */
 function toReject(e: unknown): Reject {
