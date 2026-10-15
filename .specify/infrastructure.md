@@ -128,6 +128,8 @@ Credits: Google Cloud's $300 free trial, Google for Startups Cloud Program (Star
 
 **Avoid surprise bills:** set budget alerts in both clouds on day one; keep Cloud SQL as a single zone until there are paying customers; set log retention limits; don't add a Cloud NAT or Serverless VPC connector unless something needs it.
 
+**As built:** `Dockerfile` and `deploy/` (bootstrap and release scripts, see deploy/README.md) create this stack. Cloud Run reaches Cloud SQL over Direct VPC egress through its built-in Cloud SQL socket, signing in with the service account's IAM database user and an OAuth token (`src/lib/server/db/pool.ts`), so the Node connector library isn't needed. The worker is private unless AWS SNS webhooks are on (deploy/README.md §5).
+
 ## 8. Before real client data
 
 - [ ] Google Cloud BAA accepted (Cloud console → Compliance) on the organization that owns the project

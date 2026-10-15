@@ -15,7 +15,13 @@ export default defineConfig({
 			},
 			// Node server for Cloud Run: the same image runs the web and worker services
 			// (infrastructure.md §1).
-			adapter: adapter()
+			adapter: adapter(),
+			// CSRF is checked in hooks.server.ts for every state-changing request
+			// (any content type), except job and webhook routes, which verify a
+			// Google OIDC token or an SNS signature. SvelteKit's own check only
+			// covers form content types, and would reject AWS SNS webhooks
+			// (text/plain, no Origin header), so it's turned off here.
+			csrf: { trustedOrigins: ['*'] }
 		})
 	]
 });

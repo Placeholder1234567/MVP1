@@ -1,0 +1,39 @@
+# PowerSync service config for PRODUCTION (Cloud Run service `powersync`).
+# Mounted from Secret Manager secret `powersync-config`; the sync streams come
+# from the `powersync-sync-config` secret (powersync/sync-config.yaml), both
+# written by deploy/deploy.sh. The local config is powersync/service.yaml.
+#
+# PowerSync reaches Cloud SQL's private IP over Direct VPC egress, with TLS
+# checked against the instance's server CA (PS_PG_CA). It signs in with
+# passwords (it can't use IAM tokens); db-setup.mjs sets them from the same
+# Secret Manager values.
+replication:
+  connections:
+    - type: postgresql
+      hostname: !env PS_PG_HOST
+      port: 5432
+      database: guad
+      username: powersync_replication
+      password: !env PS_REPLICATION_PASSWORD
+      sslmode: verify-ca
+      cacert: !env PS_PG_CA
+
+storage:
+  type: postgresql
+  hostname: !env PS_PG_HOST
+  port: 5432
+  database: powersync_storage
+  username: powersync_storage
+  password: !env PS_STORAGE_PASSWORD
+  sslmode: verify-ca
+  cacert: !env PS_PG_CA
+
+port: 8080
+
+sync_config:
+  path: /sync/sync-config.yaml
+
+# Real Identity Platform ID tokens (infrastructure.md §3).
+client_auth:
+  jwks_uri: https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com
+  audience: [!env GOOGLE_CLOUD_PROJECT]
