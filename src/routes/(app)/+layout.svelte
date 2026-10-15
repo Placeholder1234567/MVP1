@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -198,67 +199,84 @@
 		</div>
 	</main>
 {:else}
-	<a class="skip-link" href="#main">Skip to content</a>
-	<div class="app-shell">
-		<aside class="sidebar">
-			<a class="wordmark" href={resolve('/')}>Guad<span class="lemon-dot">●</span></a>
-			<p class="eyebrow">Your workspace</p>
-			<nav aria-label="Main navigation">
-				{#each nav as item (item.href)}<a
+	<PrivacyShield
+		profileId={app.user.profileId}
+		onPrivacyChange={(masked) => {
+			app.privacyLocked = masked;
+		}}
+		onReady={(lock) => {
+			app.lock = lock;
+		}}
+		onLock={async () => {
+			app.dispose();
+			await closeDb();
+		}}
+		onUnlock={async (key) => {
+			app.connect(await openDb(key, app.user.profileId));
+		}}
+	>
+		<a class="skip-link" href="#main">Skip to content</a>
+		<div class="app-shell">
+			<aside class="sidebar">
+				<a class="wordmark" href={resolve('/')}>Guad<span class="lemon-dot">●</span></a>
+				<p class="eyebrow">Your workspace</p>
+				<nav aria-label="Main navigation">
+					{#each nav as item (item.href)}<a
+							href={resolve(('/(app)' + item.href) as '/(app)/today')}
+							aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
+						>{/each}
+				</nav>
+				<div class="sidebar-bottom">
+					<b>{data.user.name}</b><span class="muted">{data.user.role}</span><button
+						class="textbtn"
+						onclick={() => app.lock()}>Lock device</button
+					>
+				</div>
+			</aside>
+			<div class="workspace">
+				<header class="topbar">
+					<a class="wordmark mobile-brand" href={resolve('/')}>Guad</a>
+					<label class="home-select"
+						><span class="sr">Current home</span><select
+							class="input"
+							bind:value={app.homeId}
+							aria-label="Current home"
+							>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
+								>{/each}</select
+						></label
+					>
+					<span class="sync-label" role="status" data-testid="sync-status"
+						>{app.pending ? `${app.pending} changes waiting to sync` : app.status}</span
+					>
+					<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
+					<a
+						class="textbtn"
+						href={resolve('/(app)/notifications')}
+						aria-label={`Alerts, ${app.unreadAlerts} unread`}
+						>Alerts{app.unreadAlerts ? ` (${app.unreadAlerts})` : ''}</a
+					>
+				</header>
+				<main id="main" class="main-content" tabindex="-1">
+					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
+					{#if app.failed.length}<div class="callout bad" role="alert">
+							<b>{app.failed.length} changes need attention</b>
+							<p>
+								Your server did not accept these changes. Keep this device unlocked while you review
+								them.
+							</p>
+							<ul>
+								{#each app.failed as f (f.id)}<li>{f.message}</li>{/each}
+							</ul>
+						</div>{/if}
+					{@render children()}
+				</main>
+			</div>
+			<nav class="mobile-nav" aria-label="Mobile navigation">
+				{#each data.user.role === 'caregiver' ? nav : [nav[0], nav[1], nav.find((item) => item.href === '/shifts')!, nav.find((item) => item.href === '/me')!] as item (item.href)}<a
 						href={resolve(('/(app)' + item.href) as '/(app)/today')}
 						aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
 					>{/each}
 			</nav>
-			<div class="sidebar-bottom">
-				<b>{data.user.name}</b><span class="muted">{data.user.role}</span><button
-					class="textbtn"
-					onclick={lock}>Lock device</button
-				>
-			</div>
-		</aside>
-		<div class="workspace">
-			<header class="topbar">
-				<a class="wordmark mobile-brand" href={resolve('/')}>Guad</a>
-				<label class="home-select"
-					><span class="sr">Current home</span><select
-						class="input"
-						bind:value={app.homeId}
-						aria-label="Current home"
-						>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
-							>{/each}</select
-					></label
-				>
-				<span class="sync-label" role="status" data-testid="sync-status"
-					>{app.pending ? `${app.pending} changes waiting to sync` : app.status}</span
-				>
-				<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
-				<a
-					class="textbtn"
-					href={resolve('/(app)/notifications')}
-					aria-label={`Alerts, ${app.unreadAlerts} unread`}
-					>Alerts{app.unreadAlerts ? ` (${app.unreadAlerts})` : ''}</a
-				>
-			</header>
-			<main id="main" class="main-content" tabindex="-1">
-				{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
-				{#if app.failed.length}<div class="callout bad" role="alert">
-						<b>{app.failed.length} changes need attention</b>
-						<p>
-							Your server did not accept these changes. Keep this device unlocked while you review
-							them.
-						</p>
-						<ul>
-							{#each app.failed as f (f.id)}<li>{f.message}</li>{/each}
-						</ul>
-					</div>{/if}
-				{@render children()}
-			</main>
 		</div>
-		<nav class="mobile-nav" aria-label="Mobile navigation">
-			{#each data.user.role === 'caregiver' ? nav : [nav[0], nav[1], nav.find((item) => item.href === '/shifts')!, nav.find((item) => item.href === '/me')!] as item (item.href)}<a
-					href={resolve(('/(app)' + item.href) as '/(app)/today')}
-					aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
-				>{/each}
-		</nav>
-	</div>
+	</PrivacyShield>
 {/if}
