@@ -26,6 +26,7 @@
 			class="btn sec"
 			href={resolve('/(app)/shifts')}>Schedule</a
 		><a class="btn sec" href={resolve('/(app)/dashboard/timesheets')}>Timesheets</a>
+		<a class="btn sec" href={resolve('/(app)/dashboard/intake')}>Intake</a>
 	</div>
 	<p class="muted">
 		Documentation and attention for {app.homes.find((h) => h.id === app.homeId)?.name ??

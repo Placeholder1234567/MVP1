@@ -37,6 +37,7 @@
 					{ href: '/today', label: 'Care records' },
 					{ href: '/shifts', label: 'Schedule' },
 					{ href: '/dashboard/timesheets', label: 'Timesheets' },
+					{ href: '/dashboard/intake', label: 'Intake' },
 					{ href: '/messages', label: 'Messages' },
 					{ href: '/me', label: 'Me' }
 				]

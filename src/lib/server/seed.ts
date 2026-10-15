@@ -8,7 +8,7 @@
 // Every account below uses DEV_PASSWORD. It exists only in the emulator.
 import { randomUUID } from 'node:crypto';
 import { closeDb, withService } from './db';
-import { agencies, clients, homes, medications, profiles } from './db/schema';
+import { agencies, clients, homes, medications, profiles, rooms } from './db/schema';
 import { createIdentity, deleteIdentity } from './identity';
 
 export const DEV_PASSWORD = 'guad-dev-only-1';
@@ -119,6 +119,31 @@ async function main() {
 			first_name: p.first
 		}));
 		await tx.insert(clients).values(people);
+		await tx.insert(rooms).values([
+			{
+				agency_id: agencyId,
+				home_id: homeIds.oak,
+				name: 'Oak room 1',
+				status: 'occupied',
+				occupied_by: people[0].id
+			},
+			{
+				agency_id: agencyId,
+				home_id: homeIds.oak,
+				name: 'Oak room 2',
+				status: 'occupied',
+				occupied_by: people[1].id
+			},
+			{ agency_id: agencyId, home_id: homeIds.oak, name: 'Oak room 3' },
+			{
+				agency_id: agencyId,
+				home_id: homeIds.maple,
+				name: 'Maple room 1',
+				status: 'occupied',
+				occupied_by: people[2].id
+			},
+			{ agency_id: agencyId, home_id: homeIds.maple, name: 'Maple room 2' }
+		]);
 		await tx.insert(medications).values([
 			{
 				agency_id: agencyId,
