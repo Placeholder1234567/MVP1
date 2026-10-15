@@ -6,6 +6,7 @@ import { withService } from '../../db';
 import { enqueue } from '../../jobs/queue.ts';
 import { providers } from '../../messaging/index.ts';
 import { render } from '../../messaging/templates.ts';
+import { deleteDeviceTokens, isSuppressed } from './events.queries';
 import {
 	markDelivery,
 	pendingDeliveries,
@@ -17,8 +18,9 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 	sent: number;
 	held: number;
 	failed: number;
+	suppressed: number;
 }> {
-	const stats = { sent: 0, held: 0, failed: 0 };
+	const stats = { sent: 0, held: 0, failed: 0, suppressed: 0 };
 	const rows = await withService((tx) => pendingDeliveries(tx, payload.ids));
 	const send = providers();
 	for (const row of rows) {
@@ -31,6 +33,16 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 			stats.held++;
 			continue;
 		}
+		// Bounced or complained addresses are never mailed again (notifications.md §7).
+		if (
+			channel === 'email' &&
+			(await withService((tx) => isSuppressed(tx, row.agencyId, row.email.toLowerCase())))
+		) {
+			console.log(`notification ${row.id} email skipped: address suppressed`);
+			await withService((tx) => markDelivery(tx, row.id, { status: 'failed' }));
+			stats.suppressed++;
+			continue;
+		}
 		try {
 			if (!row.active) throw new Error('recipient deactivated');
 			const d = render(channel, row);
@@ -40,7 +52,13 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 					(t) => t.token
 				);
 				if (!tokens.length) throw new Error('no push device registered');
-				result = await send.push(tokens, d);
+				try {
+					result = await send.push(tokens, d);
+				} catch (e) {
+					await removeDeadTokens(row.profileId, (e as { deadTokens?: string[] }).deadTokens);
+					throw e;
+				}
+				await removeDeadTokens(row.profileId, result.deadTokens);
 			} else if (channel === 'sms') {
 				if (!row.phone) throw new Error('no phone number');
 				result = await send.sms(row.phone, d);
@@ -59,6 +77,11 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 		}
 	}
 	return stats;
+}
+
+/** Forgets push tokens the provider rejected for good (app removed, token expired). */
+async function removeDeadTokens(profileId: string, tokens: string[] | undefined) {
+	if (tokens?.length) await withService((tx) => deleteDeviceTokens(tx, profileId, tokens));
 }
 
 /**

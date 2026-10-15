@@ -15,6 +15,7 @@ import { enqueue } from '../../jobs/queue.ts';
 import { activeStaffByRole, insertNotifications, preferencesFor } from './notification.queries';
 
 export { dispatchNotifications, sweepNotifications } from './dispatch';
+export { handleEmailEvent, handleSmsEvent, type EventOutcome } from './events';
 export {
 	getNotification,
 	listNotifications,

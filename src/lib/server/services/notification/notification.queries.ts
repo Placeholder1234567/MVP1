@@ -60,6 +60,7 @@ export function pendingDeliveries(tx: Tx, ids?: string[]) {
 	return tx
 		.select({
 			id: notifications.id,
+			agencyId: notifications.agency_id,
 			channel: notifications.channel,
 			title: notifications.title,
 			priority: notifications.priority,

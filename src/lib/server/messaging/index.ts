@@ -1,13 +1,17 @@
 // Delivery providers for push, SMS and email (notifications.md §5-7).
 //
-// Today: email goes through SMTP (Mailpit locally: SMTP_URL=smtp://localhost:1025),
-// push and SMS go to a console driver that logs only the notification ID and
-// channel. The production drivers (FCM, AWS End User Messaging SMS, Amazon
-// SES) plug in here behind the same interface once those accounts exist.
+// Each channel's driver is picked by an environment variable:
+//   PUSH_DRIVER  = console (default) | fcm   Firebase Cloud Messaging
+//   EMAIL_DRIVER = smtp (default)    | ses   Amazon SES
+//   SMS_DRIVER   = console (default) | aws   AWS End User Messaging SMS
+// Locally email goes to Mailpit (SMTP_URL=smtp://localhost:1025), and the
+// console driver logs only the notification ID and channel. The production
+// drivers are in drivers.ts.
 //
 // Everything sent through here is PHI-free by construction: titles and bodies
 // come from templates.ts, never from clinical records.
 import nodemailer, { type Transporter } from 'nodemailer';
+import { emailViaSes, pushViaFcm, smsViaAws } from './drivers.ts';
 
 export interface Delivery {
 	notificationId: string;
@@ -19,6 +23,8 @@ export interface Delivery {
 
 export interface SendResult {
 	providerMessageId: string;
+	/** Push tokens the provider says will never work again (to delete). */
+	deadTokens?: string[];
 }
 
 export interface Providers {
@@ -55,10 +61,20 @@ export function setProvidersForTests(p: Partial<Providers> | undefined) {
 	override = p;
 }
 
+function pick<T>(name: string, drivers: Record<string, T>, fallback: string): T {
+	const driver = drivers[process.env[name] || fallback];
+	if (!driver) throw new Error(`${name} must be one of: ${Object.keys(drivers).join(', ')}`);
+	return driver;
+}
+
 export function providers(): Providers {
 	return {
-		push: override?.push ?? consoleSend('push'),
-		sms: override?.sms ?? consoleSend('sms'),
-		email: override?.email ?? emailViaSmtp
+		push:
+			override?.push ??
+			pick('PUSH_DRIVER', { console: consoleSend('push'), fcm: pushViaFcm }, 'console'),
+		sms:
+			override?.sms ??
+			pick('SMS_DRIVER', { console: consoleSend('sms'), aws: smsViaAws }, 'console'),
+		email: override?.email ?? pick('EMAIL_DRIVER', { smtp: emailViaSmtp, ses: emailViaSes }, 'smtp')
 	};
 }

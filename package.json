@@ -63,6 +63,9 @@
 		"node": ">=22"
 	},
 	"dependencies": {
+		"@aws-sdk/client-pinpoint-sms-voice-v2": "^3.1152.0",
+		"@aws-sdk/client-sesv2": "^3.1152.0",
+		"@aws-sdk/credential-providers": "^3.1152.0",
 		"@google-cloud/tasks": "^7.3.0",
 		"@powersync/common": "^2.3.1",
 		"@powersync/web": "^2.4.2",
