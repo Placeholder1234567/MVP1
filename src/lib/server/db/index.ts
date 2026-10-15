@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import pg from 'pg';
 import { sql } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { poolConfig } from './pool';
 import * as schema from './schema';
 
 /** Who the request is for. Always built from the profile row, never from token claims. */
@@ -30,11 +31,8 @@ let db: Db | undefined;
 /** Lazily connects so importing this module never opens a connection. */
 export function getDb(): Db {
 	if (!db) {
-		// Local dev uses DATABASE_URL. On Cloud Run this becomes the Cloud SQL
-		// connector with IAM auth (infrastructure.md §2).
-		const url = process.env.DATABASE_URL;
-		if (!url) throw new Error('DATABASE_URL is not set');
-		pool = new pg.Pool({ connectionString: url, max: 10 });
+		// DATABASE_URL locally, Cloud SQL with IAM sign-in on Cloud Run (pool.ts).
+		pool = new pg.Pool(poolConfig());
 		db = drizzle(pool, { schema });
 	}
 	return db;

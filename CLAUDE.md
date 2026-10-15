@@ -60,6 +60,7 @@ Read `.specify/` for full specs. Key files:
 |------|---------------------|
 | `.specify/constitution.md` | Engineering principles -- read before writing any code |
 | `.specify/infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, DB session setup, jobs, local dev, cost |
+| `deploy/README.md` | Deploying to Google Cloud: bootstrap and release scripts, first-deploy checks |
 | `.specify/schema.ts` | Database schema (38 Drizzle pgTable definitions, source of truth) |
 | `.specify/services.md` | Service boundaries, data ownership, dependencies |
 | `.specify/trpc-router.md` | tRPC procedure specification (20 routers, all input/output types) |
@@ -150,8 +151,11 @@ These are absolute. Do not deviate.
 # Google Cloud (server-only; credentials come from the Cloud Run service account)
 GOOGLE_CLOUD_PROJECT=            # Project ID
 GOOGLE_CLOUD_REGION=             # e.g. us-central1
-DATABASE_URL=                    # Local dev only; in Cloud Run use the Cloud SQL connector
+DATABASE_URL=                    # Local dev only; Cloud Run uses CLOUD_SQL_INSTANCE (db/pool.ts)
 CLOUD_SQL_INSTANCE=              # project:region:instance (Cloud Run)
+DB_USER=                         # Cloud Run: the service account email (IAM database sign-in, no password)
+DB_RUNTIME_USERS=                # migrate job only: service accounts granted app_user/app_service
+GUAD_SERVICE=                    # web | worker (worker serves only /api/jobs and /api/webhooks)
 TASKS_QUEUE_PREFIX=              # Cloud Tasks queue location/prefix
 WORKER_URL=                      # worker service URL that Cloud Tasks calls
 WORKER_SERVICE_ACCOUNT=          # identity Cloud Tasks signs OIDC tokens as
