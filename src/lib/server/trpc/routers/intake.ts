@@ -58,10 +58,22 @@ export const intakeRouter = router({
 	listRooms: supervisor
 		.input(z.object({ homeId: z.uuid().optional(), status: roomStatus.optional() }).default({}))
 		.query(({ ctx, input }) => intake.listRooms(ctx.db, ctx.user.agencyId, input)),
+	createRoom: supervisor
+		.input(
+			z.object({
+				homeId: z.uuid(),
+				name: z.string().trim().min(1).max(100),
+				capacity: z.number().int().min(1).max(20).default(1),
+				status: z.enum(['available', 'reserved']).default('available')
+			})
+		)
+		.mutation(({ ctx, input }) => intake.createRoom(ctx.db, ctx.user.agencyId, input)),
 	updateRoom: supervisor
 		.input(
 			z.object({
 				id: z.uuid(),
+				name: z.string().trim().min(1).max(100).optional(),
+				capacity: z.number().int().min(1).max(20).optional(),
 				status: roomStatus.optional(),
 				occupiedBy: z.uuid().nullable().optional()
 			})

@@ -126,6 +126,9 @@ export async function saveRoom(tx: Tx, agencyId: string, id: string, data: Parti
 			.returning()
 	)[0];
 }
+export async function insertRoom(tx: Tx, data: Room) {
+	return (await tx.insert(rooms).values(data).returning())[0];
+}
 export async function admit(
 	tx: Tx,
 	agencyId: string,
