@@ -39,6 +39,11 @@ export class CareSession {
 	staff = $state<Database['profiles'][]>([]);
 	messages = $state<Database['messages'][]>([]);
 	agencies = $state<Database['agencies'][]>([]);
+	notifications = $state<Database['notifications'][]>([]);
+	notificationPreferences = $state<Database['notification_preferences'][]>([]);
+	unreadAlerts = $derived(
+		this.notifications.filter((n) => n.channel === 'in_app' && !n.read_at).length
+	);
 	failed = $state<{ id: string; message: string }[]>([]);
 	status = $state('Connecting…');
 	pending = $state(0);
@@ -90,6 +95,14 @@ export class CareSession {
 			(r) => (this.messages = r)
 		);
 		watch<Database['agencies']>('SELECT * FROM agencies', (r) => (this.agencies = r));
+		watch<Database['notifications']>(
+			'SELECT * FROM notifications ORDER BY created_at DESC',
+			(r) => (this.notifications = r)
+		);
+		watch<Database['notification_preferences']>(
+			'SELECT * FROM notification_preferences',
+			(r) => (this.notificationPreferences = r)
+		);
 		watch<Database['profiles']>('SELECT * FROM profiles ORDER BY name', (r) => (this.staff = r));
 		watch<{ id: string; message: string }>(
 			'SELECT id, message FROM failed_writes ORDER BY failed_at DESC',

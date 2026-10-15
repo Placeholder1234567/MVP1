@@ -13,7 +13,7 @@ const r = (caregiver: Channel[], supervisor: Channel[], admin: Channel[]): Row =
 });
 
 /** Channels each role gets by default, per type (notifications.md table). */
-export const DEFAULT_CHANNELS: Record<string, Row> = {
+export const DEFAULT_CHANNELS = {
 	coverage_offer: r(['push', 'sms'], [], []),
 	coverage_accepted: r(['push'], ['push'], ['push']),
 	coverage_unfilled: r([], ['push', 'sms'], ['push', 'sms']),
@@ -33,6 +33,34 @@ export const DEFAULT_CHANNELS: Record<string, Row> = {
 	daily_summary: r([], ['push', 'email'], ['push', 'email']),
 	referral_status_change: r([], [], ['push']),
 	system_maintenance: r(['push'], ['push', 'email'], ['push', 'email'])
+} satisfies Record<string, Row>;
+
+export type NotificationType = keyof typeof DEFAULT_CHANNELS;
+export const NOTIFICATION_TYPES = Object.keys(DEFAULT_CHANNELS) as NotificationType[];
+export function isNotificationType(type: string): type is NotificationType {
+	return Object.hasOwn(DEFAULT_CHANNELS, type);
+}
+
+export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
+	coverage_offer: 'Coverage offers',
+	coverage_accepted: 'Coverage filled',
+	coverage_unfilled: 'Unfilled coverage',
+	note_submitted: 'Notes awaiting review',
+	note_approved: 'Approved notes',
+	note_sent_back: 'Returned notes',
+	med_refusal: 'Medication refusals',
+	med_possible_double_dose: 'Possible duplicate doses',
+	med_due_reminder: 'Medication reminders',
+	health_alert: 'Health alerts',
+	incident_reported: 'New incidents',
+	incident_high_severity: 'Urgent incidents',
+	incident_review_needed: 'Incident review reminders',
+	shift_reminder: 'Shift reminders',
+	clock_anomaly: 'Clock location exceptions',
+	clock_missed: 'Missed clock punches',
+	daily_summary: 'Daily summaries',
+	referral_status_change: 'Referral updates',
+	system_maintenance: 'System maintenance'
 };
 
 /** Always sent, whatever the user's preferences say (clinical safety, compliance). */
@@ -51,17 +79,29 @@ export interface Preference {
 	email: boolean;
 }
 
+/** Safety channels stay enabled even when other delivery preferences change. */
+export function requiredChannels(type: string, role: StaffRole): Channel[] {
+	return MANDATORY.has(type)
+		? [
+				...new Set<Channel>([
+					'push',
+					...(isNotificationType(type) ? DEFAULT_CHANNELS[type][role] : [])
+				])
+			]
+		: [];
+}
+
 /**
  * Delivery channels for one recipient (in addition to the in-app list, which
  * always gets a row). A saved preference replaces the role default, except
  * that mandatory types always go by push, plus their default channels.
  */
 export function channelsFor(type: string, role: StaffRole, pref?: Preference | null): Channel[] {
-	const defaults = DEFAULT_CHANNELS[type]?.[role] ?? [];
+	const defaults = isNotificationType(type) ? DEFAULT_CHANNELS[type][role] : [];
 	let chosen: Channel[] = pref
 		? (['push', 'sms', 'email'] as const).filter((c) => pref[c])
 		: [...defaults];
-	if (MANDATORY.has(type)) chosen = [...new Set<Channel>(['push', ...defaults, ...chosen])];
+	chosen = [...new Set<Channel>([...requiredChannels(type, role), ...chosen])];
 	return (['push', 'sms', 'email'] as const).filter((c) => chosen.includes(c));
 }
 

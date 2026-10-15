@@ -203,6 +203,12 @@
 					>{app.pending ? `${app.pending} changes waiting to sync` : app.status}</span
 				>
 				<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
+				<a
+					class="textbtn"
+					href={resolve('/(app)/notifications')}
+					aria-label={`Alerts, ${app.unreadAlerts} unread`}
+					>Alerts{app.unreadAlerts ? ` (${app.unreadAlerts})` : ''}</a
+				>
 			</header>
 			<main id="main" class="main-content" tabindex="-1">
 				{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}

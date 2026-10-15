@@ -15,6 +15,13 @@ import { enqueue } from '../../jobs/queue.ts';
 import { activeStaffByRole, insertNotifications, preferencesFor } from './notification.queries';
 
 export { dispatchNotifications, sweepNotifications } from './dispatch';
+export {
+	getNotification,
+	listNotifications,
+	markNotificationsRead,
+	updatePreferences,
+	PreferencesInput
+} from './inbox';
 
 export interface NotificationInput {
 	type: string;

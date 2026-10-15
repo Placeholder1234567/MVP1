@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useSession } from '#lib/app/session.svelte.ts';
+	import { resolve } from '$app/paths';
 
 	const app = useSession();
 	let error = $state('');
@@ -16,6 +17,11 @@
 <div class="stack">
 	<p class="eyebrow">Your workspace</p>
 	<h1>{app.user.name}</h1>
+	<div class="actions">
+		<a class="btn sec" href={resolve('/(app)/notifications')}
+			>Your alerts ({app.unreadAlerts} unread)</a
+		><a class="btn sec" href={resolve('/(app)/me/notifications')}>Delivery preferences</a>
+	</div>
 	<div class="card pad stack">
 		<p><b>Role</b><br />{app.user.role}</p>
 		<p>
