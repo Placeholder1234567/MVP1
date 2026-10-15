@@ -9,7 +9,7 @@ Cloud SQL Postgres 16        PowerSync Service          Client (PWA)
  (source of truth)       (self-hosted, Cloud Run)  (wa-sqlite via OPFS)
  ┌──────────────┐         ┌──────────────┐         ┌──────────────────┐
  │              │  WAL    │              │  delta   │  wa-sqlite DB    │
- │  37 tables   │────────>│  Sync Rules  │────────> │  (encrypted,     │
+ │  38 tables   │────────>│  Sync Rules  │────────> │  (encrypted,     │
  │  RLS-enforced│         │  (YAML)      │         │   OPFS-backed)   │
  │              │         │  Bucket      │         │  Write Queue     │
  │              │         │  routing     │         │  (FIFO)          │
@@ -33,10 +33,10 @@ Cloud SQL Postgres 16        PowerSync Service          Client (PWA)
 | **Storage model** | File-system-like, optimized for SQLite | Key-value store, poor for relational queries |
 | **Performance** | Synchronous access via `FileSystemSyncAccessHandle`; sub-ms reads | Async transactions with event loop overhead; 2-10ms reads |
 | **Concurrency** | Exclusive file locks managed by the origin private FS | Transaction locking can deadlock under heavy write load |
-| **Encryption** | SQLCipher compiles cleanly against OPFS file handles | Encryption requires wrapping every IDB transaction |
+| **Encryption** | SQLite3MultipleCiphers works on OPFS file handles | Encryption requires wrapping every IDB transaction |
 | **Size limits** | Browser-managed quota (typically 50%+ of disk) | Often limited to 50-100MB by browser heuristics |
 | **Compatibility** | Chrome 102+, Firefox 111+, Safari 15.4+ | Universal but with divergent implementations |
-| **PHI safety** | Encrypted at rest via SQLCipher (AES-256-CBC); not inspectable via DevTools Application tab | Plaintext by default; visible in DevTools; requires manual encryption layer |
+| **PHI safety** | Encrypted at rest via SQLite3MultipleCiphers (ChaCha20-Poly1305); not inspectable via DevTools Application tab | Plaintext by default; visible in DevTools; requires manual encryption layer |
 
 OPFS is the only permitted client-side PHI storage per the constitution (principle 2). See "Local database encryption key" below for how the database is encrypted.
 
@@ -44,12 +44,12 @@ OPFS is the only permitted client-side PHI storage per the constitution (princip
 
 The key is **not** derived from the session token: access tokens rotate hourly and a device can be offline for a whole shift, so a token-derived key would lock the caregiver out of their own unsynced work.
 
-1. On first sign-in on a device, the server generates a random 256-bit database key for that user and device, stores it server-side (encrypted, in a non-synced table), and returns it once over TLS.
-2. The client keeps the key in memory only, and also stores a copy **wrapped** with a key derived from the user's device PIN (PBKDF2-SHA256, 600k iterations, random salt). Only the wrapped copy touches disk.
+1. On first sign-in on a device, the server generates a random 256-bit database key for that user and device, stores it in `device_keys` (schema.ts #38: AES-256-GCM under `DEVICE_KEY_KEK`, RLS with no policies so no user session can read it), and returns it over TLS through `device.key`. The device generates its own random device ID once.
+2. The client keeps the key in memory only, and also stores a copy **wrapped** with a key derived from the user's device PIN (PBKDF2-SHA256, 600k iterations, random salt, AES-256-GCM) in one small OPFS file, `guad-device.json`, next to the device ID (`src/lib/sync/device-key.ts`). Only the wrapped copy touches disk.
 3. Opening the app (online or offline) asks for the PIN, unwraps the key, and opens the database. After 5 wrong PINs the wrapped key is deleted; the database can then only be reopened by signing in online, which fetches the key from the server again.
 4. Deactivating a user or device on the server deletes the server copy, so a stolen device can't be re-keyed.
 
-> **Verify before building:** confirm the current `@powersync/web` release supports an encrypted wa-sqlite build (SQLCipher or equivalent) on OPFS in all target browsers. If it doesn't, this whole section needs a different design before any PHI is cached on devices.
+> **Verified (Oct 2026, `@powersync/web` 2.4.2, Chromium):** the database opens with `database: { vfs: WASQLiteVFS.OPFSCoopSyncVFS, encryptionKey }` and is encrypted with SQLite3MultipleCiphers (ChaCha20). The OPFS file has no SQLite header and none of the synced text appears in its bytes. **Still to verify:** Safari and Firefox on real phones, which the PWA must support. `vfs` must be set explicitly, because the SDK can default to IndexedDB.
 
 ### How PowerSync Differs from Traditional Sync
 

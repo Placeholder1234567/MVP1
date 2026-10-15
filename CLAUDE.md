@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, sign-in (Identity Platform session cookies, Auth emulator locally) tRPC (`auth.me`, `agency.get`, `home.list`, `home.get`) and the server side of PowerSync (Sync Streams, local service, scoping tests); the browser PowerSync client and `sync.upload` come next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
+> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, sign-in (Identity Platform session cookies, Auth emulator locally) tRPC (`auth.me`, `agency.get`, `home.list`, `home.get`) and PowerSync end to end (Sync Streams, encrypted on-device database unlocked with a device PIN, live updates, offline reads); `sync.upload` for offline writes comes next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
 
 ```bash
 npm install
@@ -60,7 +60,7 @@ Read `.specify/` for full specs. Key files:
 |------|---------------------|
 | `.specify/constitution.md` | Engineering principles -- read before writing any code |
 | `.specify/infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, DB session setup, jobs, local dev, cost |
-| `.specify/schema.ts` | Database schema (37 Drizzle pgTable definitions, source of truth) |
+| `.specify/schema.ts` | Database schema (38 Drizzle pgTable definitions, source of truth) |
 | `.specify/services.md` | Service boundaries, data ownership, dependencies |
 | `.specify/trpc-router.md` | tRPC procedure specification (20 routers, all input/output types) |
 | `.specify/charting-ux.md` | Screen specs, component catalog, UX flows, accessibility |
@@ -176,8 +176,10 @@ SES_FROM_ADDRESS=
 SMS_ORIGINATION_IDENTITY=        # 10DLC phone number ID
 SMS_CONFIGURATION_SET=
 
-# PowerSync
+# PowerSync and device keys
 PUBLIC_POWERSYNC_URL=            # PowerSync service URL
+DEVICE_KEY_KEK=                  # 32-byte base64url key that encrypts device_keys (Secret Manager)
+PS_DEV_JWT_KEY=                  # Local dev only: signs PowerSync tokens while the Auth emulator is in use
 ```
 
 ## Domain Quick Reference

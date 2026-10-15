@@ -30,7 +30,7 @@
 		"pretest": "svelte-kit sync",
 		"pretest:integration": "svelte-kit sync",
 		"sync:probe": "tsx --env-file=.env scripts/sync-probe.ts",
-		"sync:rules": "node scripts/sync-rules.mjs"
+		"sync:rules": "node scripts/sync-rules.mjs && node scripts/sync-schema.mjs"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -62,6 +62,8 @@
 		"node": ">=22"
 	},
 	"dependencies": {
+		"@powersync/common": "^2.3.1",
+		"@powersync/web": "^2.4.2",
 		"@trpc/client": "^11.19.0",
 		"@trpc/server": "^11.19.0",
 		"drizzle-orm": "^0.45.4",

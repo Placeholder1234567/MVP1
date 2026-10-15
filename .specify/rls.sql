@@ -1388,6 +1388,11 @@ CREATE POLICY report_jobs_select ON public.report_jobs
     AND public.is_supervisor_or_above()
   );
 
+-- device_keys: no policies at all. Only the Device Service (app_service)
+-- reads or writes them; no user, not even an admin, can read a key through
+-- their own session.
+ALTER TABLE public.device_keys ENABLE ROW LEVEL SECURITY;
+
 
 -- =============================================================================
 -- Integrity triggers

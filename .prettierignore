@@ -4,3 +4,4 @@ drizzle/
 build/
 .svelte-kit/
 package-lock.json
+src/lib/sync/schema.ts

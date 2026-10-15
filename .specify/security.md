@@ -186,7 +186,7 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 |-------|-----------|----------------|
 | Cloud SQL Postgres | AES-256 (Google-managed) | Google-managed keys; customer-managed keys (Cloud KMS) optional later |
 | Cloud SQL backups | AES-256 | Same as the instance |
-| PowerSync OPFS (device) | SQLCipher-style AES-256 (confirm encrypted wa-sqlite build) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2); server copy deleted on deactivation |
+| PowerSync OPFS (device) | SQLite3MultipleCiphers, ChaCha20-Poly1305 (verified in Chromium; Safari/Firefox still to verify) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2); server copy deleted on deactivation |
 | Cloud Storage (exports) | AES-256 (Google-managed) | Google-managed keys |
 | Cloud Tasks payloads | AES-256 (Google-managed) | Payloads hold record IDs only, never PHI |
 
@@ -324,7 +324,7 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 
 ### Local SQLite Encryption
 
-- PowerSync uses wa-sqlite compiled with SQLCipher, providing AES-256-CBC encryption for the local OPFS database.
+- PowerSync's web SDK encrypts the local OPFS database with SQLite3MultipleCiphers (ChaCha20-Poly1305). The key is the per-device key described in offline-sync.md "Local Database Encryption Key".
 - The key is a random per-device key issued by the server at first sign-in. It is held in memory and stored on disk only wrapped with a PIN-derived key, so caregivers can reopen the app offline across token expiry without losing unsynced work.
 - Five wrong PINs delete the wrapped key; the database can then only be reopened by signing in online. Deactivating the user or device deletes the server copy of the key.
 

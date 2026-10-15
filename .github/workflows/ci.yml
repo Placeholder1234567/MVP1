@@ -22,6 +22,7 @@ jobs:
       - run: npm test
       - run: node .specify/lint.js
       - run: node scripts/sync-rules.mjs --check # powersync/sync-config.yaml matches offline-sync.md §4
+      - run: node scripts/sync-schema.mjs --check # src/lib/sync/schema.ts matches the streams and the schema
       - run: npm run build
 
   database:
