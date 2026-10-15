@@ -1,0 +1,36 @@
+<script lang="ts">
+	import { useSession } from '#lib/app/session.svelte.ts';
+
+	const app = useSession();
+	let error = $state('');
+	async function signOut() {
+		try {
+			await app.signOut();
+		} catch {
+			error = 'Could not sign out. Please try again.';
+		}
+	}
+</script>
+
+<svelte:head><title>Me · Guad</title></svelte:head>
+<div class="stack">
+	<p class="eyebrow">Your workspace</p>
+	<h1>{app.user.name}</h1>
+	<div class="card pad stack">
+		<p><b>Role</b><br />{app.user.role}</p>
+		<p>
+			<b>Homes</b><br />{app.homes
+				.filter((h) => app.user.homeIds.includes(h.id))
+				.map((h) => h.name)
+				.join(', ') || 'Agency-wide access'}
+		</p>
+		<p><b>Medication certified</b><br />{app.user.medCertified ? 'Yes' : 'No'}</p>
+		<p><b>Time zone</b><br />{app.user.timeZone}</p>
+	</div>
+	<button class="btn sec" onclick={() => app.lock()}>Lock device</button><button
+		class="btn sec"
+		onclick={signOut}>Sign out on all devices</button
+	>{#if error}<p role="alert">
+			{error}
+		</p>{/if}
+</div>

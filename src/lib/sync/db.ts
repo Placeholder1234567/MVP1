@@ -12,12 +12,12 @@ export function currentDb(): PowerSyncDatabase | undefined {
 	return db;
 }
 
-export async function openDb(key: Uint8Array): Promise<PowerSyncDatabase> {
+export async function openDb(key: Uint8Array, profileId?: string): Promise<PowerSyncDatabase> {
 	if (db) return db;
 	db = new PowerSyncDatabase({
 		schema: DeviceSchema,
 		database: {
-			dbFilename: 'guad.db',
+			dbFilename: profileId ? `guad-${profileId}.db` : 'guad.db',
 			// OPFS, not IndexedDB (constitution principle 2): the default VFS can be IndexedDB.
 			vfs: WASQLiteVFS.OPFSCoopSyncVFS,
 			encryptionKey: toHex(key),
