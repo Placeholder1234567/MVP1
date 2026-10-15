@@ -8,6 +8,7 @@
 		type NoteStatus
 	} from '#lib/domain/index.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import LomiComposer from './LomiComposer.svelte';
 	let {
 		clientId,
 		type = 'shift',
@@ -61,6 +62,7 @@
 	let message = $state('');
 	let signature = $state(false);
 	let dirty = $state(false);
+	let assisted = $state(false);
 	$effect(() => {
 		const id = note?.id ?? person?.id ?? '';
 		const sourceGoals = app.noteGoals.filter((g) => g.note_id === note?.id);
@@ -72,6 +74,7 @@
 			return;
 		}
 		content = parseJson<Record<string, string>>(note?.content, {});
+		assisted = !!note?.lomi_drafted;
 		scores = {};
 		for (const row of sourceGoals) {
 			scores[row.goal_id!] = {
@@ -117,14 +120,19 @@
 						'Save your draft, then reconnect and wait for sync before signing a returned note.';
 					return;
 				}
-				await trpc.note.update.mutate({ id: target, content, goals: goalEntries });
+				await trpc.note.update.mutate({
+					id: target,
+					content,
+					goals: goalEntries,
+					lomiDrafted: assisted ? true : undefined
+				});
 				await trpc.note.sign.mutate({ id: target });
 			} else {
 				const now = new Date().toISOString();
 				await app.db.writeTransaction(async (tx) => {
 					if (!note && !id)
 						await tx.execute(
-							'INSERT INTO notes (id, agency_id, home_id, client_id, author_id, author_name, day, shift, type, content, status, lomi_drafted, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)',
+							'INSERT INTO notes (id, agency_id, home_id, client_id, author_id, author_name, day, shift, type, content, status, lomi_drafted, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 							[
 								target,
 								app.user.agencyId,
@@ -137,17 +145,17 @@
 								kind,
 								JSON.stringify(content),
 								'draft',
+								assisted ? 1 : 0,
 								app.user.profileId,
 								now,
 								now
 							]
 						);
 					else
-						await tx.execute('UPDATE notes SET content = ?, updated_at = ? WHERE id = ?', [
-							JSON.stringify(content),
-							now,
-							target
-						]);
+						await tx.execute(
+							'UPDATE notes SET content = ?, lomi_drafted = ?, updated_at = ? WHERE id = ?',
+							[JSON.stringify(content), assisted ? 1 : 0, now, target]
+						);
 					for (const g of goalEntries) {
 						const existing = app.noteGoals.find(
 							(row) => row.note_id === target && row.goal_id === g.goalId
@@ -220,7 +228,17 @@
 				<b>Your care is recorded.</b>
 				<p>{message}</p>
 			</div>{/if}
-		{#if note?.lomi_drafted}<span class="pill">AI-assisted draft · review every section</span>{/if}
+		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
+		{#if editable}<LomiComposer
+				clientId={person.id}
+				type={kind as 'shift' | 'behavior'}
+				onDraft={(result) => {
+					content = result.content;
+					assisted = true;
+					dirty = true;
+					signature = false;
+				}}
+			/>{/if}
 		{#if !editable}<p class="callout">
 				This note is {note?.status}. Signed records are read-only.
 			</p>{/if}

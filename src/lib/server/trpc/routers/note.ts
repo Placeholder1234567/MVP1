@@ -65,6 +65,7 @@ export const noteRouter = router({
 		.input(
 			z.object({
 				id: z.uuid(),
+				lomiDrafted: z.literal(true).optional(),
 				content: Content.optional(),
 				goals: z.array(GoalEntry).max(30).optional()
 			})

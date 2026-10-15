@@ -81,7 +81,11 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				user.agencyId,
 				user,
 				id,
-				{ content: d!.content, status: str(d!.status) as 'draft' | undefined },
+				{
+					content: d!.content,
+					status: str(d!.status) as 'draft' | undefined,
+					lomiDrafted: flag(d!.lomi_drafted) ? true : undefined
+				},
 				{ fromOfflineQueue: true }
 			);
 		}

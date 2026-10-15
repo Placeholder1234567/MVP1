@@ -92,7 +92,9 @@ export async function updateNoteRow(
 	tx: Tx,
 	agencyId: string,
 	id: string,
-	set: Partial<Pick<typeof notes.$inferInsert, 'content' | 'status' | 'supervisor_comment'>>
+	set: Partial<
+		Pick<typeof notes.$inferInsert, 'content' | 'status' | 'supervisor_comment' | 'lomi_drafted'>
+	>
 ) {
 	const [row] = await tx
 		.update(notes)

@@ -1,6 +1,6 @@
 // Phase 2 care-record procedures (trpc-router.md: note, mar, medication,
 // health, incident, attendance), through the real router as real users.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
@@ -99,6 +99,50 @@ beforeAll(async () => {
 });
 
 afterAll(closeDb);
+
+describe('Lomi access and labels', () => {
+	it('uses source text when cloud drafting is unconfigured and refuses another home', async () => {
+		vi.stubEnv('LOMI_MODEL', '');
+		try {
+			const cara = await as(CARA);
+			const result = await cara.lomi.draft({
+				clientId: PERSON,
+				type: 'shift',
+				prompt: 'Ate lunch. Was fine.'
+			});
+			expect(result.fallback).toBe(true);
+			expect(result.content.meals).toBe('Ate lunch.');
+			expect(result.flags.map((f) => f.phrase)).toContain('was fine');
+			await expect(
+				cara.lomi.draft({ clientId: MAPLE_PERSON, type: 'shift', prompt: 'Test only.' })
+			).rejects.toMatchObject({ code: 'NOT_FOUND' });
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+	it('keeps the Lomi label after a manual draft is edited with Lomi online or offline', async () => {
+		const cara = await as(CARA);
+		const note = await cara.note.create({ clientId: PERSON, type: 'shift' });
+		await cara.note.update({
+			id: note.id,
+			content: { activities: 'Synthetic observation' },
+			lomiDrafted: true
+		});
+		expect((await cara.note.get({ id: note.id })).lomiDrafted).toBe(true);
+		await cara.sync.upload({
+			transactionId: 20,
+			ops: [
+				{
+					op: 'PATCH',
+					table: 'notes',
+					id: note.id,
+					data: { content: '{"activities":"Edited observation"}', lomi_drafted: 0 }
+				}
+			]
+		});
+		expect((await cara.note.get({ id: note.id })).lomiDrafted).toBe(true);
+	});
+});
 
 describe('transactions', () => {
 	it('a procedure that fails after writing leaves nothing behind', async () => {

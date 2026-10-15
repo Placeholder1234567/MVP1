@@ -62,12 +62,17 @@ export const NewNote = z.object({
 
 export const NoteChanges = z
 	.object({
+		lomiDrafted: z.literal(true).optional(),
 		content: Content.optional(),
 		goals: z.array(GoalEntry).max(30).optional(),
 		status: z.enum(['draft', 'submitted']).optional()
 	})
 	.refine(
-		(v) => v.content !== undefined || v.status !== undefined || v.goals !== undefined,
+		(v) =>
+			v.content !== undefined ||
+			v.status !== undefined ||
+			v.goals !== undefined ||
+			v.lomiDrafted !== undefined,
 		'Nothing to change'
 	);
 
@@ -186,6 +191,7 @@ export async function updateNote(
 	if (set.goals) await saveGoals(tx, agencyId, id, note.clientId, set.goals);
 	const updatedAt = await updateNoteRow(tx, agencyId, id, {
 		content: set.content,
+		lomi_drafted: set.lomiDrafted,
 		status: set.status
 	});
 	return { updatedAt };
