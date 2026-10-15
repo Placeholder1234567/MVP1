@@ -75,8 +75,8 @@ Push (FCM) needs nothing beyond `PUSH_DRIVER=fcm`. Email and SMS need an AWS acc
 
 1. **IAM role for the worker.** Create an IAM OIDC trust on `accounts.google.com` for the worker's identity: audience `sts.amazonaws.com`, subject = the numeric unique ID of `guad-worker@<project>.iam.gserviceaccount.com`. The role may only call `ses:SendEmail` and `sms-voice:SendTextMessage`. Its ARN is `AWS_ROLE_ARN`.
 2. **SES.** Verify the sending domain (SPF, DKIM, DMARC; notifications.md §7). Add a configuration set whose event destination is an SNS topic for bounces and complaints.
-3. **SMS.** Register for 10DLC (allow 1–3 weeks). Add a configuration set whose event destination is an SNS topic.
-4. **Webhook subscriptions.** Subscribe both topics by HTTPS to `<worker URL>/api/webhooks/aws/ses-events` and `.../sms-events`. The worker confirms the subscriptions itself.
+3. **SMS.** Register for 10DLC (allow 1–3 weeks). Add a configuration set whose event destination is an SNS topic. Turn on two-way SMS for the number, publishing inbound messages to a second SNS topic (shift-offer replies, STOP/START).
+4. **Webhook subscriptions.** Subscribe the three topics by HTTPS to `<worker URL>/api/webhooks/aws/ses-events`, `.../sms-events` and `.../sms-inbound`. The worker confirms the subscriptions itself.
 5. **Settings.** Put the values in `deploy/app.env.yaml`, then deploy with `PUBLIC_WEBHOOKS=1`.
 
 **Why `PUBLIC_WEBHOOKS`.** infrastructure.md §2 says the worker is not publicly invokable, and that's the default here: only `guad-tasks` may call it. AWS SNS can't attach a Google token, though, so the webhooks need the worker to accept unauthenticated requests at the Cloud Run level. The app then still serves only the job routes (Google OIDC token checked in code, `jobs/oidc.ts`) and the webhook routes (SNS signature checked in code). Everything else returns 404 (`hooks.server.ts`).

@@ -1,10 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { confirmSubscription, verifySnsMessage } from '#lib/server/messaging/sns.ts';
-import {
-	handleEmailEvent,
-	handleSmsEvent,
-	type EventOutcome
-} from '#lib/server/services/notification/index.ts';
+import { handleEmailEvent, handleSmsEvent } from '#lib/server/services/notification/index.ts';
+import { handleInboundSms } from '#lib/server/services/sms/index.ts';
 import type { RequestHandler } from './$types';
 
 /**
@@ -12,12 +9,14 @@ import type { RequestHandler } from './$types';
  * service only (notifications.md §6-7):
  *   /api/webhooks/aws/ses-events  SES bounces and complaints (SES_EVENTS_TOPIC_ARN)
  *   /api/webhooks/aws/sms-events  SMS delivery receipts      (SMS_EVENTS_TOPIC_ARN)
+ *   /api/webhooks/aws/sms-inbound texts staff send us        (SMS_INBOUND_TOPIC_ARN)
  * Unsigned, forged or wrong-topic messages get 403. A 2xx tells SNS the
  * message was handled; anything else makes it retry.
  */
-const TOPICS: Record<string, { env: string; handle: (event: never) => Promise<EventOutcome> }> = {
+const TOPICS: Record<string, { env: string; handle: (event: never) => Promise<string> }> = {
 	'ses-events': { env: 'SES_EVENTS_TOPIC_ARN', handle: handleEmailEvent },
-	'sms-events': { env: 'SMS_EVENTS_TOPIC_ARN', handle: handleSmsEvent }
+	'sms-events': { env: 'SMS_EVENTS_TOPIC_ARN', handle: handleSmsEvent },
+	'sms-inbound': { env: 'SMS_INBOUND_TOPIC_ARN', handle: handleInboundSms }
 };
 
 export const POST: RequestHandler = async ({ params, request }) => {
