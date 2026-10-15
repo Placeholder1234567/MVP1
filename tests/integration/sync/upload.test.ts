@@ -256,7 +256,13 @@ describe('sync.upload: MAR', () => {
 			t
 				.select()
 				.from(s.notifications)
-				.where(and(eq(s.notifications.reference_id, id), eq(s.notifications.profile_id, SAM)))
+				.where(
+					and(
+						eq(s.notifications.reference_id, id),
+						eq(s.notifications.profile_id, SAM),
+						eq(s.notifications.channel, 'in_app')
+					)
+				)
 		);
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0]).toMatchObject({ type: 'med_possible_double_dose', priority: 1 });

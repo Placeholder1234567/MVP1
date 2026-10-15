@@ -276,14 +276,12 @@ describe('mar.* and medication.list', () => {
 
 	it('medication.list hides stopped medications unless asked', async () => {
 		await withService((t) =>
-			t
-				.insert(s.medications)
-				.values({
-					agency_id: AGENCY,
-					client_id: PERSON,
-					name: 'Old med',
-					stopped_at: new Date('2026-01-01')
-				})
+			t.insert(s.medications).values({
+				agency_id: AGENCY,
+				client_id: PERSON,
+				name: 'Old med',
+				stopped_at: new Date('2026-01-01')
+			})
 		);
 		const cara = await as(CARA);
 		expect((await cara.medication.list({ clientId: PERSON })).map((m) => m.name)).toEqual([
@@ -309,7 +307,11 @@ describe('health.*', () => {
 				.select()
 				.from(s.notifications)
 				.where(
-					and(eq(s.notifications.reference_id, high.id), eq(s.notifications.type, 'health_alert'))
+					and(
+						eq(s.notifications.reference_id, high.id),
+						eq(s.notifications.type, 'health_alert'),
+						eq(s.notifications.channel, 'in_app')
+					)
 				)
 		);
 		expect(alerts.map((a) => a.profile_id)).toEqual([SAM]);
@@ -344,7 +346,10 @@ describe('incident.*', () => {
 			'State reporting system'
 		]);
 		const [alert] = await withService((t) =>
-			t.select().from(s.notifications).where(eq(s.notifications.reference_id, r.id))
+			t
+				.select()
+				.from(s.notifications)
+				.where(and(eq(s.notifications.reference_id, r.id), eq(s.notifications.channel, 'in_app')))
 		);
 		expect(alert).toMatchObject({
 			type: 'incident_high_severity',
