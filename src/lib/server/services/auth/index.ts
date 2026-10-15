@@ -1,7 +1,7 @@
 // Auth Service (services.md §1): resolves the signed-in Identity Platform user
 // to their Guad profile and role. Session handling itself is in ../../identity.
-import { withService } from '../../db';
-import { findActiveProfileByAuthUid } from './auth.queries';
+import { withService, type Tx } from '../../db';
+import { findActiveProfileByAuthUid, findProfile } from './auth.queries';
 import { ROLE_RANK, type CurrentUser, type Role } from './auth.types';
 
 export type { CurrentUser, Role } from './auth.types';
@@ -25,6 +25,11 @@ export async function getCurrentUser(authUid: string): Promise<CurrentUser | nul
 		timeZone: row.timeZone,
 		claims: { agency_id: row.agencyId, role: row.role, profile_id: row.id }
 	};
+}
+
+/** The caller's own profile, read as the caller (RLS applies). */
+export function getProfile(tx: Tx, agencyId: string, profileId: string) {
+	return findProfile(tx, agencyId, profileId);
 }
 
 /** Role hierarchy check: caregiver < supervisor < admin. */

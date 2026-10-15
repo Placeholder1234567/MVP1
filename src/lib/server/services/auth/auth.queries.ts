@@ -20,3 +20,27 @@ export async function findActiveProfileByAuthUid(tx: Tx, authUid: string) {
 		.limit(1);
 	return row ?? null;
 }
+
+/** The caller's own profile (auth.me). */
+export async function findProfile(tx: Tx, agencyId: string, profileId: string) {
+	const [row] = await tx
+		.select({
+			id: profiles.id,
+			agencyId: profiles.agency_id,
+			email: profiles.email,
+			phone: profiles.phone,
+			name: profiles.name,
+			initials: profiles.initials,
+			role: profiles.role,
+			homeIds: profiles.home_ids,
+			medCertified: profiles.med_certified,
+			mfaEnabled: profiles.mfa_enabled,
+			avatarUrl: profiles.avatar_url,
+			active: profiles.active,
+			createdAt: profiles.created_at
+		})
+		.from(profiles)
+		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId)))
+		.limit(1);
+	return row ?? null;
+}

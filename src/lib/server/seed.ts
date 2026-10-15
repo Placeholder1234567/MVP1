@@ -70,13 +70,11 @@ async function main() {
 	}
 
 	await withService(async (tx) => {
-		await tx
-			.insert(agencies)
-			.values({
-				id: agencyId,
-				name: 'Sunrise Demo Agency',
-				slug: `sunrise-${agencyId.slice(0, 8)}`
-			});
+		await tx.insert(agencies).values({
+			id: agencyId,
+			name: 'Sunrise Demo Agency',
+			slug: `sunrise-${agencyId.slice(0, 8)}`
+		});
 		await tx.insert(homes).values([
 			{
 				id: homeIds.oak,

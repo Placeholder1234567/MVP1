@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, and sign-in (Identity Platform session cookies, Auth emulator locally); tRPC and PowerSync come next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
+> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, sign-in (Identity Platform session cookies, Auth emulator locally) and tRPC (`auth.me`, `agency.get`, `home.list`, `home.get`); PowerSync comes next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
 
 ```bash
 npm install
@@ -128,7 +128,7 @@ These are absolute. Do not deviate.
 ### Services
 - One directory per service under `src/lib/server/services/`
 - Public API in `index.ts`, queries in `*.queries.ts`, types in `*.types.ts`
-- Every function takes `agencyId` as first argument
+- Every function takes the transaction (`tx`, from `ctx.db` in tRPC) and then `agencyId` as its first arguments, so it runs inside the caller's `withUser()` transaction
 - Don't write audit rows yourself for table changes: the `audit_row_change` trigger (rls.sql) records every INSERT/UPDATE/DELETE on audited tables. Call `audit.logEvent()` only for actions that don't change a row (PHI reads, exports, AI invocations).
 
 ### Database

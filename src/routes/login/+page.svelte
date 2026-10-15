@@ -14,7 +14,7 @@
 		message = '';
 		try {
 			await signIn(email.trim(), password);
-			await goto(resolve('/'), { invalidateAll: true });
+			await goto(resolve('/'), { refreshAll: true });
 		} catch (e) {
 			// Firebase error codes, not user data; safe to show.
 			const code = (e as { code?: string }).code ?? '';

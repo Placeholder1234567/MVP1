@@ -48,7 +48,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - run: npm ci
+      - run: npm ci  b
       - run: npm run db:setup
       - run: npm run test:integration # starts the Auth emulator for the run
       # SQL-level RLS and integrity-trigger tests (starts its own throwaway Postgres)
