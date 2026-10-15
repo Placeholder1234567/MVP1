@@ -7,7 +7,7 @@ import {
 	recordDose,
 	recordEffect
 } from '../../services/medication/index.ts';
-import { roleProcedure, router, userProcedure } from '../middleware.ts';
+import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
 
 const range = z.object({ from: z.iso.date(), to: z.iso.date() });
 
@@ -16,7 +16,7 @@ export const marRouter = router({
 	 * Records a dose. A duplicate scheduled slot is kept as a conflict record
 	 * and supervisors are alerted, the same as for offline uploads.
 	 */
-	record: userProcedure
+	record: featureProcedure('mar')
 		.input(
 			z.object({
 				id: z.uuid().optional(),
@@ -35,7 +35,7 @@ export const marRouter = router({
 			return { id, ...result };
 		}),
 
-	recordEffect: userProcedure
+	recordEffect: featureProcedure('mar')
 		.input(z.object({ id: z.uuid(), effect: z.string() }))
 		.mutation(async ({ ctx, input }) => {
 			const { updatedAt } = await recordEffect(
@@ -48,7 +48,7 @@ export const marRouter = router({
 			return { id: input.id, effect: input.effect.trim(), updatedAt };
 		}),
 
-	list: userProcedure
+	list: featureProcedure('mar')
 		.input(
 			z.object({ clientId: z.uuid(), day: z.iso.date().optional(), dateRange: range.optional() })
 		)
@@ -62,7 +62,7 @@ export const marRouter = router({
 			)
 		),
 
-	acknowledge: roleProcedure('supervisor')
+	acknowledge: featureRoleProcedure('mar', 'supervisor')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(async ({ ctx, input }) => {
 			const { updatedAt } = await acknowledgeDose(ctx.db, ctx.user.agencyId, ctx.user, input.id);
@@ -71,7 +71,7 @@ export const marRouter = router({
 });
 
 export const medicationRouter = router({
-	list: userProcedure
+	list: featureProcedure('mar')
 		.input(z.object({ clientId: z.uuid(), includeStopped: z.boolean().default(false) }))
 		.query(({ ctx, input }) =>
 			listMedications(ctx.db, ctx.user.agencyId, input.clientId, input.includeStopped)

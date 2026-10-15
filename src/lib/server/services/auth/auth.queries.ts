@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import { agencies, profiles } from '../../db/schema';
 
-/** Active profile for an Identity Platform UID, with its agency's time zone. */
+/** Active profile for an Identity Platform UID, with its agency's time zone and plan. */
 export async function findActiveProfileByAuthUid(tx: Tx, authUid: string) {
 	const [row] = await tx
 		.select({
@@ -12,7 +12,9 @@ export async function findActiveProfileByAuthUid(tx: Tx, authUid: string) {
 			name: profiles.name,
 			homeIds: profiles.home_ids,
 			medCertified: profiles.med_certified,
-			timeZone: agencies.timezone
+			timeZone: agencies.timezone,
+			tier: agencies.subscription_tier,
+			enabledFeatures: agencies.enabled_features
 		})
 		.from(profiles)
 		.innerJoin(agencies, eq(agencies.id, profiles.agency_id))

@@ -1,3 +1,4 @@
+import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Claims } from '../../db';
 
 export type Role = Claims['role'];
@@ -13,6 +14,8 @@ export interface CurrentUser {
 	medCertified: boolean;
 	/** Agency time zone, for "what shift is it" questions */
 	timeZone: string;
+	/** The agency's effective features (tier + overrides), sorted (entitlements.md) */
+	features: FeatureFlag[];
 	/** Claims for withUser(): always built from the profile row */
 	claims: Claims;
 }

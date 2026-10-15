@@ -11,13 +11,13 @@ import {
 	signNote,
 	updateNote
 } from '../../services/charting/index.ts';
-import { roleProcedure, router, userProcedure } from '../middleware.ts';
+import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
 
 const shift = z.enum(['am', 'pm', 'on']);
 const Content = z.record(z.string(), z.unknown());
 
 export const noteRouter = router({
-	create: userProcedure
+	create: featureProcedure('charting')
 		.input(
 			z.object({
 				id: z.uuid().optional(),
@@ -39,13 +39,15 @@ export const noteRouter = router({
 			return { id, status: note!.status, createdAt: note!.createdAt };
 		}),
 
-	get: userProcedure.input(z.object({ id: z.uuid() })).query(async ({ ctx, input }) => {
-		const note = await getNote(ctx.db, ctx.user.agencyId, input.id);
-		if (!note) throw new TRPCError({ code: 'NOT_FOUND', message: 'Note not found' });
-		return note;
-	}),
+	get: featureProcedure('charting')
+		.input(z.object({ id: z.uuid() }))
+		.query(async ({ ctx, input }) => {
+			const note = await getNote(ctx.db, ctx.user.agencyId, input.id);
+			if (!note) throw new TRPCError({ code: 'NOT_FOUND', message: 'Note not found' });
+			return note;
+		}),
 
-	list: userProcedure
+	list: featureProcedure('charting')
 		.input(
 			z.object({
 				homeId: z.uuid().optional(),
@@ -61,7 +63,7 @@ export const noteRouter = router({
 		// Caregivers only ever see their own homes' notes: RLS (notes_select).
 		.query(({ ctx, input }) => listNotes(ctx.db, ctx.user.agencyId, input)),
 
-	update: userProcedure
+	update: featureProcedure('charting')
 		.input(
 			z.object({
 				id: z.uuid(),
@@ -78,19 +80,21 @@ export const noteRouter = router({
 		}),
 
 	/** The human-signature step; the client confirms intent before calling it. */
-	sign: userProcedure.input(z.object({ id: z.uuid() })).mutation(async ({ ctx, input }) => {
-		const { updatedAt } = await signNote(ctx.db, ctx.user.agencyId, ctx.user, input.id);
-		return { id: input.id, status: 'submitted' as const, updatedAt };
-	}),
+	sign: featureProcedure('charting')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(async ({ ctx, input }) => {
+			const { updatedAt } = await signNote(ctx.db, ctx.user.agencyId, ctx.user, input.id);
+			return { id: input.id, status: 'submitted' as const, updatedAt };
+		}),
 
-	approve: roleProcedure('supervisor')
+	approve: featureRoleProcedure('note_review', 'supervisor')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(async ({ ctx, input }) => {
 			const { updatedAt } = await approveNote(ctx.db, ctx.user.agencyId, ctx.user, input.id);
 			return { id: input.id, status: 'approved' as const, updatedAt };
 		}),
 
-	sendBack: roleProcedure('supervisor')
+	sendBack: featureRoleProcedure('note_review', 'supervisor')
 		.input(z.object({ id: z.uuid(), comment: z.string().trim().min(1).max(2000) }))
 		.mutation(async ({ ctx, input }) => {
 			const { updatedAt } = await sendBackNote(

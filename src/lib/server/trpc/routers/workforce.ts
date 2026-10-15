@@ -18,21 +18,21 @@ import {
 	Position,
 	timesheet
 } from '../../services/clock/index.ts';
-import { roleProcedure, router, userProcedure } from '../middleware.ts';
+import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
 const slot = z.object({ homeId: z.uuid(), day: z.iso.date(), shift: z.enum(['am', 'pm', 'on']) });
 const range = z
 	.object({ from: z.coerce.date(), to: z.coerce.date() })
 	.refine((r) => r.from <= r.to, 'Invalid time range');
 export const scheduleRouter = router({
-	postOpen: roleProcedure('supervisor')
+	postOpen: featureRoleProcedure('scheduling', 'supervisor')
 		.input(slot)
 		.mutation(({ ctx, input }) => startCoverage(ctx.db, ctx.user, input, true)),
-	get: userProcedure
+	get: featureProcedure('scheduling')
 		.input(z.object({ homeId: z.uuid(), weekStart: z.iso.date() }))
 		.query(({ ctx, input }) =>
 			getSchedule(ctx.db, ctx.user.agencyId, input.homeId, input.weekStart)
 		),
-	myShifts: userProcedure
+	myShifts: featureProcedure('scheduling')
 		.input(
 			z
 				.object({
@@ -50,27 +50,27 @@ export const scheduleRouter = router({
 				input.weeks
 			)
 		),
-	setSlot: roleProcedure('supervisor')
+	setSlot: featureRoleProcedure('scheduling', 'supervisor')
 		.input(slot.extend({ profileId: z.uuid() }))
 		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, input)),
-	clearSlot: roleProcedure('supervisor')
+	clearSlot: featureRoleProcedure('scheduling', 'supervisor')
 		.input(slot)
 		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, { ...input, profileId: null }))
 });
 export const coverageRouter = router({
-	callout: userProcedure
+	callout: featureProcedure('coverage')
 		.input(slot.extend({ reason: z.string().trim().max(1000).optional() }))
 		.mutation(({ ctx, input }) => startCoverage(ctx.db, ctx.user, input)),
-	offers: userProcedure.query(({ ctx }) => coverageOffers(ctx.db, ctx.user)),
-	accept: userProcedure
+	offers: featureProcedure('coverage').query(({ ctx }) => coverageOffers(ctx.db, ctx.user)),
+	accept: featureProcedure('coverage')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(({ ctx, input }) => respondCoverage(ctx.db, ctx.user, input.id, 'accepted')),
-	decline: userProcedure
+	decline: featureProcedure('coverage')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(({ ctx, input }) => respondCoverage(ctx.db, ctx.user, input.id, 'declined'))
 });
 export const clockRouter = router({
-	clockIn: userProcedure
+	clockIn: featureProcedure('timekeeping')
 		.input(
 			z
 				.object({
@@ -84,7 +84,7 @@ export const clockRouter = router({
 				)
 		)
 		.mutation(({ ctx, input }) => clockIn(ctx.db, ctx.user, { ...input, id: randomUUID() })),
-	clockOut: userProcedure
+	clockOut: featureProcedure('timekeeping')
 		.input(
 			z
 				.object(Position)
@@ -95,7 +95,7 @@ export const clockRouter = router({
 				.default({})
 		)
 		.mutation(({ ctx, input }) => clockOut(ctx.db, ctx.user, input)),
-	list: userProcedure
+	list: featureProcedure('timekeeping')
 		.input(
 			z
 				.object({
@@ -112,10 +112,10 @@ export const clockRouter = router({
 				...input.dateRange
 			})
 		),
-	acknowledge: roleProcedure('supervisor')
+	acknowledge: featureRoleProcedure('timekeeping', 'supervisor')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(({ ctx, input }) => acknowledgeClock(ctx.db, ctx.user, input.id)),
-	manualEntry: roleProcedure('supervisor')
+	manualEntry: featureRoleProcedure('timekeeping', 'supervisor')
 		.input(
 			z.object({
 				profileId: z.uuid(),
@@ -126,7 +126,7 @@ export const clockRouter = router({
 			})
 		)
 		.mutation(({ ctx, input }) => manualClock(ctx.db, ctx.user, input)),
-	timesheet: roleProcedure('supervisor')
+	timesheet: featureRoleProcedure('timekeeping', 'supervisor')
 		.input(
 			z.object({ profileId: z.uuid().optional(), homeId: z.uuid().optional(), dateRange: range })
 		)

@@ -23,8 +23,8 @@ const as = async (id: string) =>
 beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx.insert(s.agencies).values([
-			{ id: agency, name: 'Synthetic Intake', slug: `intake-${agency}` },
-			{ id: other, name: 'Other Synthetic Intake', slug: `intake-${other}` }
+			{ id: agency, name: 'Synthetic Intake', subscription_tier: 'complete', slug: `intake-${agency}` },
+			{ id: other, name: 'Other Synthetic Intake', subscription_tier: 'complete', slug: `intake-${other}` }
 		]);
 		await tx.insert(s.homes).values([
 			{ id: home, agency_id: agency, name: 'Intake Home' },

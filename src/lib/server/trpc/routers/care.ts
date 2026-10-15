@@ -16,7 +16,7 @@ import {
 	markNotified,
 	reviewIncident
 } from '../../services/incident/index.ts';
-import { roleProcedure, router, userProcedure } from '../middleware.ts';
+import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
 
 const kind = z.enum(['vitals', 'seizure', 'illness', 'appointment']);
 const page = {
@@ -25,7 +25,7 @@ const page = {
 };
 
 export const healthRouter = router({
-	create: userProcedure
+	create: featureProcedure('health')
 		.input(
 			z.object({
 				id: z.uuid().optional(),
@@ -50,7 +50,7 @@ export const healthRouter = router({
 			};
 		}),
 
-	list: userProcedure
+	list: featureProcedure('health')
 		.input(
 			z.object({
 				clientId: z.uuid().optional(),
@@ -68,7 +68,7 @@ export const healthRouter = router({
 			})
 		),
 
-	acknowledge: roleProcedure('supervisor')
+	acknowledge: featureRoleProcedure('health', 'supervisor')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(async ({ ctx, input }) => {
 			const { updatedAt } = await acknowledgeHealth(ctx.db, ctx.user.agencyId, ctx.user, input.id);
@@ -77,7 +77,7 @@ export const healthRouter = router({
 });
 
 export const incidentRouter = router({
-	create: userProcedure
+	create: featureProcedure('incidents')
 		.input(
 			z.object({
 				id: z.uuid().optional(),
@@ -103,13 +103,15 @@ export const incidentRouter = router({
 			})
 		),
 
-	get: userProcedure.input(z.object({ id: z.uuid() })).query(async ({ ctx, input }) => {
-		const incident = await getIncident(ctx.db, ctx.user.agencyId, input.id);
-		if (!incident) throw new TRPCError({ code: 'NOT_FOUND', message: 'Incident not found' });
-		return incident;
-	}),
+	get: featureProcedure('incidents')
+		.input(z.object({ id: z.uuid() }))
+		.query(async ({ ctx, input }) => {
+			const incident = await getIncident(ctx.db, ctx.user.agencyId, input.id);
+			if (!incident) throw new TRPCError({ code: 'NOT_FOUND', message: 'Incident not found' });
+			return incident;
+		}),
 
-	list: userProcedure
+	list: featureProcedure('incidents')
 		.input(
 			z.object({
 				homeId: z.uuid().optional(),
@@ -121,14 +123,14 @@ export const incidentRouter = router({
 		)
 		.query(({ ctx, input }) => listIncidents(ctx.db, ctx.user.agencyId, input)),
 
-	review: roleProcedure('supervisor')
+	review: featureRoleProcedure('incidents', 'supervisor')
 		.input(z.object({ id: z.uuid(), followupNotes: z.string() }))
 		.mutation(async ({ ctx, input }) => ({
 			id: input.id,
 			...(await reviewIncident(ctx.db, ctx.user.agencyId, ctx.user, input.id, input.followupNotes))
 		})),
 
-	markNotified: roleProcedure('supervisor')
+	markNotified: featureRoleProcedure('incidents', 'supervisor')
 		.input(z.object({ id: z.uuid(), party: z.string() }))
 		.mutation(async ({ ctx, input }) => ({
 			id: input.id,
@@ -137,7 +139,7 @@ export const incidentRouter = router({
 });
 
 export const attendanceRouter = router({
-	save: userProcedure
+	save: featureProcedure('charting')
 		.input(
 			z.object({
 				clientId: z.uuid(),
@@ -147,7 +149,7 @@ export const attendanceRouter = router({
 		)
 		.mutation(({ ctx, input }) => saveAttendance(ctx.db, ctx.user.agencyId, ctx.user, input)),
 
-	list: userProcedure
+	list: featureProcedure('charting')
 		.input(
 			z.object({
 				clientId: z.uuid().optional(),

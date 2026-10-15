@@ -16,7 +16,7 @@ const push = vi.fn(async () => ({ providerMessageId: 'test-push' }));
 beforeAll(async () => {
 	setProvidersForTests({ email, push });
 	await withService(async (tx) => {
-		await tx.insert(s.agencies).values({ id: agency, name: 'Jobs Test', slug: `jobs-${agency}` });
+		await tx.insert(s.agencies).values({ id: agency, name: 'Jobs Test', subscription_tier: 'complete', slug: `jobs-${agency}` });
 		await tx.insert(s.profiles).values({
 			id: profile,
 			agency_id: agency,

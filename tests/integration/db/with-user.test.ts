@@ -23,8 +23,8 @@ const caregiver = { agency_id: A1, role: 'caregiver' as const, profile_id: CAREG
 beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx.insert(agencies).values([
-			{ id: A1, name: 'Test Agency One', slug: `one-${A1}` },
-			{ id: A2, name: 'Test Agency Two', slug: `two-${A2}` }
+			{ id: A1, name: 'Test Agency One', subscription_tier: 'complete', slug: `one-${A1}` },
+			{ id: A2, name: 'Test Agency Two', subscription_tier: 'complete', slug: `two-${A2}` }
 		]);
 		await tx.insert(homes).values([
 			{ id: OAK, agency_id: A1, name: 'Oak', lat: 40, lng: -75, radius: 150 },

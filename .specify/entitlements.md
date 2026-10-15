@@ -228,6 +228,8 @@ export function hasFeatureServer(
 
 ## 5. tRPC Middleware Implementation
 
+> **As built (Oct 2026):** `featureProcedure(flag)` and `featureRoleProcedure(flag, role)` in `src/lib/server/trpc/middleware.ts`. The effective feature set is resolved once per request with the user's profile (`CurrentUser.features`, from `subscription_tier` and `enabled_features`), so gating needs no extra query. `agency.get` returns `features` for the UI. The shared tier module is `src/lib/entitlements/tier-features.ts`. **Not built yet:** UI hiding (§7) and PowerSync stream gating (§8).
+
 ### Middleware
 
 ```typescript

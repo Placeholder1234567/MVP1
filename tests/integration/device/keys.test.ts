@@ -26,7 +26,7 @@ beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx
 			.insert(agencies)
-			.values({ id: AGENCY, name: 'Device Test Agency', slug: `dev-${AGENCY}` });
+			.values({ id: AGENCY, name: 'Device Test Agency', subscription_tier: 'complete', slug: `dev-${AGENCY}` });
 		await tx.insert(profiles).values([
 			{
 				id: CG,

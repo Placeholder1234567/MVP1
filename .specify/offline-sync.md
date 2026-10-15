@@ -917,6 +917,7 @@ npm run test:e2e -- --grep @offline
 | `VALIDATION_FAILED` | Missing or invalid data (wrong dose slot, refusal without a reason, malformed fields) | The service's message, e.g. "Say why the dose was refused or held" | Discard; details kept in `failed_writes` |
 | `RULE_VIOLATION` | A business rule refused it (note already signed or approved; note sent back while the device was offline) | The service's message | Discard; for a sent-back note, read the comment and sign again |
 | `NOT_FOUND` | The record or the person it refers to isn't in the caller's homes | "That person is not in your homes" | Discard |
+| `FEATURE_NOT_INCLUDED` | The agency's plan doesn't include that table's feature (entitlements.md §6, e.g. a `notes` op on Starter) | "This feature is not included in your agency's plan." | Discard |
 | `NOT_ALLOWED_OFFLINE` | That table or operation can't be written from a device (e.g. approving notes, editing MAR records) | "This change has to be made while online." | Discard |
 | `SERVER_ERROR` | 5xx from the server | "Server error. Will retry automatically." | Retry with exponential backoff |
 | `NETWORK_ERROR` | Request failed to reach server | "No connection. Will retry when online." | Retry when connectivity restored |
