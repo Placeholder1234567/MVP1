@@ -27,3 +27,6 @@ mvp/node_modules
 mvp/.vercel
 firebase-debug.log
 .firebase/
+
+# Deploy settings (deploy/app.env.example.yaml)
+deploy/app.env.yaml

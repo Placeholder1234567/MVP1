@@ -60,7 +60,7 @@
 	},
 	"description": "Guad: charting, scheduling and AI coverage for IDD residential care agencies",
 	"engines": {
-		"node": ">=22"
+		"node": ">=22.18"
 	},
 	"dependencies": {
 		"@google-cloud/tasks": "^7.3.0",

@@ -22,6 +22,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Webhook and job routes authenticate by signature or OIDC token instead.
 	const { pathname } = event.url;
 	const exempt = pathname.startsWith('/api/webhooks/') || pathname.startsWith('/api/jobs/');
+	// The worker service serves only job and webhook routes, which check a
+	// Google OIDC token or an SNS signature themselves (deploy/README.md).
+	if (process.env.GUAD_SERVICE === 'worker' && !exempt) error(404, 'Not found');
 	if (UNSAFE.has(event.request.method) && !exempt) {
 		const origin = event.request.headers.get('origin');
 		if (origin !== event.url.origin) error(403, 'Cross-site request blocked');

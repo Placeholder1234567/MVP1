@@ -1,0 +1,14 @@
+node_modules
+build
+.svelte-kit
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+mvp
+tests
+deploy
+*.log
+.firebase

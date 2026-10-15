@@ -86,6 +86,15 @@ export function queueFor(name: string): string {
 	return JOBS[name].queue;
 }
 
+/** Every Cloud Tasks queue the jobs use, with the most attempts any of its jobs needs. */
+export function queueAttempts(): Record<string, number> {
+	const out: Record<string, number> = {};
+	for (const def of Object.values(JOBS)) {
+		out[def.queue] = Math.max(out[def.queue] ?? 1, def.maxAttempts);
+	}
+	return out;
+}
+
 export function maxAttemptsFor(name: string): number {
 	if (!isJob(name)) throw new Error(`unknown job ${name}`);
 	return JOBS[name].maxAttempts;
