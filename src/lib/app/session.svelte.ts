@@ -22,6 +22,7 @@ export function parseJson<T>(value: string | null | undefined, fallback: T): T {
 const CONTEXT = Symbol('care-session');
 
 export class CareSession {
+	privacyLocked = $state(false);
 	lock: () => Promise<void> = async () => {};
 	signOut: () => Promise<void> = async () => {};
 	user: AppUser;

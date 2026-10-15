@@ -124,7 +124,7 @@
 		if (event.persisted) void lock();
 	}}
 />
-{#if user && database}<OfflineWorkspace {user} db={database} {expiresAt} onLock={lock} />{:else}
+{#if user && database}<OfflineWorkspace {user} db={database} {expiresAt} />{:else}
 	<main class="unlock-page">
 		<div class="card pad stack">
 			<span class="wordmark">Guad<span class="lemon-dot">●</span></span>
