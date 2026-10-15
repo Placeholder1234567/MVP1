@@ -73,6 +73,7 @@ async function main() {
 		await tx.insert(agencies).values({
 			id: agencyId,
 			name: 'Sunrise Demo Agency',
+			subscription_tier: 'complete',
 			slug: `sunrise-${agencyId.slice(0, 8)}`
 		});
 		await tx.insert(homes).values([

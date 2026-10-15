@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import * as intake from '../../services/intake/index.ts';
-import { roleProcedure, router } from '../middleware.ts';
+import { featureRoleProcedure, router } from '../middleware.ts';
 const status = z.enum(['inquiry', 'touring', 'accepted', 'waitlist', 'declined', 'placed']);
 const roomStatus = z.enum(['available', 'occupied', 'reserved']);
 const details = z.object({
@@ -9,7 +9,7 @@ const details = z.object({
 	contactEmail: z.union([z.email(), z.literal('')]).optional(),
 	notes: z.string().max(8000).optional()
 });
-const supervisor = roleProcedure('supervisor');
+const supervisor = featureRoleProcedure('intake', 'supervisor');
 export const intakeRouter = router({
 	createReferral: supervisor
 		.input(

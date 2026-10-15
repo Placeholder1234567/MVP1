@@ -1,5 +1,6 @@
 // Auth Service (services.md §1): resolves the signed-in Identity Platform user
 // to their Guad profile and role. Session handling itself is in ../../identity.
+import { resolveFeatures } from '../../../entitlements/tier-features.ts';
 import { withService, type Tx } from '../../db';
 import { findActiveProfileByAuthUid, findProfile } from './auth.queries';
 import { ROLE_RANK, type CurrentUser, type Role } from './auth.types';
@@ -23,6 +24,7 @@ export async function getCurrentUser(authUid: string): Promise<CurrentUser | nul
 		homeIds: row.homeIds ?? [],
 		medCertified: row.medCertified,
 		timeZone: row.timeZone,
+		features: [...resolveFeatures(row.tier, row.enabledFeatures)].sort(),
 		claims: { agency_id: row.agencyId, role: row.role, profile_id: row.id }
 	};
 }

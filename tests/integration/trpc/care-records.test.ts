@@ -36,7 +36,7 @@ beforeAll(async () => {
 	await withService(async (t) => {
 		await t
 			.insert(s.agencies)
-			.values({ id: AGENCY, name: 'Care Test Agency', slug: `care-${AGENCY}` });
+			.values({ id: AGENCY, name: 'Care Test Agency', subscription_tier: 'complete', slug: `care-${AGENCY}` });
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }

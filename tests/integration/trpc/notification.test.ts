@@ -28,8 +28,8 @@ beforeAll(async () => {
 	});
 	await withService(async (tx) => {
 		await tx.insert(s.agencies).values([
-			{ id: agency, name: 'Synthetic Alerts', slug: `alerts-${agency}` },
-			{ id: other, name: 'Other Synthetic Alerts', slug: `alerts-${other}` }
+			{ id: agency, name: 'Synthetic Alerts', subscription_tier: 'complete', slug: `alerts-${agency}` },
+			{ id: other, name: 'Other Synthetic Alerts', subscription_tier: 'complete', slug: `alerts-${other}` }
 		]);
 		await tx
 			.insert(s.profiles)

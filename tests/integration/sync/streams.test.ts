@@ -84,8 +84,8 @@ const OTHER_CG = `sync-other-${randomUUID()}`;
 beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx.insert(agencies).values([
-			{ id: A, name: 'Sync Test Agency', slug: `sync-${A}` },
-			{ id: OTHER, name: 'Other Sync Agency', slug: `sync-other-${OTHER}` }
+			{ id: A, name: 'Sync Test Agency', subscription_tier: 'complete', slug: `sync-${A}` },
+			{ id: OTHER, name: 'Other Sync Agency', subscription_tier: 'complete', slug: `sync-other-${OTHER}` }
 		]);
 		await tx.insert(homes).values([
 			{ id: OAK, agency_id: A, name: 'Oak', lat: 40, lng: -75, radius: 150 },

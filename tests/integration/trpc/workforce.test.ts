@@ -27,8 +27,8 @@ const day = addDays(localTime(new Date(), 'America/New_York').day, 1);
 beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx.insert(s.agencies).values([
-			{ id: agency, name: 'Workforce Test', slug: `work-${agency}` },
-			{ id: otherAgency, name: 'Other Workforce', slug: `work-${otherAgency}` }
+			{ id: agency, name: 'Workforce Test', subscription_tier: 'complete', slug: `work-${agency}` },
+			{ id: otherAgency, name: 'Other Workforce', subscription_tier: 'complete', slug: `work-${otherAgency}` }
 		]);
 		await tx.insert(s.homes).values([
 			{ id: oak, agency_id: agency, name: 'Oak', lat: 40, lng: -75, radius: 150 },

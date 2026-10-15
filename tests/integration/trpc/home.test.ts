@@ -29,8 +29,8 @@ async function callerFor(authUid: string | null) {
 beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx.insert(agencies).values([
-			{ id: AGENCY, name: 'tRPC Test Agency', slug: `trpc-${AGENCY}` },
-			{ id: OTHER_AGENCY, name: 'Other Agency', slug: `trpc-other-${OTHER_AGENCY}` }
+			{ id: AGENCY, name: 'tRPC Test Agency', subscription_tier: 'complete', slug: `trpc-${AGENCY}` },
+			{ id: OTHER_AGENCY, name: 'Other Agency', subscription_tier: 'complete', slug: `trpc-other-${OTHER_AGENCY}` }
 		]);
 		await tx.insert(homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
@@ -78,7 +78,7 @@ describe('tRPC', () => {
 
 	it('agency.get returns the caller’s agency with defaults filled in', async () => {
 		const agency = await (await callerFor(CG_UID)).agency.get();
-		expect(agency).toMatchObject({ id: AGENCY, subscriptionTier: 'starter', enabledFeatures: [] });
+		expect(agency).toMatchObject({ id: AGENCY, subscriptionTier: 'complete', enabledFeatures: [] });
 	});
 
 	it('home.list: a caregiver sees their own homes, a supervisor sees all, nobody sees other agencies', async () => {

@@ -6,7 +6,7 @@ import {
 	LomiRateLimitError,
 	transcribeAudio
 } from '../../services/lomi/index.ts';
-import { router, userProcedure } from '../middleware.ts';
+import { featureProcedure, router, userProcedure } from '../middleware.ts';
 
 async function limited<T>(fn: () => Promise<T>) {
 	try {
@@ -19,7 +19,7 @@ async function limited<T>(fn: () => Promise<T>) {
 }
 export const lomiRouter = router({
 	capabilities: userProcedure.query(() => lomiCapabilities()),
-	draft: userProcedure
+	draft: featureProcedure('lomi_drafting')
 		.input(
 			z.object({
 				clientId: z.uuid(),
@@ -28,7 +28,7 @@ export const lomiRouter = router({
 			})
 		)
 		.mutation(({ ctx, input }) => limited(() => draftNote(ctx.db, ctx.user, input))),
-	transcribe: userProcedure
+	transcribe: featureProcedure('lomi_drafting')
 		.input(
 			z.object({
 				audio: z

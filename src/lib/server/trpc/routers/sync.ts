@@ -4,6 +4,7 @@
 // rejected op is undone without affecting the ones before it; ops that depend
 // on a rejected one then fail on their own (e.g. a foreign key).
 import { z, ZodError } from 'zod';
+import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db/index.ts';
 import { pgCode, ServiceError } from '../../errors.ts';
 import type { CurrentUser } from '../../services/auth/index.ts';
@@ -24,7 +25,8 @@ export type RejectCode =
 	| 'RLS_DENIED'
 	| 'CONSTRAINT_VIOLATION'
 	| 'FK_VIOLATION'
-	| 'NOT_ALLOWED_OFFLINE';
+	| 'NOT_ALLOWED_OFFLINE'
+	| 'FEATURE_NOT_INCLUDED';
 
 class Reject extends Error {
 	constructor(
@@ -228,6 +230,18 @@ async function saveDay(tx: Tx, user: CurrentUser, id: string, d: Record<string, 
 	});
 }
 
+/** The feature each writable table belongs to (entitlements.md §6). */
+const TABLE_FEATURE: Record<string, FeatureFlag> = {
+	clock_records: 'timekeeping',
+	notes: 'charting',
+	note_goals: 'charting',
+	attendance: 'charting',
+	mar_records: 'mar',
+	health_entries: 'health',
+	incidents: 'incidents',
+	messages: 'messaging'
+};
+
 /** Maps an error to a rejection, or rethrows it (unexpected: the client retries). */
 function toReject(e: unknown): Reject {
 	if (e instanceof Reject) return e;
@@ -266,6 +280,14 @@ export const syncRouter = router({
 					const handler = HANDLERS[op.table]?.[op.op];
 					if (!handler) {
 						throw new Reject('NOT_ALLOWED_OFFLINE', 'This change has to be made while online.');
+					}
+					// Each op needs its own feature (entitlements.md §6, sync.upload).
+					const feature = TABLE_FEATURE[op.table];
+					if (feature && !ctx.user.features.includes(feature)) {
+						throw new Reject(
+							'FEATURE_NOT_INCLUDED',
+							'This feature is not included in your agency’s plan.'
+						);
 					}
 					// Savepoint per op: a rejected op is rolled back on its own.
 					const outcome = await ctx.db.transaction((sp) => handler(sp, ctx.user, op));

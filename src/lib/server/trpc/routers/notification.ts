@@ -6,14 +6,14 @@ import {
 	updatePreferences,
 	PreferencesInput
 } from '../../services/notification/index.ts';
-import { router, userProcedure } from '../middleware.ts';
+import { featureProcedure, router } from '../middleware.ts';
 export const notificationRouter = router({
-	get: userProcedure
+	get: featureProcedure('notifications')
 		.input(z.object({ id: z.uuid() }))
 		.query(({ ctx, input }) =>
 			getNotification(ctx.db, ctx.user.agencyId, ctx.user.profileId, input.id)
 		),
-	list: userProcedure
+	list: featureProcedure('notifications')
 		.input(
 			z
 				.object({
@@ -27,12 +27,12 @@ export const notificationRouter = router({
 		.query(({ ctx, input }) =>
 			listNotifications(ctx.db, ctx.user.agencyId, ctx.user.profileId, input)
 		),
-	markRead: userProcedure
+	markRead: featureProcedure('notifications')
 		.input(z.object({ ids: z.array(z.uuid()).min(1).max(100) }))
 		.mutation(({ ctx, input }) =>
 			markNotificationsRead(ctx.db, ctx.user.agencyId, ctx.user.profileId, input.ids)
 		),
-	updatePreferences: userProcedure
+	updatePreferences: featureProcedure('notifications')
 		.input(z.object({ preferences: PreferencesInput }))
 		.mutation(({ ctx, input }) =>
 			updatePreferences(ctx.db, ctx.user.agencyId, ctx.user, input.preferences)

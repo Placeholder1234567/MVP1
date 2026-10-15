@@ -5,6 +5,7 @@ import { ZodError } from 'zod';
 import { ServiceError } from '../errors.ts';
 import { withUser, type Tx } from '../db/index.ts';
 import { hasRole, type Role } from '../services/auth/index.ts';
+import type { FeatureFlag } from '../../entitlements/tier-features.ts';
 import type { Context } from './context.ts';
 
 const t = initTRPC.context<Context>().create({
@@ -88,6 +89,34 @@ export const userProcedure = t.procedure.use(serviceErrors).use(authed);
 /** roleMiddleware (trpc-router.md §2): caregiver < supervisor < admin. */
 export function roleProcedure(minRole: Role) {
 	return userProcedure.use(({ ctx, next }) => {
+		if (!hasRole(ctx.user, minRole)) {
+			throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this' });
+		}
+		return next();
+	});
+}
+
+/**
+ * requireFeature (entitlements.md §5): the agency's plan must include the
+ * feature. The effective feature set is loaded with the user's profile, so
+ * this costs no extra query. Checked before the role, as the spec orders it.
+ */
+export function featureProcedure(feature: FeatureFlag | FeatureFlag[]) {
+	const any = Array.isArray(feature) ? feature : [feature];
+	return userProcedure.use(({ ctx, next }) => {
+		if (!any.some((f) => ctx.user.features.includes(f))) {
+			throw new TRPCError({
+				code: 'FORBIDDEN',
+				message: 'This feature is not included in your agency’s plan'
+			});
+		}
+		return next();
+	});
+}
+
+/** Feature gate, then role check. */
+export function featureRoleProcedure(feature: FeatureFlag | FeatureFlag[], minRole: Role) {
+	return featureProcedure(feature).use(({ ctx, next }) => {
 		if (!hasRole(ctx.user, minRole)) {
 			throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this' });
 		}
