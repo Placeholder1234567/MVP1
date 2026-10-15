@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    name: Lint, types, unit tests, spec lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx svelte-kit sync
+      - run: npx eslint .
+      - run: npm run check
+      - run: npm test
+      - run: node .specify/lint.js
+      - run: node scripts/sync-rules.mjs --check # powersync/sync-config.yaml matches offline-sync.md §4
+      - run: node scripts/sync-schema.mjs --check # src/lib/sync/schema.ts matches the streams and the schema
+      - run: npm run build
+
+  database:
+    name: Database, sign-in and sync (Postgres, PowerSync, Auth emulator)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://guad:guad@localhost:5433/guad
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4 # the Firebase Auth emulator needs Java
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      # Same stack as local dev. Postgres needs wal_level=logical for PowerSync,
+      # which GitHub's service containers can't set.
+      - run: cp .env.example .env
+      - run: docker compose up -d --wait postgres
+      - run: npm run db:setup
+      - run: docker compose up -d powersync
+      - name: Wait for PowerSync
+        run: timeout 120 bash -c 'until curl -sf http://localhost:8080/probes/liveness; do sleep 2; done'
+      - run: npm run test:integration # starts the Auth emulator for the run
+      - name: PowerSync logs (on failure)
+        if: failure()
+        run: docker compose logs powersync | tail -100
+      # SQL-level RLS and integrity-trigger tests (starts its own throwaway Postgres)
+      - run: bash .specify/tests/rls/run.sh

@@ -46,7 +46,7 @@ The MVP stores **all application data as a single JSON object** in the browser's
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Database | Cloud SQL for PostgreSQL 16 | 37 normalized tables, RLS, integrity triggers |
+| Database | Cloud SQL for PostgreSQL 16 | 38 normalized tables, RLS, integrity triggers |
 | Auth | Identity Platform | Email/password, email link, SSO, TOTP MFA, session cookies |
 | ORM | Drizzle | Type-safe schema definition, migration generation |
 | Internal API | tRPC | End-to-end typed frontend-to-backend communication |
@@ -57,7 +57,7 @@ The MVP stores **all application data as a single JSON object** in the browser's
 | Jobs | Cloud Tasks + Cloud Scheduler | Coverage workflows, notification dispatch, recurring jobs |
 | Notifications | FCM / AWS End User Messaging SMS / SES | Push, SMS, email |
 | Hosting | Cloud Run | `web`, `worker` and `powersync` services (infrastructure.md) |
-| Frontend | SvelteKit 2 + Svelte 5 runes | PWA with service worker |
+| Frontend | SvelteKit 3 + Svelte 5 runes | PWA with service worker |
 
 ### Key Architectural Gains
 
@@ -85,7 +85,7 @@ The MVP is a prototype containing only synthetic test data entered during develo
 | Reason | Detail |
 |--------|--------|
 | No real data exists | MVP contains only developer-entered test scenarios |
-| Schema incompatibility | MVP uses nested JSON objects; production uses 37 normalized tables |
+| Schema incompatibility | MVP uses nested JSON objects; production uses 38 normalized tables |
 | ID format change | MVP uses 8-char random strings; production uses UUIDs |
 | No auth mapping | MVP has no user accounts; production requires Identity Platform UIDs |
 | Compliance risk | Any automated data transfer from an unauthenticated plaintext store would create audit complications |
@@ -597,13 +597,13 @@ Tables in the production schema that have no standalone equivalent in the MVP (w
 
 | Task | Detail | Deliverable |
 |------|--------|-------------|
-| SvelteKit project init | `npm create svelte@latest`, Svelte 5 runes mode, TypeScript strict, Vite | Repo with `src/`, `static/`, `svelte.config.js` |
+| SvelteKit project init | `npx sv create` (SvelteKit 3), Svelte 5 runes mode, TypeScript strict, Vite, adapter-node | Repo with `src/`, `static/`, `vite.config.ts` |
 | Local stack | `docker compose` with Postgres 16 (logical replication on), PowerSync and Mailpit; Firebase Auth emulator (infrastructure.md §6) | `docker compose up` + `npm run dev` work on a clean laptop |
 | Google Cloud project | Project, budget alerts, Identity Platform (email/password + email link, TOTP MFA), Cloud SQL dev instance, Secret Manager | Dev project configured, env vars set |
 | Drizzle ORM setup | Install `drizzle-orm` + `drizzle-kit`, copy `schema.ts` from `.specify/`, configure `drizzle.config.ts` | `npx drizzle-kit push` succeeds |
-| Schema push | Push all 37 tables to local Postgres | All tables created with indexes |
+| Schema push | Push all 38 tables to local Postgres | All tables created with indexes |
 | RLS policies | Apply all policies from `.specify/rls.sql` | `SELECT * FROM pg_policies` shows complete coverage |
-| Auth integration | Firebase Auth SDK (in-memory) + Admin SDK session cookies in SvelteKit hooks, custom claims, `withUser()` DB helper | Login/logout works, roles propagate, RLS tests pass through the app |
+| Auth integration | Firebase Auth SDK (in-memory) + Admin SDK session cookies in SvelteKit hooks, `withUser()` DB helper | Login/logout works, roles propagate, RLS tests pass through the app |
 | Seed script | Faker.js-based seed (see Section 8) | `npm run db:seed` populates dev database |
 | CI pipeline | GitHub Actions: lint, type-check, unit test, Drizzle schema validation | Green CI on every push |
 

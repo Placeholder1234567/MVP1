@@ -1,7 +1,7 @@
 /**
  * Guad — HIPAA-compliant Postgres schema (Drizzle ORM)
  *
- * Every table carries agency_id for tenant isolation and RLS (37 tables).
+ * Every table carries agency_id for tenant isolation and RLS (38 tables).
  * All timestamps are stored WITH time zone.
  */
 
@@ -20,6 +20,7 @@ import {
   time,
   index,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -638,13 +639,13 @@ export const marRecords = pgTable(
     effect: text('effect'),
     is_prn: boolean('is_prn').notNull().default(false),
     acknowledged: boolean('acknowledged').notNull().default(false),
-    amends_id: uuid('amends_id').references(() => marRecords.id, {
+    amends_id: uuid('amends_id').references((): AnyPgColumn => marRecords.id, {
       onDelete: 'restrict',
     }),
     // Set when two devices recorded the same dose slot while offline. The
     // later record is kept (never discarded) and points at the first one,
     // and a mandatory med_possible_double_dose alert goes to the supervisor.
-    conflict_with: uuid('conflict_with').references(() => marRecords.id, {
+    conflict_with: uuid('conflict_with').references((): AnyPgColumn => marRecords.id, {
       onDelete: 'restrict',
     }),
     created_by: uuid('created_by').references(() => profiles.id, {
@@ -1477,5 +1478,41 @@ export const reportJobs = pgTable(
   (t) => [
     index('report_jobs_agency_id_idx').on(t.agency_id),
     index('report_jobs_requested_by_idx').on(t.requested_by),
+  ],
+);
+
+// ─── 38. device_keys ─────────────────────────────────────────────────────────
+// Server copy of each device's local database key (offline-sync.md "Local
+// Database Encryption Key"). Never synced and never readable by clients: the
+// Device Service (app_service) issues the key once per sign-in. key_ciphertext
+// is AES-256-GCM under a server key-encryption key (Secret Manager in
+// production). Deactivating a user or device sets revoked_at, after which the
+// key is never issued again, so a stolen device can't be re-keyed.
+
+export const deviceKeys = pgTable(
+  'device_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    profile_id: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    // Random ID the device generates once and keeps next to its wrapped key
+    device_id: uuid('device_id').notNull(),
+    key_ciphertext: text('key_ciphertext').notNull(),
+    last_issued_at: timestamp('last_issued_at', { withTimezone: true }),
+    revoked_at: timestamp('revoked_at', { withTimezone: true }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('device_keys_profile_device_idx').on(t.profile_id, t.device_id),
+    index('device_keys_agency_id_idx').on(t.agency_id),
   ],
 );

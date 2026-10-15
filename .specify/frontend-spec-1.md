@@ -422,7 +422,7 @@ Guad uses generous rounding as a core brand element. This visual softness is a c
 
 ##### Do NOT Animate
 
-- Page/route transitions (requires SvelteKit router transitions -- implement in SvelteKit 2 rebuild)
+- Page/route transitions (requires SvelteKit router transitions -- implement in SvelteKit rebuild)
 - List item enter/exit (requires DOM diffing -- implement in rebuild)
 - Content loading (use skeleton screens, not animated content)
 - Any state change on clinical data entry screens (MAR, vitals, incident reports) -- animations distract from precision tasks

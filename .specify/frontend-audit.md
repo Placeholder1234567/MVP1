@@ -377,7 +377,7 @@ Rendering is a full innerHTML replacement on every state change:
 3. `C.save()` persists to localStorage
 4. Event delegation via single `document.addEventListener("click", ...)` handler
 
-This is intentionally simple for the prototype. The production architecture will use SvelteKit 2 + Svelte 5 runes (PWA) with PowerSync + Postgres on Google Cloud (infrastructure.md).
+This is intentionally simple for the prototype. The production architecture will use SvelteKit 3 + Svelte 5 runes (PWA) with PowerSync + Postgres on Google Cloud (infrastructure.md).
 
 ---
 
@@ -447,7 +447,7 @@ Findings are organized by the 12 audit dimensions requested, followed by acknowl
   - There are no transition animations between screens.
   - Performance: innerHTML parsing of the entire app HTML on every interaction. For the current codebase size this is acceptable, but it will not scale.
 - **Severity:** HIGH (for accessibility and UX quality; acceptable for prototype)
-- **Recommended Fix:** This is a known architectural limitation of the prototype. The production rebuild (SvelteKit 2 + Svelte 5 runes + PowerSync) will solve it. For the current prototype: (1) after render, restore focus to the element that triggered the interaction using `requestAnimationFrame`; (2) save and restore scroll position for in-screen updates; (3) add `aria-live="polite"` to a status region that announces Lomi's state changes instead of re-announcing the full page.
+- **Recommended Fix:** This is a known architectural limitation of the prototype. The production rebuild (SvelteKit 3 + Svelte 5 runes + PowerSync) will solve it. For the current prototype: (1) after render, restore focus to the element that triggered the interaction using `requestAnimationFrame`; (2) save and restore scroll position for in-screen updates; (3) add `aria-live="polite"` to a status region that announces Lomi's state changes instead of re-announcing the full page.
 
 ---
 

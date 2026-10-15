@@ -280,13 +280,13 @@ guad/
 ├── .specify/                                 # Architecture specs (this directory)
 │   ├── constitution.md                       # Non-negotiable engineering principles
 │   ├── infrastructure.md                     # Hosting and vendors (Google Cloud + AWS messaging), sign-in, jobs, local dev, cost
-│   ├── schema.ts                             # Drizzle pgTable definitions (37 tables, source of truth)
+│   ├── schema.ts                             # Drizzle pgTable definitions (38 tables, source of truth)
 │   ├── services.md                           # Service boundaries, data ownership, dependency graph, job registry
 │   ├── trpc-router.md                        # Full tRPC procedure specification (20 routers, input/output types)
 │   ├── charting-ux.md                        # Screen specs, voice-to-note flow, component catalog, accessibility
 │   ├── ai-pipeline.md                        # Lomi AI: draft/transcribe/summarize, prompts, fallback, HIPAA compliance
 │   ├── security.md                           # Threat model, auth, PHI inventory, encryption, breach response, BAA matrix
-│   ├── rls.sql                               # Row-Level Security policies for all 37 tables
+│   ├── rls.sql                               # Row-Level Security policies for all 38 tables
 │   ├── openapi.yaml                          # External API spec: EVV, reports, exports, webhooks
 │   ├── notifications.md                      # Notification types, channels, escalation engine, preferences
 │   ├── offline-sync.md                       # PowerSync sync rules, conflict resolution, data lifecycle
@@ -347,8 +347,9 @@ guad/
 │   ├── sw.js                                 # Service worker: app shell cache, offline navigation, FCM push registration
 │   ├── icons/                                # PWA icons (192x192, 512x512, maskable)
 │   └── lomi.svg                              # Lomi lemon SVG asset
-├── svelte.config.js                          # SvelteKit config: adapter-node (Cloud Run), preprocess, alias ($lib)
-├── vite.config.ts                            # Vite config: vitest, PowerSync OPFS worker, WASM
+├── vite.config.ts                            # Vite + SvelteKit 3 config: adapter-node (Cloud Run), runes, PowerSync OPFS worker, WASM
+├── vitest.config.ts                          # Unit and integration tests (no SvelteKit plugin needed)
+├── eslint.config.js                          # Lint, including the import boundaries (constitution principle 15)
 ├── tsconfig.json                             # TypeScript config: strict, paths
 ├── package.json                              # Dependencies, scripts (dev, build, test, db:generate, db:push, lint)
 ├── .env.example                              # Environment variable template (no secrets)

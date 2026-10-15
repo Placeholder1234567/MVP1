@@ -18,6 +18,9 @@ cp "$here/../../rls.sql" 015_rls.sql
 cp "$here"/0*.sql .
 
 docker run -d --rm --name guad-rls-test -e POSTGRES_PASSWORD=test postgres:15-alpine >/dev/null
+# The image runs a temporary server for first-time setup, then restarts it, and
+# pg_isready can say "ready" during that window. Wait for setup to finish first.
+until docker logs guad-rls-test 2>&1 | grep -q "PostgreSQL init process complete"; do sleep 1; done
 until docker exec guad-rls-test pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 
 for f in 01_schema.sql 015_rls.sql 02_grants_seed.sql 03_tests.sql; do

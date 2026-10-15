@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Guad ("friend" in Amharic) is a HIPAA-compliant charting and operations platform for IDD residential care agencies. DSPs document shift activities, administer medications, track ISP goals, record vitals, and report incidents from their phones. Supervisors review notes, manage schedules, and run audit reports. Lomi ("lemon" in Amharic) is the built-in AI assistant that drafts clinical notes, covers shift callouts via SMS, and generates daily summaries. The stack is SvelteKit 2 + Svelte 5 runes (PWA) on Google Cloud Run, tRPC (internal API), Cloud SQL Postgres with RLS, Identity Platform (auth), Drizzle ORM, self-hosted PowerSync (offline-first), Claude on Vertex AI (note drafting), Google Speech-to-Text (transcription), Cloud Tasks + Cloud Scheduler (jobs), FCM push plus Amazon SES email and AWS End User Messaging SMS (notifications). infrastructure.md has the full picture. All architecture specs live in the `.specify/` directory.
+Guad ("friend" in Amharic) is a HIPAA-compliant charting and operations platform for IDD residential care agencies. DSPs document shift activities, administer medications, track ISP goals, record vitals, and report incidents from their phones. Supervisors review notes, manage schedules, and run audit reports. Lomi ("lemon" in Amharic) is the built-in AI assistant that drafts clinical notes, covers shift callouts via SMS, and generates daily summaries. The stack is SvelteKit 3 + Svelte 5 runes (PWA) on Google Cloud Run, tRPC (internal API), Cloud SQL Postgres with RLS, Identity Platform (auth), Drizzle ORM, self-hosted PowerSync (offline-first), Claude on Vertex AI (note drafting), Google Speech-to-Text (transcription), Cloud Tasks + Cloud Scheduler (jobs), FCM push plus Amazon SES email and AWS End User Messaging SMS (notifications). infrastructure.md has the full picture. All architecture specs live in the `.specify/` directory.
 
 ## Architecture Reference
 
@@ -11,7 +11,7 @@ Before writing any code, read the relevant `.specify/` files:
 | File | Contains |
 |------|----------|
 | `constitution.md` | Non-negotiable engineering principles (15 rules). Read this first. |
-| `schema.ts` | Drizzle pgTable definitions for all 37 tables. This is the single source of truth for the data model. |
+| `schema.ts` | Drizzle pgTable definitions for all 38 tables. This is the single source of truth for the data model. |
 | `services.md` | Service boundaries, data ownership matrix, dependency graph, job registry (Cloud Tasks). |
 | `infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, database session setup, jobs, local dev, cost. |
 | `trpc-router.md` | Every tRPC procedure: input/output types, required role, behavior. |
@@ -33,19 +33,19 @@ Before writing any code, read the relevant `.specify/` files:
 
 ## MVP Reference Implementation
 
-The working MVP prototype lives in the project root. **Read these files before building any UI component** — they contain the actual implementation logic, interaction patterns, and rendering behavior that the new SvelteKit build must replicate:
+The working MVP prototype lives in `mvp/`. Other specs cite these files without the folder (e.g. `styles.css:101`, `src/app-core.js`); those always mean the copy under `mvp/`. **Read these files before building any UI component** — they contain the actual implementation logic, interaction patterns, and rendering behavior that the new SvelteKit build must replicate:
 
 | File | What it contains | Read it when |
 |------|-----------------|--------------|
-| `styles.css` | **Complete design system.** Every CSS custom property, color, font, radius, shadow, animation, layout. This is the visual identity — port it exactly. | Any UI work |
-| `src/app-caregiver.js` | Caregiver screens: Today view, person detail, note compose (voice + Lomi orb), note review (sections, goal picker, flags, incident detection), MAR, health entry, incident wizard, messages, shifts, profile. | Building caregiver routes |
-| `src/app-office.js` | Supervisor dashboard: overview stats, schedule grid, note review/approve/send-back, incident review, medication table, people management (goals, meds, attendance, case notes), analytics, reports, setup. | Building supervisor routes |
-| `src/app-core.js` | Business logic and constants: vital thresholds, shift labels, prompt levels, services list, coverage engine, note normalization, CSV export, date helpers. | Implementing services or validation |
-| `src/app-main.js` | Event handling, rendering loop, state management, clock-in/out flow, Lomi draft/summary flow, note signing, incident submission, all user actions. | Understanding interaction flows |
-| `src/store.js` | Data model (emptyState shape), localStorage persistence, seed data generator. | Understanding data structures |
-| `src/lomi.js` | AI client: draft/summarize functions, rules-based fallback, vague word detection, incident regex. | Implementing Lomi service |
-| `src/prompts.js` | Prompt templates for shift notes, behavior notes, summaries. Exact prompt text. | Implementing AI pipeline |
-| `src/geo.js` | Haversine distance, currentPosition wrapper, rankHomes, formatDistance. | Implementing clock-in geofence |
+| `mvp/styles.css` | **Complete design system.** Every CSS custom property, color, font, radius, shadow, animation, layout. This is the visual identity — port it exactly. | Any UI work |
+| `mvp/src/app-caregiver.js` | Caregiver screens: Today view, person detail, note compose (voice + Lomi orb), note review (sections, goal picker, flags, incident detection), MAR, health entry, incident wizard, messages, shifts, profile. | Building caregiver routes |
+| `mvp/src/app-office.js` | Supervisor dashboard: overview stats, schedule grid, note review/approve/send-back, incident review, medication table, people management (goals, meds, attendance, case notes), analytics, reports, setup. | Building supervisor routes |
+| `mvp/src/app-core.js` | Business logic and constants: vital thresholds, shift labels, prompt levels, services list, coverage engine, note normalization, CSV export, date helpers. | Implementing services or validation |
+| `mvp/src/app-main.js` | Event handling, rendering loop, state management, clock-in/out flow, Lomi draft/summary flow, note signing, incident submission, all user actions. | Understanding interaction flows |
+| `mvp/src/store.js` | Data model (emptyState shape), localStorage persistence, seed data generator. | Understanding data structures |
+| `mvp/src/lomi.js` | AI client: draft/summarize functions, rules-based fallback, vague word detection, incident regex. | Implementing Lomi service |
+| `mvp/src/prompts.js` | Prompt templates for shift notes, behavior notes, summaries. Exact prompt text. | Implementing AI pipeline |
+| `mvp/src/geo.js` | Haversine distance, currentPosition wrapper, rankHomes, formatDistance. | Implementing clock-in geofence |
 
 **The MVP is the ground truth for how features behave.** The `.specify/` docs describe the architecture of the new system; the MVP code shows the actual UX logic to preserve. When the spec and the MVP code disagree on behavior, flag it — don't silently pick one.
 
@@ -79,7 +79,7 @@ All authentication flows go through Google Cloud Identity Platform (Firebase Aut
 
 ### 7. Charting presets are cosmetic only
 
-The `charting_preset` agency config (`"therap"` or `"default"`) changes UI labels (e.g., "T-Log" vs "Shift Note") and form field ordering. It never alters the database schema, API contracts, validation rules, or business logic. Read labels from `$lib/config/charting-preset.ts`. Never hardcode "Shift Note" or "T-Log" as string literals in components. Never branch schema or API logic based on preset.
+The `charting_preset` agency config (`"therap"` or `"default"`) changes UI labels (e.g., "T-Log" vs "Shift Note") and form field ordering. It never alters the database schema, API contracts, validation rules, or business logic. Read labels from `#lib/config/charting-preset.ts`. Never hardcode "Shift Note" or "T-Log" as string literals in components. Never branch schema or API logic based on preset.
 
 ### 8. MAR entries are irrevocable
 
@@ -136,7 +136,7 @@ API keys, service credentials and database connection details exist only on the 
 ### Working with PowerSync (offline data)
 
 1. Never query or write the database from the client. Data that needs offline support comes from PowerSync. Offline writes are uploaded through `sync.upload` (trpc-router.md), which runs the owning service's code.
-2. Use PowerSync reactive queries in Svelte stores (`$lib/stores/sync.ts`).
+2. Use PowerSync reactive queries in Svelte stores (`#lib/stores/sync.ts`).
 3. Generate UUIDs client-side for new records (enables offline creation).
 4. Design mutations to be idempotent where possible (upserts on natural keys).
 5. Test the feature with the network disabled before considering it complete.
@@ -172,5 +172,5 @@ Reference these when implementing validation, forms, and business logic:
 - **Svelte 5 runes:** Use `$state`, `$derived`, `$effect`. No legacy `$:` reactive declarations or `writable`/`readable` stores in new code.
 - **tRPC routers:** One router file per domain (e.g., `note.ts`, `mar.ts`, `schedule.ts`).
 - **Services:** One directory per service with `index.ts` (public API), `*.queries.ts` (Drizzle helpers), `*.types.ts` (service types).
-- **Imports:** Use `$lib/` alias for all library imports. Use `$lib/server/` for server-only code.
+- **Imports:** Use `#lib/` alias for all library imports. Use `#lib/server/` for server-only code.
 - **Error messages:** Never include PHI. Use operation identifiers and generic descriptions.

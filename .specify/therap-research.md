@@ -739,7 +739,7 @@ Guad's coverage engine (eligibility rules, home assignment, hours cap, med certi
 PowerSync OPFS persistence means work is never lost. (Rebuild target -- the current prototype uses localStorage for in-progress form data but requires network for initial load; production will add service worker + PWA manifest for true offline capability. See offline-sync.md.) Therap users live in fear of session timeouts.
 
 ### 7. Integration-Ready Architecture
-SvelteKit 2 + Svelte 5 runes + Postgres + tRPC = easy to extend. (Note: Guad references in sections 15-16 describe the production architecture. The vanilla JS prototype is documented in CLAUDE.md.) Therap's closed ecosystem is its biggest weakness.
+SvelteKit 3 + Svelte 5 runes + Postgres + tRPC = easy to extend. (Note: Guad references in sections 15-16 describe the production architecture. The vanilla JS prototype is documented in CLAUDE.md.) Therap's closed ecosystem is its biggest weakness.
 
 ---
 

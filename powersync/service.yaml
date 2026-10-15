@@ -1,0 +1,31 @@
+# PowerSync service config for LOCAL DEVELOPMENT (infrastructure.md §6).
+# Production differs only in client_auth: there PowerSync verifies real
+# Identity Platform ID tokens with
+#   jwks_uri: https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com
+#   audience: [<Google Cloud project ID>]
+# Locally the Auth emulator's tokens are unsigned, so the app server mints
+# short-lived tokens with a dev-only key instead (src/lib/server/identity.ts).
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATA_SOURCE_URI
+      sslmode: disable
+
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_SOURCE_URI
+  sslmode: disable
+
+port: 8080
+
+sync_config:
+  path: sync-config.yaml
+
+client_auth:
+  audience: ['guad-local']
+  jwks:
+    keys:
+      - kty: oct
+        alg: HS256
+        kid: guad-local-1
+        k: !env PS_DEV_JWT_KEY

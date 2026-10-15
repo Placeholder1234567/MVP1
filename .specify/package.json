@@ -1,0 +1,4 @@
+{
+  "//": "lint.js is CommonJS; the root package.json is an ES module project.",
+  "type": "commonjs"
+}

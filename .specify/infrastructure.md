@@ -60,10 +60,10 @@ Identity Platform is the only identity provider. There is no custom password sto
 
 1. **Sign in.** The browser uses the Firebase Auth SDK (`signInWithEmailAndPassword`, or email link) with `inMemoryPersistence`, so no token is written to `localStorage` or IndexedDB.
 2. **Session cookie.** The browser posts the fresh ID token to `/auth/session`. The server verifies it and exchanges it for an Identity Platform **session cookie** (Admin SDK `createSessionCookie`, 12-hour lifetime, `HttpOnly`, `Secure`, `SameSite=Lax`). Every tRPC request is authenticated by verifying this cookie with revocation checking.
-3. **Token for PowerSync.** PowerSync needs a token in JavaScript. After a page load, the client calls `/auth/sync-token`; the server checks the session cookie and returns a Firebase custom token (Admin SDK `createCustomToken`), which the client exchanges with `signInWithCustomToken` for a 1-hour ID token held in memory. PowerSync validates that ID token against Google's public keys (JWKS).
-4. **Claims.** When a profile is created or its role or homes change, the server sets custom claims `{ parameters: { agency_id, role, profile_id } }` with the Admin SDK and revokes refresh tokens so the next token carries them. PowerSync reads them as `token_parameters.*`. Database sessions do **not** trust token claims: the server loads the profile by `auth_uid` and sets `app.claims` itself (rls.sql).
+3. **Token for PowerSync.** PowerSync needs a token in JavaScript. After a page load, the client calls `/auth/sync-token`; the server checks the session cookie and returns a Firebase custom token (Admin SDK `createCustomToken`), which the client exchanges with `signInWithCustomToken` for a 1-hour ID token held in memory. PowerSync validates that ID token against Google's public keys (JWKS). On Cloud Run, signing custom tokens needs the `web` service account to hold `roles/iam.serviceAccountTokenCreator` on itself (the Admin SDK signs through the IAM API; no key file).
+4. **No custom claims.** Tokens carry only the user ID. PowerSync's sync streams look up the caller's active profile by `auth_uid` (offline-sync.md §4), and database sessions load the profile the same way and set `app.claims` from it (rls.sql). So role, home and active changes apply within seconds, with no token refresh. Locally, the Auth emulator's tokens are unsigned, so `/auth/sync-token` returns a 1-hour PowerSync token signed with a dev-only key instead (only when `FIREBASE_AUTH_EMULATOR_HOST` is set).
 5. **MFA.** TOTP MFA is required for supervisor and admin roles (Identity Platform multi-factor with TOTP). SMS MFA is not used.
-6. **Revocation.** Deactivating a user sets `profiles.active = false`, revokes their refresh tokens and disables the Identity Platform account. tRPC rejects the session cookie on the next request; PowerSync's sync rules stop returning rows because the profile is inactive.
+6. **Revocation.** Deactivating a user sets `profiles.active = false`, revokes their refresh tokens and disables the Identity Platform account. tRPC rejects the session cookie on the next request; PowerSync's sync streams stop returning rows within seconds because the profile is inactive, and the device drops them on its next sync.
 
 ## 4. Database access from the server
 
@@ -102,12 +102,12 @@ Everything runs on a laptop with Docker. No cloud account is needed to build fea
 | Cloud SQL | `postgres:16` container with `wal_level=logical` |
 | PowerSync | `journeyapps/powersync-service` container, Postgres bucket storage |
 | Identity Platform | Firebase Auth emulator (`firebase emulators:start --only auth`) |
-| Cloud Tasks / Scheduler | In-process driver: `jobs.enqueue()` calls the handler after the delay; cron runs from `node-cron` |
+| Cloud Tasks / Scheduler | In-process driver: `jobs.enqueue()` calls the handler after the delay; cron runs from `croner` |
 | Vertex AI, Speech-to-Text | Real APIs on a dev project with synthetic data, or the rules-based fallback with no key |
 | SES / SMS | Mailpit container for email; SMS written to the console |
 | Cloud Storage | Local folder |
 
-`docker compose up` starts Postgres, PowerSync and Mailpit; `npm run dev` starts SvelteKit and the Auth emulator.
+`npm run db:up` starts Postgres and Mailpit (PowerSync joins with offline sync), `npm run dev:auth` starts the Auth emulator, `npm run db:seed` adds a synthetic demo agency with five staff who can sign in, and `npm run dev` starts SvelteKit. In dev, `hooks.server.ts` loads `.env` into `process.env`; SvelteKit 3 keeps `PUBLIC_*` variables out of server code, so server modules use server-side names such as `GOOGLE_CLOUD_PROJECT`.
 
 ## 7. Cost
 
