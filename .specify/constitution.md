@@ -12,7 +12,7 @@ The clinical documentation engine. Care Records encompasses shift notes (T-Logs 
 
 ### 2. Scheduling
 
-The workforce coordination layer. Scheduling manages shift assignments across every home on a single calendar view (AM 07-15, PM 15-23, ON 23-07). When a caregiver calls out, Lomi initiates coverage by texting trained, available caregivers nearby and filling the shift without waking the scheduler. Every shift offer is logged with full audit trail. The scheduler retains final authority — Lomi proposes, humans approve. Architecturally this pillar owns the `schedule`, `coverage`, and `msgs` tables, the Lomi callout engine (BullMQ jobs), and the Twilio SMS integration.
+The workforce coordination layer. Scheduling manages shift assignments across every home on a single calendar view (AM 07-15, PM 15-23, ON 23-07). When a caregiver calls out, Lomi initiates coverage by texting trained, available caregivers nearby and filling the shift without waking the scheduler. Every shift offer is logged with full audit trail. The scheduler retains final authority — Lomi proposes, humans approve. Architecturally this pillar owns the `schedule`, `coverage`, and `msgs` tables, the Lomi callout engine (Cloud Tasks jobs), and the SMS integration (AWS End User Messaging).
 
 ### 3. Timekeeping
 
@@ -24,7 +24,7 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 
 ## Non-Negotiable Principles
 
-1. **Tenant isolation is absolute.** Every table carries an `agency_id` column. Every query is filtered by `agency_id` through Supabase Row-Level Security policies. No application code path may bypass RLS. Cross-tenant data leakage is treated as a severity-zero incident.
+1. **Tenant isolation is absolute.** Every table carries an `agency_id` column. Every query is filtered by `agency_id` through Postgres Row-Level Security policies. No application code path may bypass RLS. Cross-tenant data leakage is treated as a severity-zero incident.
 
 2. **No PHI in the browser surface.** Protected Health Information must never appear in `localStorage`, `sessionStorage`, `console.log`, `console.error`, error messages surfaced to monitoring, URL parameters, or query strings. The only PHI cache permitted is the PowerSync wa-sqlite database stored in OPFS, which is encrypted at rest.
 
@@ -36,7 +36,7 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 
 6. **Immutable audit log.** All data mutations are recorded in an append-only audit log capturing: user ID, timestamp (UTC), action performed, fields changed (old value and new value), IP address, and user agent string. Audit records are never updated or deleted by application code. Retention is a minimum of seven years, exceeding the HIPAA six-year minimum.
 
-7. **Supabase Auth is the sole identity provider.** All authentication flows (email/password, magic link, SSO) go through Supabase Auth. No custom JWT generation, no custom session management, no hand-built auth cookies (session cookies are managed only by Supabase's `@supabase/ssr` helper; the short-lived access token is held in browser memory, never in web storage). Role-based access (caregiver, supervisor, admin) is enforced via Supabase Auth metadata and RLS policies, not application-level if-statements alone.
+7. **Identity Platform is the sole identity provider.** All authentication flows (email/password, email link, SSO) go through Google Cloud Identity Platform (Firebase Auth). No custom password storage, no custom JWT generation, no hand-built session tokens: the session cookie is an Identity Platform session cookie created and verified with the Firebase Admin SDK, and the short-lived ID token is held in browser memory, never in web storage (infrastructure.md §3). Role-based access (caregiver, supervisor, admin) is enforced via the profile row and RLS policies, not application-level if-statements alone.
 
 8. **tRPC internal, OpenAPI external.** All frontend-to-backend communication uses tRPC with end-to-end type safety. OpenAPI 3.1 endpoints are designed for external integrations: state reporting systems, Electronic Visit Verification (EVV) submissions, and agency data exports. v1 includes data export endpoints; state reporting and EVV integration endpoints are deferred to post-v1. No internal UI code calls OpenAPI endpoints.
 
@@ -46,29 +46,37 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 
 11. **Charting presets are cosmetic only.** The `charting_preset` agency configuration (`"therap"` or `"default"`) changes UI labels (e.g., "Shift Note" vs. "T-Log", "Incident Report" vs. "GER", "Goal Tracking" vs. "ISP Data") and form field ordering. It never alters the database schema, API contracts, validation rules, or business logic. A single codebase and schema serves all presets.
 
-12. **Secrets never touch the client bundle.** API keys, service account credentials, Twilio tokens, AWS Bedrock keys, and database connection strings exist only in server-side environment variables. The SvelteKit client bundle contains zero secrets. Supabase anon keys are the sole exception — they are safe by design and scoped by RLS.
+12. **Secrets never touch the client bundle.** API keys, service account credentials and database connection details exist only on the server (Secret Manager, mounted into Cloud Run). Google Cloud and AWS access uses service account identities and workload identity federation instead of long-lived keys. The SvelteKit client bundle contains zero secrets. The Firebase web config (API key and project ID) is the sole exception: it is a public identifier, not a secret, and grants no data access on its own.
 
 13. **Medication actions are irrevocable.** Once a MAR entry is recorded (`given`, `refused`, or `held`), it cannot be deleted — only amended with a correction entry that references the original. This maintains a complete medication administration history for regulatory compliance.
 
 14. **All UI meets WCAG 2.1 AA.** Touch targets are minimum 44x44px. Every interactive element is keyboard-navigable and screen-reader-announced. Color is never the sole indicator of state. Accessibility is tested in CI via axe-core.
 
+15. **Module boundaries stay clean so the app can split later.** Guad starts as one SvelteKit app (web and worker are two Cloud Run services built from the same image). To keep a later move to a monorepo (`apps/*`, `packages/*`) a matter of moving folders, these import rules are enforced by ESLint (`no-restricted-imports`) in CI:
+    - `src/lib/domain/` holds pure business rules used on both the device and the server (shifts, dose slots, note transitions, geofence math, vital limits, coverage eligibility). It imports nothing outside `src/lib/domain/`: no database, no server code, no browser APIs, no Svelte. The device and the server must never implement these rules separately.
+    - Services are imported only through their `index.ts`; one service never imports another's `*.queries.ts`.
+    - Database access lives only in `src/lib/server/db/` and service `*.queries.ts` files.
+    - Job handlers (`src/lib/server/jobs/`) call services, never UI code or routes.
+    - Client code never imports from `src/lib/server/` (SvelteKit also blocks this at build time).
+
 ## Technology Decisions
 
 | Decision | Choice | Rationale | Alternative Considered |
 |---|---|---|---|
-| Frontend framework | SvelteKit 2 + Svelte 5 runes | Smallest bundle size for 3G performance targets; runes provide fine-grained reactivity; SSR/SPA hybrid; built-in service worker support | Next.js (heavier runtime), React Native (rejected — PWA only) |
+| Frontend framework | SvelteKit 3 + Svelte 5 runes | Smallest bundle size for 3G performance targets; runes provide fine-grained reactivity; SSR/SPA hybrid; built-in service worker support | Next.js (heavier runtime), React Native (rejected — PWA only) |
 | Internal API | tRPC | End-to-end TypeScript type safety between SvelteKit client and server; no code generation step; composable middleware for auth/audit | GraphQL (over-engineering for single-client app), REST (no type safety) |
 | External API | OpenAPI 3.1 | Industry standard for state reporting and EVV integrations; machine-readable spec; code generation for partners | GraphQL (unfamiliar to state systems), gRPC (no browser interop needed) |
-| Database | Supabase (Postgres 15+) | Managed Postgres with built-in Auth, RLS, Realtime subscriptions; generous free tier for early stage; BAA available | AWS RDS (no built-in auth), PlanetScale (MySQL, less mature RLS) |
+| Database | Cloud SQL for PostgreSQL 16 | Managed Postgres with backups and point-in-time recovery; RLS and triggers work unchanged; covered by the free Google Cloud BAA | Supabase (BAA requires ~$1,000+/mo plans), AWS RDS (viable; GCP chosen for Cloud Run and credits) |
 | ORM | Drizzle | Type-safe schema definitions that generate migrations; lightweight runtime; pgTable as single source of truth | Prisma (heavier, schema file separate from TS), Knex (no type safety) |
-| Offline sync | PowerSync (wa-sqlite + OPFS) | Purpose-built for Postgres offline sync; server-authoritative last-write-wins conflict resolution; OPFS for encrypted local storage; maintains Supabase compatibility | WatermelonDB (React-oriented), custom service worker cache (too complex) |
-| AI — note drafting | AWS Bedrock Claude | HIPAA-eligible with BAA; strong clinical text generation; streaming for responsive UX | Azure OpenAI GPT-4 (viable alternative), self-hosted (operational burden) |
-| AI — transcription | Azure OpenAI Whisper | HIPAA-eligible with BAA; accurate medical terminology transcription; real-time streaming | AWS Transcribe Medical (higher latency), Google Speech (BAA complexity) |
-| Background jobs | BullMQ + Redis | Reliable job queue for shift coverage workflows, notification dispatch, sync retries; Redis provides pub/sub for real-time events | pg-boss (Postgres-only, contention risk), SQS (AWS lock-in for simple needs) |
+| Offline sync | PowerSync Open Edition, self-hosted (wa-sqlite + OPFS) | Purpose-built for Postgres offline sync; server-authoritative last-write-wins conflict resolution; OPFS for encrypted local storage; free to self-host | PowerSync Cloud (HIPAA plans from ~$599/mo), WatermelonDB (React-oriented), custom service worker cache (too complex) |
+| AI — note drafting | Claude on Vertex AI | Covered by the Google Cloud BAA (confirm model and region); strong clinical text generation; streaming for responsive UX | AWS Bedrock Claude (equivalent, other cloud), self-hosted (operational burden) |
+| AI — transcription | Google Speech-to-Text v2 (Chirp) | Covered by the same Google Cloud BAA, so audio stays in one cloud; batch recognition fits the record-then-review flow | Azure OpenAI Whisper (second cloud and BAA), AWS Transcribe |
+| Background jobs | Cloud Tasks + Cloud Scheduler | Managed queues with delays, rate limits and retries; nothing to run or patch; calls Cloud Run handlers so workers scale to zero | BullMQ + Redis (a Redis server to run and pay for), pg-boss (needs an always-on worker) |
 | Push notifications | FCM | Free, reliable push delivery to PWA service workers on Android and desktop; iOS PWA push supported since iOS 16.4 | Web Push direct (no analytics), OneSignal (unnecessary abstraction) |
-| SMS | Twilio | Industry standard; programmable messaging for shift coverage texts; HIPAA-eligible with BAA | Amazon SNS (less SMS features), MessageBird (smaller ecosystem) |
-| Email | Amazon SES | Low cost transactional email for notifications, reports, password resets; high deliverability | SendGrid (higher cost at scale), Supabase email (limited customization) |
-| Hosting | Supabase (DB) + Vercel (app) | Supabase manages Postgres and Auth; Vercel provides edge deployment for SvelteKit with zero-config; both offer BAA | AWS Amplify (more complex), Railway (less mature) |
+| SMS | AWS End User Messaging SMS | About a cent per text; covered by the free AWS BAA | Twilio (BAA needs Security/Enterprise Edition), MessageBird |
+| Email | Amazon SES | Low cost transactional email for notifications, reports, invites; high deliverability; covered by the AWS BAA | SendGrid (no BAA on standard plans), Postmark |
+| Hosting | Google Cloud Run | Runs the SvelteKit server, job handlers and PowerSync from containers; HTTPS and scaling handled; covered by the Google Cloud BAA | Vercel (BAA $350/mo add-on), AWS Fargate + load balancer (more to set up) |
+| Identity | Google Cloud Identity Platform | Email/password, email link, TOTP MFA, SAML/OIDC; free under 50k MAU; covered by the Google Cloud BAA | Supabase Auth (tied to Supabase plans), AWS Cognito (other cloud), self-built auth (forbidden) |
 
 ## Performance Targets
 
@@ -86,21 +94,21 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 
 Guad operates under HIPAA Security Rule requirements as a Business Associate to covered entities (IDD residential care agencies).
 
-**Encryption:** All data in transit is protected by TLS 1.3. All data at rest is encrypted with AES-256 — Supabase provides this for Postgres, OPFS data is encrypted by PowerSync, and all backup storage uses server-side encryption. No unencrypted PHI exists at rest on any tier.
+**Encryption:** All data in transit is protected by TLS 1.3. All data at rest is encrypted with AES-256 — Cloud SQL provides this for Postgres, OPFS data is encrypted by PowerSync, and all backup storage uses server-side encryption. No unencrypted PHI exists at rest on any tier.
 
-**Business Associate Agreements:** BAAs are required and maintained with every subprocessor that handles PHI: Supabase (database, auth), AWS (Bedrock AI, SES email), Azure (Whisper transcription), Twilio (SMS containing shift info, never PHI in message body), and the hosting provider. No new subprocessor is onboarded without an executed BAA.
+**Business Associate Agreements:** BAAs are required and maintained with every subprocessor that handles PHI: Google Cloud (hosting, database, identity, Vertex AI, Speech-to-Text, storage, logging) and AWS (SES email, SMS; message bodies never contain PHI). No new subprocessor is onboarded without an executed BAA. Firebase Cloud Messaging is not covered, so push payloads never contain PHI.
 
-**Access Control:** Role-based access is enforced at the database level via Supabase RLS. Caregivers see only clients assigned to their homes. Supervisors see all clients and staff within their assigned homes. Admins see the full agency. Session tokens expire after 12 hours of inactivity. Multi-factor authentication is required for supervisor and admin roles.
+**Access Control:** Role-based access is enforced at the database level via Postgres RLS. Caregivers see only clients assigned to their homes. Supervisors see all clients and staff within their assigned homes. Admins see the full agency. Session tokens expire after 12 hours of inactivity. Multi-factor authentication is required for supervisor and admin roles.
 
 **Audit Logging:** Every create, update, and delete operation on PHI is logged with user identity, timestamp, IP address, and before/after values. Audit logs are append-only and retained for a minimum of seven years, exceeding the HIPAA six-year minimum. Logs are accessible to agency admins for compliance reviews.
 
-**PHI Handling Rules:** PHI is never logged to application monitoring (Sentry, console). Error messages shown to users and sent to monitoring contain only operation identifiers, never patient data. SMS notifications reference shift times and home names but never client names or health information. AI prompts sent to Bedrock contain PHI only within the HIPAA-eligible processing boundary.
+**PHI Handling Rules:** PHI is never logged to application monitoring (Cloud Logging, Error Reporting, console). Error messages shown to users and sent to monitoring contain only operation identifiers, never patient data. SMS notifications reference shift times and home names but never client names or health information. AI prompts sent to Vertex AI contain PHI only within the BAA-covered processing boundary.
 
 For full security architecture, access control matrices, incident response procedures, and penetration testing requirements, see `security.md`.
 
 ## Multi-Tenancy Model
 
-Guad is a single-database multi-tenant system. Every data table includes a non-nullable `agency_id` foreign key referencing the `agencies` table. Supabase Row-Level Security policies enforce that authenticated users can only read and write rows where `agency_id` matches the `agency_id` claim in their JWT (set during Supabase Auth sign-in and stored in `auth.users` app_metadata). This isolation is enforced at the Postgres level — even if application code contains a bug that omits a WHERE clause, RLS prevents cross-tenant access. There are no shared tables without `agency_id` except system-level configuration tables that contain no PHI. Database migrations must include RLS policy creation for every new table, and CI validates that no table containing PHI exists without an active RLS policy.
+Guad is a single-database multi-tenant system. Every data table includes a non-nullable `agency_id` foreign key referencing the `agencies` table. Postgres Row-Level Security policies enforce that users can only read and write rows where `agency_id` matches the `agency_id` in the session claims. The server sets those claims at the start of every transaction from the signed-in user's profile row, never from client input (rls.sql header, infrastructure.md §4). This isolation is enforced at the Postgres level — even if application code contains a bug that omits a WHERE clause, RLS prevents cross-tenant access. There are no shared tables without `agency_id` except system-level configuration tables that contain no PHI. Database migrations must include RLS policy creation for every new table, and CI validates that no table containing PHI exists without an active RLS policy.
 
 ## Charting Preset System
 

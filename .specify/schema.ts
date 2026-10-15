@@ -1,7 +1,7 @@
 /**
  * Guad — HIPAA-compliant Postgres schema (Drizzle ORM)
  *
- * Every table carries agency_id for tenant isolation and RLS (37 tables).
+ * Every table carries agency_id for tenant isolation and RLS (38 tables).
  * All timestamps are stored WITH time zone.
  */
 
@@ -20,6 +20,7 @@ import {
   time,
   index,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -173,7 +174,7 @@ export const profiles = pgTable(
     agency_id: uuid('agency_id')
       .notNull()
       .references(() => agencies.id, { onDelete: 'cascade' }),
-    supabase_uid: uuid('supabase_uid').notNull(),
+    auth_uid: text('auth_uid').notNull(), // Identity Platform (Firebase Auth) UID
     email: text('email').notNull(),
     phone: text('phone'),
     name: text('name').notNull(),
@@ -192,7 +193,7 @@ export const profiles = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex('profiles_supabase_uid_idx').on(t.supabase_uid),
+    uniqueIndex('profiles_auth_uid_idx').on(t.auth_uid),
     index('profiles_agency_id_idx').on(t.agency_id),
     index('profiles_email_idx').on(t.email),
   ],
@@ -638,13 +639,13 @@ export const marRecords = pgTable(
     effect: text('effect'),
     is_prn: boolean('is_prn').notNull().default(false),
     acknowledged: boolean('acknowledged').notNull().default(false),
-    amends_id: uuid('amends_id').references(() => marRecords.id, {
+    amends_id: uuid('amends_id').references((): AnyPgColumn => marRecords.id, {
       onDelete: 'restrict',
     }),
     // Set when two devices recorded the same dose slot while offline. The
     // later record is kept (never discarded) and points at the first one,
     // and a mandatory med_possible_double_dose alert goes to the supervisor.
-    conflict_with: uuid('conflict_with').references(() => marRecords.id, {
+    conflict_with: uuid('conflict_with').references((): AnyPgColumn => marRecords.id, {
       onDelete: 'restrict',
     }),
     created_by: uuid('created_by').references(() => profiles.id, {
@@ -1087,6 +1088,9 @@ export const notifications = pgTable(
     read_at: timestamp('read_at', { withTimezone: true }),
     reference_id: uuid('reference_id'),
     reference_type: text('reference_type'),
+    // Message ID returned by FCM, SES or AWS End User Messaging, used to match
+    // delivery events (notifications.md §6-7).
+    provider_message_id: text('provider_message_id'),
     // false once the row is older than its device sync window (set nightly by
     // SyncWindowJob). Sync rules filter on this instead of time functions.
     device_sync: boolean('device_sync').notNull().default(true),
@@ -1099,8 +1103,10 @@ export const notifications = pgTable(
   },
   (t) => [
     index('notifications_agency_id_idx').on(t.agency_id),
-    index('notifications_profile_id_idx').on(t.profile_id),
+    // Rate limits count a recipient's recent sends per channel (notifications.md §10).
+    index('notifications_profile_channel_created_idx').on(t.profile_id, t.channel, t.created_at),
     index('notifications_status_idx').on(t.status),
+    index('notifications_provider_message_id_idx').on(t.provider_message_id),
   ],
 );
 
@@ -1292,7 +1298,7 @@ export const deviceTokens = pgTable(
 );
 
 // ─── 32. email_suppressions ──────────────────────────────────────────────────
-// Bounced or complained addresses (notifications.md §7). Redis is only a cache.
+// Bounced or complained addresses (notifications.md §7). The only copy of the suppression list.
 
 export const emailSuppressions = pgTable(
   'email_suppressions',
@@ -1472,5 +1478,41 @@ export const reportJobs = pgTable(
   (t) => [
     index('report_jobs_agency_id_idx').on(t.agency_id),
     index('report_jobs_requested_by_idx').on(t.requested_by),
+  ],
+);
+
+// ─── 38. device_keys ─────────────────────────────────────────────────────────
+// Server copy of each device's local database key (offline-sync.md "Local
+// Database Encryption Key"). Never synced and never readable by clients: the
+// Device Service (app_service) issues the key once per sign-in. key_ciphertext
+// is AES-256-GCM under a server key-encryption key (Secret Manager in
+// production). Deactivating a user or device sets revoked_at, after which the
+// key is never issued again, so a stolen device can't be re-keyed.
+
+export const deviceKeys = pgTable(
+  'device_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    profile_id: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    // Random ID the device generates once and keeps next to its wrapped key
+    device_id: uuid('device_id').notNull(),
+    key_ciphertext: text('key_ciphertext').notNull(),
+    last_issued_at: timestamp('last_issued_at', { withTimezone: true }),
+    revoked_at: timestamp('revoked_at', { withTimezone: true }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('device_keys_profile_device_idx').on(t.profile_id, t.device_id),
+    index('device_keys_agency_id_idx').on(t.agency_id),
   ],
 );

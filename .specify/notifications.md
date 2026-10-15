@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Guad's notification system delivers time-sensitive alerts across three channels -- push (FCM), SMS (Twilio), and email (Amazon SES) -- using BullMQ + Redis for reliable, asynchronous job processing. Notification workers run as a separate Node.js process alongside the SvelteKit server to avoid blocking request handling with external API latency.
+Guad's notification system delivers time-sensitive alerts across three channels -- push (FCM), SMS (AWS End User Messaging) and email (Amazon SES) -- using Cloud Tasks for reliable, asynchronous delivery. Each send is a task that Cloud Tasks delivers to a handler on the `worker` Cloud Run service, so external API latency never blocks request handling (infrastructure.md §5).
 
 ### Architecture Summary
 
@@ -16,16 +16,16 @@ NotificationService.send() / .sendBatch()
 Insert row(s) into `notifications` table (one row per channel, status: 'pending')
   |
   v
-Enqueue job(s) to BullMQ queues based on channel preferences
+Enqueue Cloud Tasks task(s) based on channel preferences
   |
-  +---> notifications:push    (FCM)
-  +---> notifications:sms     (Twilio)
-  +---> notifications:email   (SES)
-  +---> notifications:escalation (delayed jobs for follow-up)
-  +---> notifications:digest  (batched daily summaries)
+  +---> notifications-push       (FCM)
+  +---> notifications-sms        (AWS End User Messaging SMS)
+  +---> notifications-email      (SES)
+  +---> notifications-escalation (delayed tasks for follow-up)
+  +---> notifications-digest     (Cloud Scheduler, daily summaries)
   |
   v
-Worker processes pick up jobs, dispatch via vendor API
+Cloud Tasks calls the worker handler, which dispatches via the vendor API
   |
   v
 Update `notifications.status` to 'sent' / 'failed'
@@ -36,8 +36,8 @@ Update `notifications.sent_at`
 
 - **One row per channel.** When a notification is sent via multiple channels (e.g., push + SMS), one `notifications` row is created per channel. This enables per-channel status tracking (`sent_at`, `read_at`, `status`). The escalation engine checks `read_at` on any row matching the same `(type, reference_id, profile_id)` tuple to determine acknowledgment.
 - **PHI safety first.** SMS, email and push bodies never contain client names, DOBs, diagnoses, medications, incident types or other clinical content. Push goes through Firebase Cloud Messaging (and Apple's push service on iOS), which are not BAA-covered, and lock screens are visible to anyone nearby. Push payloads therefore carry only a generic title, the notification ID and a deep link; the app fetches details after the user opens it and signs in.
-- **Reference by ID.** Job payloads carry record IDs, not PHI. Workers fetch needed data from Postgres at execution time. This keeps Redis free of protected health information.
-- **Escalation by default.** High-priority notifications that go unacknowledged trigger automatic escalation via BullMQ delayed jobs.
+- **Reference by ID.** Job payloads carry record IDs, not PHI. Handlers fetch needed data from Postgres at execution time, so task payloads never hold protected health information.
+- **Escalation by default.** High-priority notifications that go unacknowledged trigger automatic escalation via delayed Cloud Tasks tasks.
 - **User control with guardrails.** Users can customize channel preferences per notification type, but mandatory notifications (incidents, med refusals, high-severity alerts) cannot be disabled.
 - **Tenant-scoped.** Every notification record carries `agency_id`. Notification preferences are per-user, per-agency.
 
@@ -342,64 +342,70 @@ Update `notifications.sent_at`
 
 ---
 
-## 3. BullMQ Queue Architecture
+## 3. Queue Architecture (Cloud Tasks)
 
-All queues use Redis as the backing store. Job payloads contain only record IDs and metadata -- never raw PHI. Workers fetch PHI from Postgres at execution time.
+Each queue below is a Cloud Tasks queue. Task payloads contain only record IDs and metadata -- never raw PHI. Handlers fetch PHI from Postgres at execution time.
 
-### 3.1 notifications:push
+How the settings map to Cloud Tasks:
+- **Concurrency** is the queue's `maxConcurrentDispatches`; **rate limit** is `maxDispatchesPerSecond`; **retry policy** is the queue retry config.
+- **No dead letter queue.** Cloud Tasks drops a task after its last attempt, so the handler checks the `X-CloudTasks-TaskRetryCount` header and, on the final attempt, marks the notification `failed` and logs a `notification.dead` event (alerted on in §11).
+- **No priorities.** Cloud Tasks dispatches roughly in order. Queues are sized so urgent sends aren't delayed; the `priority` field drives quiet hours and rate-limit bypass. If backlog ever delays urgent sends, priority 1 moves to its own queue.
+- Handlers must be idempotent (delivery is at least once): they skip a notification whose status is already `sent`.
+
+### 3.1 notifications-push
 
 | Setting | Value |
 |---------|-------|
 | **Concurrency** | 20 |
 | **Retry policy** | 3 attempts, exponential backoff: 5s, 15s, 45s |
-| **Dead letter queue** | `notifications:push:dead` after 3 failures |
+| **Final failure** | Notification marked `failed`, `notification.dead` event logged |
 | **Priority levels** | 1 (urgent), 2 (high), 3 (normal), 4 (low) |
-| **Stalled job interval** | 30 seconds |
+| **Dispatch deadline** | 30 seconds |
 | **Notes** | FCM batch API used when sending to multiple tokens. Stale tokens (FCM returns `NotRegistered`) are removed from preferences and logged. |
 
-### 3.2 notifications:sms
+### 3.2 notifications-sms
 
 | Setting | Value |
 |---------|-------|
 | **Concurrency** | 5 |
 | **Retry policy** | 2 attempts, exponential backoff: 10s, 30s |
-| **Dead letter queue** | `notifications:sms:dead` after 2 failures |
+| **Final failure** | Notification marked `failed`, `notification.dead` event logged |
 | **Priority levels** | 1 (urgent), 2 (high), 3 (normal) |
-| **Rate limit** | 1 message per second (Twilio rate limit compliance) |
-| **Notes** | Lower concurrency due to per-second Twilio rate limits and cost sensitivity. Failed SMS for urgent notifications trigger an immediate push fallback. |
+| **Rate limit** | 1 message per second (10DLC throughput for a standard campaign) |
+| **Notes** | Lower concurrency due to 10DLC throughput limits and cost sensitivity. Failed SMS for urgent notifications trigger an immediate push fallback. |
 
-### 3.3 notifications:email
+### 3.3 notifications-email
 
 | Setting | Value |
 |---------|-------|
 | **Concurrency** | 10 |
 | **Retry policy** | 3 attempts, exponential backoff: 10s, 30s, 90s |
-| **Dead letter queue** | `notifications:email:dead` after 3 failures |
+| **Final failure** | Notification marked `failed`, `notification.dead` event logged |
 | **Priority levels** | 1 (high), 2 (normal), 3 (low) |
 | **Rate limit** | 14 messages per second (SES default sending rate) |
 | **Notes** | Bounce and complaint webhooks update the suppression list. Hard bounces auto-disable email for the affected address. |
 
-### 3.4 notifications:escalation
+### 3.4 notifications-escalation
 
 | Setting | Value |
 |---------|-------|
 | **Concurrency** | 5 |
 | **Retry policy** | 1 attempt, no retry (escalation is time-critical; a failed escalation is logged and the admin is alerted directly) |
-| **Dead letter queue** | `notifications:escalation:dead` |
+| **Final failure** | Notification marked `failed`, `notification.dead` event logged |
 | **Priority levels** | 1 only (all escalations are high priority) |
-| **Job type** | Delayed jobs. Created with a `delay` value in milliseconds when the original notification is sent. |
-| **Notes** | When the delayed job fires, the worker checks `notifications.read_at` for the original notification. If non-null, the escalation is skipped (no-op). If null, the next escalation level is triggered. |
+| **Job type** | Delayed tasks. Created with a `scheduleTime` when the original notification is sent, named `escalation-<notificationId>-<level>` so they can be deleted if the notification is acknowledged first. |
+| **Notes** | When the delayed task fires, the handler checks `notifications.read_at` for the original notification. If non-null, the escalation is skipped (no-op). If null, the next escalation level is triggered. |
 
-### 3.5 notifications:digest
+### 3.5 notifications-digest
 
 | Setting | Value |
 |---------|-------|
 | **Concurrency** | 3 |
 | **Retry policy** | 1 attempt, 60s backoff |
-| **Dead letter queue** | `notifications:digest:dead` |
+| **Final failure** | Notification marked `failed`, `notification.dead` event logged |
 | **Priority levels** | 1 only |
-| **Schedule** | Repeatable job: `cron('0 6 * * *')` per agency timezone |
-| **Notes** | Aggregates overnight activity into a single email per supervisor. One job per agency. |
+| **Schedule** | Cloud Scheduler job every 15 minutes; the handler enqueues a digest task for each agency whose local time is 06:00 |
+| **Notes** | Aggregates overnight activity into a single email per supervisor. One task per agency. |
 
 ---
 
@@ -440,8 +446,8 @@ interface SmsJob extends BaseNotificationJob {
   channel: 'sms';
   phone: string;             // E.164 format (e.g., "+15551234567")
   message: string;           // rendered SMS body, max 160 chars, NO PHI
-  fromNumber?: string;       // override sender (default: env TWILIO_FROM_NUMBER)
-  statusCallbackUrl?: string; // Twilio delivery webhook URL
+  originationIdentity?: string; // override sender (default: env SMS_ORIGINATION_IDENTITY)
+  configurationSet?: string;    // AWS configuration set that publishes delivery events
 }
 
 // ── Email Job ───────────────────────────────────────────────────────────────
@@ -603,7 +609,7 @@ If the user denies push permission or is on an unsupported platform:
 
 ---
 
-## 6. Twilio Integration (SMS)
+## 6. SMS (AWS End User Messaging)
 
 ### Message Templates
 
@@ -622,39 +628,38 @@ All SMS messages must be under 160 characters to avoid multi-segment billing. Te
 
 ### Sender Configuration
 
-- **A2P 10DLC registration is required** before sending application SMS to US numbers from a standard long code (brand + campaign registration with Twilio; allow 1-3 weeks). Unregistered traffic is filtered or blocked by carriers.
-
-- Default sender: `TWILIO_FROM_NUMBER` environment variable.
-- All messages are sent from a single number per Guad deployment.
-- Twilio Messaging Service SID can be used for multi-number sending with automatic carrier compliance.
+- **A2P 10DLC registration is required** before sending application SMS to US numbers from a standard long code (brand + campaign registration in the AWS End User Messaging console; allow 1-3 weeks). Unregistered traffic is filtered or blocked by carriers.
+- Default sender: the origination phone number in `SMS_ORIGINATION_IDENTITY`.
+- All messages are sent from a single 10DLC number per Guad deployment, through a configuration set that publishes delivery events to an SNS topic.
+- The `worker` service calls the `SendTextMessage` API using workload identity federation (infrastructure.md §2), with no stored AWS keys.
 
 ### Opt-Out (STOP Keyword)
 
-- Twilio automatically handles STOP/START/HELP keywords for US/Canada numbers.
-- When a user texts STOP, Twilio blocks further messages to that number.
-- The `statusCallbackUrl` webhook receives an `opt-out` event. The worker updates `notification_preferences.sms_enabled = false` for the matching profile.
-- When a user texts START, the webhook re-enables SMS: `notification_preferences.sms_enabled = true`.
+- AWS End User Messaging handles STOP/START/HELP keywords for the number and adds opted-out numbers to the number's opt-out list automatically.
+- When a user texts STOP, further messages to that number are blocked, and the inbound message reaches the worker (see Incoming Replies). The worker updates `notification_preferences.sms_enabled = false` for the matching profile.
+- When a user texts START, the number is removed from the opt-out list and the worker re-enables SMS: `notification_preferences.sms_enabled = true`.
 - Admin UI shows which users have opted out of SMS.
 
 ### Delivery Webhooks
 
-- `statusCallbackUrl` is set on every outbound message.
-- Webhook events: `queued`, `sent`, `delivered`, `undelivered`, `failed`.
-- On `delivered`: update `notifications.status = 'sent'`, `notifications.sent_at = now()`.
-- On `undelivered` or `failed`: update `notifications.status = 'failed'`, log the error code. If the notification is urgent, trigger push fallback.
+- Every outbound message uses the configuration set, whose event destination is an SNS topic subscribed to the worker endpoint `/api/webhooks/aws/sms-events` (HTTPS).
+- Events used: `TEXT_SUCCESSFUL`, `TEXT_DELIVERED`, `TEXT_BLOCKED`, `TEXT_CARRIER_UNREACHABLE`, `TEXT_INVALID`, `TEXT_TTL_EXPIRED` and other failures.
+- On `TEXT_DELIVERED`: update `notifications.status = 'sent'`, `notifications.sent_at = now()`.
+- On any failure event: update `notifications.status = 'failed'`, log the error code. If the notification is urgent, trigger push fallback.
+- The message ID returned by `SendTextMessage` is stored on the notification so events can be matched.
 
 ### Cost Tracking
 
-- Each SMS send logs the Twilio message SID and segment count.
-- A `sms_usage` counter per agency per month is maintained in Redis (INCR with EXPIRE at month end).
+- Each SMS send logs the AWS message ID and segment count on the notification row.
+- Monthly SMS usage per agency is counted from `notifications` (channel = `sms`, status = `sent`); no separate counter is needed.
 - Admin dashboard shows monthly SMS usage and estimated cost.
 - Alert agency admin when usage exceeds 80% of the plan's included SMS volume.
 
-### Twilio Incoming Webhook (SMS Replies)
+### Incoming Replies (two-way SMS)
 
-The `coverage_offer` SMS template (Section 2.1) instructs candidates to "Reply YES or NO." Inbound replies are handled via a Twilio incoming message webhook:
+The `coverage_offer` SMS template (Section 2.1) instructs candidates to "Reply YES or NO." Two-way SMS is enabled on the origination number, with inbound messages published to an SNS topic subscribed to the worker:
 
-- **Webhook URL:** `/api/webhooks/twilio/incoming`
+- **Webhook URL:** `/api/webhooks/aws/sms-inbound` (SNS HTTPS subscription; the handler confirms the subscription once, then receives each inbound message)
 - **Sender:** the `From` number is matched to `profiles.phone` (E.164) within the agency; the `notifications` table has no phone column.
 - **Multiple open offers:** every offer SMS carries a 4-digit offer code: `Guad: Can you cover {shift} at {home} on {date}? Reply YES {code} or NO {code}.` A bare YES/NO is accepted only when that person has exactly one open offer; otherwise Guad replies `Guad: You have {n} open offers. Reply YES or NO with the code from the offer you mean.`
 - **Reply matching:** Look up the pending `coverage_offer` with that code (or the single pending offer) for the sender. Match via the `notifications` table (type = `coverage_offer`, channel = `sms`, phone = From number, status = `sent`).
@@ -665,7 +670,7 @@ The `coverage_offer` SMS template (Section 2.1) instructs candidates to "Reply Y
 - **Race condition handling:** If the coverage request `status` is already `filled` when the reply arrives, respond with `"Guad: This shift has already been filled. Thank you!"` and skip processing.
 - **On acceptance:** Call `recordCandidateReply(agencyId, candidateId, 'accepted')` followed by `fillShift()`. Trigger `coverage_accepted` notification.
 - **On decline:** Call `recordCandidateReply(agencyId, candidateId, 'declined')`.
-- **Security:** Validate the Twilio request signature (`X-Twilio-Signature` header) against the configured `TWILIO_AUTH_TOKEN` to prevent spoofed webhooks.
+- **Security:** Verify every SNS message signature (download the signing certificate only from an `sns.<region>.amazonaws.com` URL, check the signature over the canonical string) and check the `TopicArn` matches the configured topic, to prevent spoofed requests. Reject anything else with 403.
 
 ### HIPAA Rules for SMS Content
 
@@ -698,7 +703,7 @@ SES templates are stored in AWS and referenced by `templateId` in the `EmailJob`
 | `guad-daily-summary` | Daily digest for supervisors | `Guad Daily Summary - {agencyName} - {date}` |
 | `guad-system-maintenance` | Planned maintenance alerts | `Scheduled Maintenance - {date}` |
 | `guad-welcome` | New user onboarding | `Welcome to Guad - {agencyName}` |
-| `guad-password-reset` | Password reset (via Supabase, but branded) | `Reset Your Guad Password` |
+| `guad-password-reset` | Password reset (link generated by the Identity Platform Admin SDK, sent by SES) | `Reset Your Guad Password` |
 
 ### Domain Verification
 
@@ -710,15 +715,14 @@ SES templates are stored in AWS and referenced by `templateId` in the `EmailJob`
 
 ### Bounce Handling
 
-- SES SNS topic receives bounce notifications.
+- SES publishes bounce and complaint notifications to an SNS topic subscribed to `/api/webhooks/aws/ses-events` (signature verified as above).
 - **Hard bounce** (permanent failure): add email to suppression list, set `notification_preferences.email_enabled = false` for the profile, log the event.
-- **Soft bounce** (temporary failure): retry via BullMQ retry policy. After 3 soft bounces in 24 hours, treat as hard bounce.
+- **Soft bounce** (temporary failure): retry via the queue retry policy. After 3 soft bounces in 24 hours, treat as hard bounce.
 - **Complaint** (user marks as spam): immediately suppress, set `email_enabled = false`, alert agency admin.
 
 ### Suppression List
 
-- Canonical suppression data is persisted in the `email_suppressions` Postgres table (columns: `id`, `agency_id`, `email`, `reason`, `suppressed_at`). This ensures suppression state survives Redis restarts and flushes.
-- A Redis set (`email_suppression:{agencyId}`) acts as a read-through cache for fast lookups during sends. On cache miss, the worker queries Postgres and populates Redis.
+- Canonical suppression data is persisted in the `email_suppressions` Postgres table (columns: `id`, `agency_id`, `email`, `reason`, `suppressed_at`). It is the only copy of the suppression list (indexed on `(agency_id, email)`, so a lookup per send is cheap).
 - Checked before every email send. If the address is suppressed, the job completes without sending and logs a skip event.
 - Admin can manually remove addresses from suppression (e.g., after the user confirms a new valid address).
 
@@ -761,7 +765,7 @@ All "View All" links point to authenticated app screens. No PHI (client names, h
 
 ### How It Works
 
-The escalation engine uses BullMQ delayed jobs. When a notification is sent for a type that has escalation rules, an `EscalationJob` is simultaneously enqueued with the appropriate delay. When the delayed job fires:
+The escalation engine uses delayed Cloud Tasks tasks. When a notification is sent for a type that has escalation rules, an `EscalationJob` is simultaneously enqueued with the appropriate `scheduleTime`. When the task fires:
 
 1. Query `notifications` for the `originalNotificationId`.
 2. Check `read_at`. If non-null, the notification was acknowledged -- skip (no-op).
@@ -819,7 +823,7 @@ Before sending any escalation, the worker checks:
 - **Unique constraint:** The `notification_preferences` table must have a unique index on `(profile_id, notification_type)` to prevent duplicate preference rows for the same user and notification type. Schema.ts should include: `uniqueIndex('notification_prefs_profile_type_idx').on(t.profile_id, t.notification_type)`.
 - **Agency timezone:** Digest scheduling (Section 3.5) and quiet hours (below) depend on the agency's IANA timezone. This is stored as `timezone: text('timezone').notNull().default('America/New_York')` on the `agencies` table in schema.ts. The `DigestJob` reads `agencyTimezone` from this column.
 - **FCM tokens:** stored in `device_tokens` (schema.ts #31), not in `notification_preferences`.
-- **Priority column:** The `notifications` table in schema.ts must include a `priority: integer('priority').notNull().default(3)` column to support quiet hours filtering, rate limit bypass for urgent notifications, and BullMQ job priority levels.
+- **Priority column:** The `notifications` table in schema.ts must include a `priority: integer('priority').notNull().default(3)` column to support quiet hours filtering, and rate limit bypass for urgent notifications.
 
 ### Default Preferences by Role
 
@@ -908,12 +912,10 @@ Rate limits protect users from notification fatigue and control SMS costs.
 
 ### Implementation
 
-Rate limiting is implemented using Redis sorted sets:
-- Key: `ratelimit:{channel}:{profileId}`
-- Members: notification IDs with scores as Unix timestamps.
-- Before sending, count members with scores in the last 24 hours.
-- If count >= limit, reject (unless urgent priority).
-- Expired entries are pruned on each check using `ZREMRANGEBYSCORE`.
+Rate limits are counted from the `notifications` table itself, so there is no separate store:
+- Before sending, count the recipient's rows for that channel created in the last 24 hours (index on `(profile_id, channel, created_at)`).
+- If count >= limit, skip the send and record it as rate-limited (unless urgent priority).
+- Per-type limits above use the same count filtered by `type` and the dedupe key.
 
 ---
 
@@ -924,19 +926,19 @@ Rate limiting is implemented using Redis sorted sets:
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
 | **Delivery success rate (push)** | % of push jobs that result in FCM `success` response | < 95% over 1 hour |
-| **Delivery success rate (SMS)** | % of SMS jobs that result in Twilio `delivered` status | < 90% over 1 hour |
+| **Delivery success rate (SMS)** | % of SMS sends that result in a `TEXT_DELIVERED` event | < 90% over 1 hour |
 | **Delivery success rate (email)** | % of email jobs that result in SES delivery (no bounce) | < 95% over 1 hour |
 | **Escalation trigger rate** | % of escalatable notifications that reach level 2+ | > 30% over 24 hours (indicates users are not responding) |
 | **Mean time to acknowledge** | Average time from `sent_at` to `read_at` for high/urgent notifications | > 30 minutes for urgent, > 2 hours for high |
 | **SMS cost per agency per month** | Total SMS segments sent x cost per segment | > $50/agency/month (alert admin) |
-| **Dead letter queue depth** | Number of jobs in any dead letter queue | > 0 (any failed job requires investigation) |
-| **Queue latency** | Time from job creation to job processing start | > 30 seconds for urgent, > 5 minutes for normal |
+| **Dead tasks** | `notification.dead` events (tasks that failed their last attempt) | > 0 (any failed task requires investigation) |
+| **Queue latency** | Time from task creation to handler start (Cloud Tasks metrics) | > 30 seconds for urgent, > 5 minutes for normal |
 | **FCM token staleness** | % of stored FCM tokens that return `NotRegistered` | > 20% (indicates token refresh issue) |
 | **Rate limit hit rate** | % of notifications dropped due to rate limiting | > 5% for any user (possible notification storm) |
 
 ### Dashboard Queries
 
-Monitoring data is derived from the `notifications` table and Redis counters:
+Monitoring data is derived from the `notifications` table and Cloud Tasks / Cloud Monitoring metrics:
 
 - **Delivery funnel**: `pending` -> `sent` -> `read` conversion rates by notification type.
 - **Escalation funnel**: notifications that triggered escalation level 1, 2, 3, and `escalation_exhausted` counts.
@@ -947,10 +949,10 @@ Monitoring data is derived from the `notifications` table and Redis counters:
 
 Alerts are sent to the engineering team (not agency users) via the platform's own notification system or an external monitoring tool:
 
-- Dead letter queue non-empty: immediate alert.
+- Any `notification.dead` event: immediate alert.
 - Delivery success rate drops below threshold: alert after 15 minutes sustained.
 - SMS cost exceeds agency budget: daily digest to agency admin.
-- Queue processing stalled (no jobs completed in 5 minutes while queue is non-empty): immediate alert.
+- Queue processing stalled (Cloud Tasks queue depth rising with no successful dispatches in 5 minutes): immediate alert.
 
 ---
 
@@ -958,13 +960,13 @@ Alerts are sent to the engineering team (not agency users) via the platform's ow
 
 ### Development Environment
 
-- **Console logger**: In development (`NODE_ENV=development`), all notification sends are intercepted and logged to the server console instead of dispatching to FCM/Twilio/SES. Log output includes: recipient, channel, type, rendered title/body, and deep link.
+- **Console logger**: In development (`NODE_ENV=development`), all notification sends are intercepted and logged to the server console instead of dispatching to FCM, SMS or SES. Email can also go to the local Mailpit container (infrastructure.md §6). Log output includes: recipient, channel, type, rendered title/body, and deep link.
 - **In-app dev panel**: A `/dev/notifications` route (dev only) shows all queued and sent notifications with their payloads, escalation state, and delivery status. Includes a "Send Test Notification" button for each of the 19 types.
-- **BullMQ Board**: Bull Board UI available at `/dev/bull` in development for inspecting queues, retrying failed jobs, and draining queues.
+- **Local jobs**: in development the in-process job driver runs handlers directly after their delay; `/dev/notifications` lists pending delayed tasks and can fire one immediately.
 
 ### Staging Environment
 
-- **Test phone numbers**: Twilio test credentials and magic numbers are used in staging. No real SMS is sent. Twilio test numbers return predictable delivery statuses.
+- **SMS simulator**: staging uses AWS End User Messaging's simulator destination numbers, which return predictable delivery events without sending real texts.
 - **SES sandbox**: Staging uses SES in sandbox mode, which only delivers to verified email addresses. All team members' emails are verified.
 - **FCM test**: Staging uses a separate Firebase project with its own VAPID key. Push notifications are delivered to real devices but only for team members.
 - **Escalation timing**: Staging uses accelerated escalation timers (minutes instead of hours) to enable end-to-end escalation testing without waiting.
@@ -984,9 +986,9 @@ Alerts are sent to the engineering team (not agency users) via the platform's ow
 | Unit: rate limiting | Rate limiter correctly blocks at threshold and allows urgent bypass | Vitest |
 | Unit: escalation logic | Escalation skips when `read_at` is set; fires when null; respects max depth | Vitest |
 | Unit: preference resolution | Mandatory overrides work; admin overrides supersede user preferences; quiet hours apply correctly | Vitest |
-| Integration: BullMQ flow | Job is enqueued, picked up by worker, notification record updated | Vitest + Redis testcontainer |
+| Integration: job flow | Task is enqueued, handler runs, notification record updated (in-process job driver) | Vitest + Postgres testcontainer |
 | Integration: FCM mock | Push worker sends correct payload to FCM mock server; stale token removal works | Vitest + nock |
-| Integration: Twilio mock | SMS worker sends correct payload; opt-out webhook updates preferences | Vitest + nock |
+| Integration: SMS mock | SMS handler sends correct payload; STOP inbound message updates preferences; SNS signature check rejects forged requests | Vitest + nock |
 | Integration: SES mock | Email worker sends correct template; bounce webhook suppresses address | Vitest + nock |
 | E2E: notification flow | Create incident -> notification appears in notification center -> tap -> deep link works | Playwright |
 | E2E: escalation flow | Create high-severity incident -> wait for escalation timer -> verify SMS sent (staging) | Playwright + accelerated timers |

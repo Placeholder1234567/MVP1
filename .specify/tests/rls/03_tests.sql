@@ -1,10 +1,14 @@
 \set QUIET on
-\set cg  '{"role":"authenticated","app_metadata":{"agency_id":"a1000000-0000-0000-0000-000000000000","role":"caregiver","profile_id":"c1000000-0000-0000-0000-000000000000"}}'
-\set sup '{"role":"authenticated","app_metadata":{"agency_id":"a1000000-0000-0000-0000-000000000000","role":"supervisor","profile_id":"c2000000-0000-0000-0000-000000000000"}}'
+\set cg  '{"agency_id":"a1000000-0000-0000-0000-000000000000","role":"caregiver","profile_id":"c1000000-0000-0000-0000-000000000000"}'
+\set sup '{"agency_id":"a1000000-0000-0000-0000-000000000000","role":"supervisor","profile_id":"c2000000-0000-0000-0000-000000000000"}'
+
+-- ================= as app_user with no claims =================
+SET ROLE app_user;
+SELECT check_eq('no claims set: app_user sees no clients', (SELECT count(*) FROM clients), 0);
+SELECT check_eq('no claims set: app_user is not trusted', (SELECT count(*) FROM (SELECT 1 WHERE public.is_trusted_server()) x), 0);
 
 -- ================= as caregiver c1 =================
-SET ROLE authenticated;
-SELECT set_config('request.jwt.claims', :'cg', false);
+SELECT set_config('app.claims', :'cg', false);
 
 -- 1. Privilege escalation via own profile
 SELECT expect('cg cannot add homes to own profile',
@@ -82,7 +86,7 @@ SELECT expect('amendment for same slot allowed',
 SELECT check_eq('home_id on MAR derived from client', (SELECT count(*) FROM mar_records WHERE home_id = 'b1000000-0000-0000-0000-000000000000'), 3);
 
 -- ================= as supervisor c2 =================
-SELECT set_config('request.jwt.claims', :'sup', false);
+SELECT set_config('app.claims', :'sup', false);
 SELECT expect('sup cannot rewrite caregiver note content',
   $$UPDATE notes SET content = '{"activities":"rewritten"}' WHERE id = 'aa000000-0000-0000-0000-000000000000'$$, true);
 SELECT expect('sup cannot send back without comment',

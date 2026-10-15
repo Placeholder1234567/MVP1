@@ -182,7 +182,7 @@ import {
   FEATURE_FLAGS,
   type FeatureFlag,
   type SubscriptionTier,
-} from '$lib/entitlements/tier-features';
+} from '#lib/entitlements/tier-features';
 
 /**
  * Resolve the effective feature set for an agency.
@@ -227,6 +227,8 @@ export function hasFeatureServer(
 ---
 
 ## 5. tRPC Middleware Implementation
+
+> **As built (Oct 2026):** `featureProcedure(flag)` and `featureRoleProcedure(flag, role)` in `src/lib/server/trpc/middleware.ts`. The effective feature set is resolved once per request with the user's profile (`CurrentUser.features`, from `subscription_tier` and `enabled_features`), so gating needs no extra query. `agency.get` returns `features` for the UI. The shared tier module is `src/lib/entitlements/tier-features.ts`. **Not built yet:** UI hiding (§7) and PowerSync stream gating (§8).
 
 ### Middleware
 
@@ -526,15 +528,15 @@ import {
   FEATURE_DEPENDENCIES,
   type FeatureFlag,
   type SubscriptionTier,
-} from '$lib/entitlements/tier-features';
+} from '#lib/entitlements/tier-features';
 
 /**
  * Client-side feature check. Uses the agency record from the auth store.
  * The agency's subscription_tier and enabled_features are loaded on app init
  * via agency.get and stored in the agency store.
  *
- * Note: TIER_FEATURES, FEATURE_FLAGS, and types live in $lib/entitlements/
- * (not $lib/server/) so they can be shared between server middleware and
+ * Note: TIER_FEATURES, FEATURE_FLAGS, and types live in #lib/entitlements/
+ * (not #lib/server/) so they can be shared between server middleware and
  * client-side utilities without crossing the SvelteKit server/client boundary.
  */
 export function hasFeature(
@@ -569,7 +571,7 @@ Uses the `FeatureGuard` component pattern (see Route Guard Summary below for the
 ```svelte
 <!-- src/routes/(app)/charting/+layout.svelte -->
 <script lang="ts">
-  import FeatureGuard from '$lib/components/FeatureGuard.svelte';
+  import FeatureGuard from '#lib/components/FeatureGuard.svelte';
 </script>
 
 <FeatureGuard feature="charting">
@@ -582,8 +584,8 @@ Or equivalently, the inline pattern:
 ```svelte
 <!-- src/routes/(app)/charting/+layout.svelte -->
 <script lang="ts">
-  import { hasFeature } from '$lib/utils/has-feature';
-  import { agencyStore } from '$lib/stores/agency';
+  import { hasFeature } from '#lib/utils/has-feature';
+  import { agencyStore } from '#lib/stores/agency';
   import { goto } from '$app/navigation';
 
   const agency = $derived(agencyStore.current);
@@ -605,8 +607,8 @@ Or equivalently, the inline pattern:
 ```svelte
 <!-- src/lib/components/nav/SideNav.svelte (excerpt) -->
 <script lang="ts">
-  import { hasFeature } from '$lib/utils/has-feature';
-  import { agencyStore } from '$lib/stores/agency';
+  import { hasFeature } from '#lib/utils/has-feature';
+  import { agencyStore } from '#lib/stores/agency';
 
   const agency = $derived(agencyStore.current);
 
@@ -662,10 +664,10 @@ For a reusable pattern, use a `FeatureGuard` wrapper component:
 ```svelte
 <!-- src/lib/components/FeatureGuard.svelte -->
 <script lang="ts">
-  import { hasFeature } from '$lib/utils/has-feature';
-  import { agencyStore } from '$lib/stores/agency';
+  import { hasFeature } from '#lib/utils/has-feature';
+  import { agencyStore } from '#lib/stores/agency';
   import { goto } from '$app/navigation';
-  import type { FeatureFlag } from '$lib/entitlements/tier-features';
+  import type { FeatureFlag } from '#lib/entitlements/tier-features';
 
   let { feature, redirect = '/dashboard' }: { feature: FeatureFlag; redirect?: string } = $props();
 
@@ -1003,8 +1005,8 @@ function getUpgradeMessage(feature: string): string {
 ```svelte
 <!-- src/lib/components/UpgradeModal.svelte -->
 <script lang="ts">
-  import { upgradeModalStore } from '$lib/stores/upgrade-modal';
-  import { authStore } from '$lib/stores/auth';
+  import { upgradeModalStore } from '#lib/stores/upgrade-modal';
+  import { authStore } from '#lib/stores/auth';
 
   const modal = $derived(upgradeModalStore.current);
   const isAdmin = $derived(authStore.user?.role === 'admin');
@@ -1043,7 +1045,7 @@ function getUpgradeMessage(feature: string): string {
 // tests/unit/entitlements/require-feature.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { resolveFeatures, hasFeatureServer } from '$lib/server/entitlements/resolve';
+import { resolveFeatures, hasFeatureServer } from '#lib/server/entitlements/resolve';
 
 describe('resolveFeatures', () => {
   it('starter tier includes scheduling, coverage, timekeeping, reports_basic, messaging, notifications', () => {

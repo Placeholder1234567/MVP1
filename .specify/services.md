@@ -2,9 +2,9 @@
 
 ## Overview
 
-Modular monolith inside SvelteKit. Services are logical boundaries — directories under `src/lib/server/services/` — **not** microservices. Each service owns a set of Drizzle `pgTable` definitions and exports typed functions that other services import directly (same process, no network hop). Inter-service communication is synchronous function calls. BullMQ + Redis handles only deferred or long-running work: notification dispatch, AI inference, report generation, and coverage escalation timers.
+Modular monolith inside SvelteKit. Services are logical boundaries — directories under `src/lib/server/services/` — **not** microservices. Each service owns a set of Drizzle `pgTable` definitions and exports typed functions that other services import directly (same process, no network hop). Inter-service communication is synchronous function calls. Cloud Tasks (with Cloud Scheduler for recurring jobs) handles only deferred or long-running work: notification dispatch, AI inference, report generation, and coverage escalation timers. Job handlers are HTTP endpoints in the `worker` Cloud Run service built from the same code (infrastructure.md §5).
 
-Every service receives the caller's `agency_id` from the Auth Service context and passes it through to Drizzle queries. Supabase RLS is the safety net — even if application code omits the filter, Postgres blocks cross-tenant access. Services never construct raw SQL; all queries go through Drizzle.
+Every service receives the caller's `agency_id` from the Auth Service context and passes it through to Drizzle queries. Postgres RLS is the safety net — even if application code omits the filter, Postgres blocks cross-tenant access. Services never construct raw SQL; all queries go through Drizzle, inside the `withUser()` / `withService()` transaction helpers that set the session role and claims (infrastructure.md §4).
 
 Directory convention:
 ```
@@ -26,25 +26,25 @@ src/lib/server/services/
 
 ### 1. Auth Service
 
-**Responsibility:** User authentication context, session resolution, role enforcement, profile CRUD. Wraps Supabase Auth — no custom JWT or session logic. Every other service depends on Auth for the current user's identity and `agency_id`.
+**Responsibility:** User authentication context, session resolution, role enforcement, profile CRUD. Wraps Identity Platform (Firebase Admin SDK) — no custom JWT, password or session logic. Every other service depends on Auth for the current user's identity and `agency_id`.
 
 **Owns tables:** `profiles`
 
 **Key functions:**
-- `getCurrentUser(supabaseUid): Profile` — resolve Supabase Auth UID to app profile with role and home assignments.
+- `getCurrentUser(authUid): Profile` — resolve the Identity Platform UID (from the verified session cookie) to the app profile with role and home assignments.
 - `requireRole(user, ...roles): void` — throw if user lacks required role; used as guard in tRPC middleware.
 - `getUsersByHome(agencyId, homeId): Profile[]` — list staff assigned to a home (used by Schedule for coverage candidates).
 - `getUsersByIds(agencyId, ids): Profile[]` — batch-fetch profiles by ID.
 - `updateProfile(agencyId, profileId, data): Profile` — update staff details, home assignments, med certification.
-- `deactivateUser(agencyId, profileId): void` — soft-delete (sets `active = false`); never hard-deletes.
+- `deactivateUser(agencyId, profileId): void` — soft-delete (sets `active = false`), disables the Identity Platform account and revokes its refresh tokens; never hard-deletes.
 - `listActiveStaff(agencyId): Profile[]` — all active profiles for the agency.
-- `inviteUser(agencyId, email, name, role, homeIds, medCertified?): Profile` — create a Supabase Auth user and a corresponding `profiles` row. Sends an invitation email via SES. Used by the `staff.invite` tRPC procedure.
+- `inviteUser(agencyId, email, name, role, homeIds, medCertified?): Profile` — create an Identity Platform user and a corresponding `profiles` row, and send an invitation email (password-setup link from the Admin SDK) via SES. Used by the `staff.invite` tRPC procedure.
 
-**Depends on:** None (foundational). Supabase Auth is the upstream identity provider.
+**Depends on:** None (foundational). Identity Platform is the upstream identity provider.
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
-**Notes:** Sessions are managed entirely by Supabase Auth. The `profiles` table extends `auth.users` with app-specific fields. There is no `sessions` table in Guad's schema — Supabase owns session lifecycle.
+**Notes:** Sessions are Identity Platform session cookies, created and verified with the Admin SDK. `profiles.auth_uid` links each profile to its Identity Platform user. There is no `sessions` table in Guad's schema — Identity Platform owns session lifecycle. There are no custom claims: tRPC and PowerSync both read role, homes and active status from the profile row, so changes apply within seconds.
 
 ---
 
@@ -63,7 +63,7 @@ src/lib/server/services/
 
 **Depends on:** Auth (admin role enforcement), Goal (seed default templates on provision), Notification (system_maintenance notifications).
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -91,7 +91,7 @@ src/lib/server/services/
 - Notification (notify supervisor when note is signed; notify DSP when note is returned; notify caregiver when note is approved (note_approved))
 - Audit (log all status transitions)
 
-**BullMQ jobs:** None (AI drafting is triggered via AI Service's job queue).
+**Jobs:** None (AI drafting is triggered via AI Service's job queue).
 
 ---
 
@@ -116,7 +116,7 @@ src/lib/server/services/
 - Notification (alert supervisor on refusal/hold; alert on overdue scheduled med)
 - Audit (log all MAR entries and medication changes)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -138,7 +138,7 @@ src/lib/server/services/
 - Notification (immediate alert to supervisor on out-of-range flags)
 - Audit (log all entries)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -161,7 +161,7 @@ src/lib/server/services/
 - Auth (role check)
 - Charting (reads `note_goals` for progress calculation — the only cross-service read in the Care Records pillar)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -184,7 +184,7 @@ src/lib/server/services/
 - Notification (mandatory notifications by severity — high severity triggers immediate push + SMS to admin)
 - Audit (log all incidents and status changes)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -205,7 +205,7 @@ src/lib/server/services/
 - Auth (who recorded it)
 - Audit (log all attendance records)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -235,7 +235,7 @@ src/lib/server/services/
 - Message (coverage announcements to home message board)
 - Audit (log all schedule changes and coverage decisions)
 
-**BullMQ jobs:**
+**Jobs:**
 - `CoverageTimeoutJob` — fires after configurable deadline (default: 60 min) if shift remains unfilled. Escalates to supervisor via push + SMS.
 - `CoverageReminderJob` — sends reminder SMS to candidates who haven't replied after 15 minutes.
 
@@ -263,7 +263,7 @@ src/lib/server/services/
 - Notification (alert supervisor on out-of-geofence clock-in; alert staff on missed punch)
 - Audit (log all clock records and manual overrides)
 
-**BullMQ jobs:**
+**Jobs:**
 - `MissedPunchCheckJob` — runs at end of each shift (15:00, 23:00, 07:00). Identifies staff who clocked in but didn't clock out and notifies supervisor.
 
 ---
@@ -292,7 +292,7 @@ src/lib/server/services/
 - Notification (referral_status_change notifications)
 - Audit (log referral status changes)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -319,7 +319,7 @@ src/lib/server/services/
 - Home (home details for client record)
 - Audit (log all client data changes — PHI mutations are always audited)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -340,19 +340,19 @@ src/lib/server/services/
 - Auth (admin role for create/update)
 - Audit (log home changes)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
 ### 14. AI Service (Lomi)
 
-**Responsibility:** AI-powered note drafting via AWS Bedrock Claude, audio transcription via Azure OpenAI Whisper, supervisor daily summaries. Lomi is stateless — it owns no tables. All AI output is labeled as AI-generated and enters the workflow as `draft` status requiring human review.
+**Responsibility:** AI-powered note drafting via Claude on Vertex AI, audio transcription via Google Speech-to-Text, supervisor daily summaries. Lomi is stateless — it owns no tables. All AI output is labeled as AI-generated and enters the workflow as `draft` status requiring human review.
 
 **Owns tables:** None (stateless processor).
 
 **Key functions:**
 - `draftNote(agencyId, context): NoteDraft` — generate a clinical note draft from structured input (activities, meals, mood, health observations). Returns content marked as `lomi_drafted`. Streams response for responsive UX.
-- `transcribeAudio(agencyId, audioBlob): Transcript` — transcribe caregiver voice memo to text via Whisper. Used to pre-fill note content.
+- `transcribeAudio(agencyId, audioBlob): Transcript` — transcribe caregiver voice memo to text via Speech-to-Text (Chirp model). Used to pre-fill note content.
 - `summarizeDay(agencyId, homeId, day): DaySummary` — generate a supervisor-facing summary of all notes, incidents, MAR entries, and coverage events for a home on a given day.
 - `suggestGoalTrials(agencyId, goalText, observations): TrialSuggestion[]` — suggest prompt levels from observation text.
 
@@ -360,23 +360,23 @@ src/lib/server/services/
 - Auth (rate limiting per user, agency-scoped context)
 - Charting (reads note context for draft generation — passed as function argument, not direct DB query)
 
-**BullMQ jobs:**
+**Jobs:**
 - `DraftJob` — background AI note draft generation. The primary draft flow is synchronous streaming via the `lomi.draft` tRPC procedure (returns content inline). DraftJob is used when the draft is queued for background processing (e.g., connection drop mid-stream, batch pre-generation). Result stored and user notified via push.
-- `TranscribeJob` — background audio transcription. The primary transcription flow is synchronous via the `lomi.transcribe` tRPC procedure (returns text inline). TranscribeJob is used for background processing when needed. Result stored and UI updated via Supabase Realtime.
+- `TranscribeJob` — background audio transcription. The primary transcription flow is synchronous via the `lomi.transcribe` tRPC procedure (returns text inline). TranscribeJob is used for background processing when needed. The result is stored on the draft note, which reaches the device through PowerSync sync.
 - `SummarizeJob` — async daily summary generation. Triggered at configurable time (default: 07:00) for each home.
 
 ---
 
 ### 15. Notification Service
 
-**Responsibility:** Multi-channel notification dispatch (FCM push, Twilio SMS, Amazon SES email), user preference management, escalation timers, delivery tracking.
+**Responsibility:** Multi-channel notification dispatch (FCM push, SMS via AWS End User Messaging, Amazon SES email), user preference management, escalation timers, delivery tracking.
 
 **Owns tables:** `notifications`, `notification_preferences`
 
 **Key functions:**
 - `send(agencyId, profileId, type, payload): Notification` — dispatch a notification through the user's preferred channels. Creates `notifications` record for tracking.
 - `sendBatch(agencyId, profileIds, type, payload): Notification[]` — dispatch to multiple users (e.g., all supervisors for a home).
-- `sendSms(phone, message): void` — low-level Twilio SMS dispatch (no PHI in message body per constitution).
+- `sendSms(phone, message): void` — low-level SMS dispatch through AWS End User Messaging (no PHI in message body per constitution).
 - `sendPush(profileId, title, body, data?): void` — FCM push to user's registered service worker.
 - `sendEmail(email, subject, body): void` — SES transactional email.
 - `getPreferences(agencyId, profileId): NotificationPreference[]` — user's channel preferences per notification type.
@@ -388,18 +388,18 @@ src/lib/server/services/
 **Depends on:**
 - Auth (user preferences lookup, FCM token resolution)
 
-**BullMQ jobs (per-channel queues, see notifications.md for full architecture):**
-- `PushJob` — async push notification dispatch via FCM. Queued on `notifications:push`.
-- `SmsJob` — async SMS dispatch via Twilio. Queued on `notifications:sms`. Rate-limited to 1 msg/s.
-- `EmailJob` — async email dispatch via Amazon SES. Queued on `notifications:email`.
-- `EscalationJob` — per-notification delayed job. Enqueued with a delay (e.g., 15 min, 60 min) when an escalatable notification is sent. On fire, checks `read_at` — if null, escalates to next recipient/channel. Queued on `notifications:escalation`.
-- `DigestJob` — daily digest email for supervisors summarizing overnight activity. Queued on `notifications:digest`.
+**Jobs (per-channel queues, see notifications.md for full architecture):**
+- `PushJob` — async push notification dispatch via FCM. Queued on `notifications-push`.
+- `SmsJob` — async SMS dispatch via AWS End User Messaging. Queued on `notifications-sms`. Rate-limited to 1 msg/s.
+- `EmailJob` — async email dispatch via Amazon SES. Queued on `notifications-email`.
+- `EscalationJob` — per-notification delayed job. Enqueued with a delay (e.g., 15 min, 60 min) when an escalatable notification is sent. On fire, checks `read_at` — if null, escalates to next recipient/channel. Queued on `notifications-escalation`.
+- `DigestJob` — daily digest email for supervisors summarizing overnight activity. Queued on `notifications-digest`.
 
 ---
 
 ### 16. Message Service
 
-**Responsibility:** Home-scoped message board for shift handoff communication and coverage announcements. Real-time delivery via Supabase Realtime subscriptions.
+**Responsibility:** Home-scoped message board for shift handoff communication and coverage announcements. New messages reach devices through PowerSync sync (typically within a few seconds while online).
 
 **Owns tables:** `messages`
 
@@ -412,7 +412,7 @@ src/lib/server/services/
 - Auth (sender identity, home access check)
 - Audit (log messages for compliance)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -435,7 +435,7 @@ src/lib/server/services/
 **Depends on:**
 - Auth (user's role and home assignments determine sync scope)
 
-**BullMQ jobs:** None.
+**Jobs:** None.
 
 ---
 
@@ -460,7 +460,7 @@ src/lib/server/services/
 - Attendance (service delivery data)
 - Client, Home (master data)
 
-**BullMQ jobs:**
+**Jobs:**
 - `GenerateReportJob` — async report generation for large exports. Result stored in temporary secure storage and user notified via push.
 
 ---
@@ -475,7 +475,7 @@ src/lib/server/services/
 - Row changes are recorded by the `audit_row_change` database trigger (rls.sql), not by service code, so they can't be skipped or forged.
 - `logEvent(agencyId, action, detail, userId): void` — record an audited action that changes no row (exports with format/record count/filters, AI invocations with model/tokens/latency, report downloads).
 - `logAccess(agencyId, tableName, recordId, userId): void` — record PHI read access (for sensitive tables: `clients`, `client_health_info`, `notes`, `incidents`, `mar_records`, `health_entries`).
-- `emitEvent(agencyId, eventType, detail, homeId?): Event` — publish a domain event (e.g., `note.submitted`, `shift.filled`, `incident.created`). Used for Supabase Realtime subscriptions and cross-service side effects.
+- `emitEvent(agencyId, eventType, detail, homeId?): Event` — publish a domain event (e.g., `note.submitted`, `shift.filled`, `incident.created`). Used for analytics and cross-service side effects. Not synced to devices; supervisor views read events through tRPC.
 - `getAuditTrail(agencyId, tableName, recordId): AuditEntry[]` — full history of changes to a specific record.
 - `getAuditByUser(agencyId, userId, dateRange): AuditEntry[]` — all actions by a specific user.
 - `getAuditReport(agencyId, dateRange): AuditReport` — compliance report for agency admins.
@@ -483,7 +483,7 @@ src/lib/server/services/
 **Depends on:**
 - Auth (performer identity resolution)
 
-**BullMQ jobs:** None. Audit writes are synchronous to guarantee they complete before the request returns.
+**Jobs:** None. Audit writes are synchronous to guarantee they complete before the request returns.
 
 ---
 
@@ -520,7 +520,7 @@ src/lib/server/services/
 | `notification_preferences` | Notification | — |
 | `sync_checkpoints` | Sync | — |
 | `audit_log` | Audit | Report |
-| `events` | Audit | — (consumed via Supabase Realtime) |
+| `events` | Audit | — (read through tRPC by Analytics) |
 
 ---
 
@@ -585,35 +585,37 @@ Leaf services not drawn with edges above for readability:
 
 ---
 
-## BullMQ Job Registry
+## Job Registry (Cloud Tasks / Cloud Scheduler)
+
+Each queue below is a Cloud Tasks queue; jobs marked *cron* are Cloud Scheduler jobs that call the same handler. See infrastructure.md §5.
 
 | Job Name | Queue | Service | Trigger | Retry Policy |
 |---|---|---|---|---|
 | `DraftJob` | `ai` | AI | DSP requests Lomi note draft | 2 retries, 10s backoff. On final failure, notify user draft unavailable. |
 | `TranscribeJob` | `ai` | AI | DSP submits voice memo | 2 retries, 10s backoff. On final failure, notify user to type manually. |
-| `SummarizeJob` | `ai` | AI | Daily cron at 07:00 per home timezone | 1 retry, 30s backoff. Non-critical — supervisor can review manually. |
+| `SummarizeJob` | `ai` | AI | *cron* daily at 07:00 per home timezone | 1 retry, 30s backoff. Non-critical — supervisor can review manually. |
 | `CoverageTimeoutJob` | `scheduling` | Schedule | Coverage request created (delayed: 60 min) | No retry (one-shot timer). On fire, escalate to supervisor. |
 | `CoverageReminderJob` | `scheduling` | Schedule | Coverage request created (delayed: 15 min) | No retry. Sends reminder SMS to non-responsive candidates. |
-| `MissedPunchCheckJob` | `timekeeping` | Clock | Cron at shift boundaries (07:00, 15:00, 23:00) | 1 retry, 60s backoff. Idempotent — safe to re-run. |
-| `PushJob` | `notifications:push` | Notification | Any service calls `send()` or `sendBatch()` with push channel | 3 retries, exponential backoff (5s, 15s, 45s). Stale FCM tokens removed on `NotRegistered` response. |
-| `SmsJob` | `notifications:sms` | Notification | Any service calls `send()` or `sendBatch()` with SMS channel | 2 retries, exponential backoff (10s, 30s). Rate-limited to 1 msg/s for Twilio compliance. |
-| `EmailJob` | `notifications:email` | Notification | Any service calls `send()` or `sendBatch()` with email channel | 3 retries, exponential backoff (10s, 30s, 90s). Bounced addresses auto-suppressed. |
-| `EscalationJob` | `notifications:escalation` | Notification | Enqueued as a delayed job when an escalatable notification is sent | 1 attempt, no retry. Checks `read_at` on fire — skips if acknowledged. Per-notification delayed job, not a cron. |
-| `DigestJob` | `notifications:digest` | Notification | Cron daily at 06:00 per agency timezone | 1 retry, 60s backoff. Non-critical — can be manually triggered. |
+| `MissedPunchCheckJob` | `timekeeping` | Clock | *cron* at shift boundaries (07:00, 15:00, 23:00) | 1 retry, 60s backoff. Idempotent — safe to re-run. |
+| `PushJob` | `notifications-push` | Notification | Any service calls `send()` or `sendBatch()` with push channel | 3 retries, exponential backoff (5s, 15s, 45s). Stale FCM tokens removed on `NotRegistered` response. |
+| `SmsJob` | `notifications-sms` | Notification | Any service calls `send()` or `sendBatch()` with SMS channel | 2 retries, exponential backoff (10s, 30s). Rate-limited to 1 msg/s (10DLC throughput). |
+| `EmailJob` | `notifications-email` | Notification | Any service calls `send()` or `sendBatch()` with email channel | 3 retries, exponential backoff (10s, 30s, 90s). Bounced addresses auto-suppressed. |
+| `EscalationJob` | `notifications-escalation` | Notification | Enqueued as a delayed job when an escalatable notification is sent | 1 attempt, no retry. Checks `read_at` on fire — skips if acknowledged. Per-notification delayed job, not a cron. |
+| `DigestJob` | `notifications-digest` | Notification | *cron* daily at 06:00 per agency timezone | 1 retry, 60s backoff. Non-critical — can be manually triggered. |
 | `GenerateReportJob` | `reports` | Report | User requests large export | 2 retries, 30s backoff. On final failure, notify user report generation failed. |
 | `ShiftReminderJob` | `scheduling` | Schedule | Fires 1 hour before shift start | No retry (one-shot timer). Triggers `shift_reminder` notification. |
-| `MedDueReminderJob` | `notifications:push` | Notification | Fires 30 min before scheduled medication time | No retry (one-shot timer). Triggers `med_due_reminder` notification. |
-| `IncidentReviewCheckJob` | `notifications:escalation` | Notification | Daily cron or delayed job at incident creation + 24hr | 1 retry, 60s backoff. Triggers `incident_review_needed` notification if incident still open. |
+| `MedDueReminderJob` | `notifications-push` | Notification | Fires 30 min before scheduled medication time | No retry (one-shot timer). Triggers `med_due_reminder` notification. |
+| `IncidentReviewCheckJob` | `notifications-escalation` | Notification | Daily cron or delayed job at incident creation + 24hr | 1 retry, 60s backoff. Triggers `incident_review_needed` notification if incident still open. |
 
 **Queue configuration:**
-- `ai` queue: concurrency 3 (limited by Bedrock/Whisper API rate limits).
+- `ai` queue: concurrency 3 (limited by Vertex AI and Speech-to-Text quotas).
 - `scheduling` queue: concurrency 10 (coverage is time-sensitive).
 - `timekeeping` queue: concurrency 5.
-- `notifications:push` queue: concurrency 20 (high throughput, FCM batch API).
-- `notifications:sms` queue: concurrency 5 (Twilio per-second rate limits).
-- `notifications:email` queue: concurrency 10 (SES sending rate).
-- `notifications:escalation` queue: concurrency 5 (delayed jobs, all high priority).
-- `notifications:digest` queue: concurrency 3 (one job per agency).
+- `notifications-push` queue: concurrency 20 (high throughput, FCM batch API).
+- `notifications-sms` queue: concurrency 5, max 1 dispatch/s (10DLC throughput).
+- `notifications-email` queue: concurrency 10 (SES sending rate).
+- `notifications-escalation` queue: concurrency 5 (delayed jobs, all high priority).
+- `notifications-digest` queue: concurrency 3 (one job per agency).
 - `reports` queue: concurrency 2 (memory-intensive for large exports).
 
-All queues use Redis as the backing store. Jobs that handle PHI (DraftJob, TranscribeJob) log only job IDs and statuses to BullMQ — never PHI in job payloads readable from the Redis CLI. PHI payloads are passed by reference (record IDs) and fetched from Postgres within the job worker.
+Concurrency maps to the queue's `maxConcurrentDispatches`; retry policies map to its retry config. Task payloads never contain PHI: they carry record IDs only, and the handler fetches the data from Postgres. Handlers must be idempotent, because Cloud Tasks delivers at least once. Delayed one-shot jobs (timeouts, reminders, escalations) use deterministic task names so they can be cancelled when no longer needed (e.g. shift filled).
