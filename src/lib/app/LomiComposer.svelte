@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { useSession } from './session.svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import { draftLocally, type DraftResult, type NoteKind } from '#lib/domain/lomi.ts';
 	let {
@@ -17,12 +18,31 @@
 	let stream: MediaStream | undefined;
 	let limit: ReturnType<typeof setTimeout> | undefined;
 	let alive = true;
+	let recordingRevision = 0;
+	const app = useSession();
+	function stopForPrivacy() {
+		recordingRevision++;
+		if (recorder?.state === 'recording') {
+			recorder.stop();
+			message = 'Recording stopped for privacy. Your typed observations are still here.';
+		}
+		stream?.getTracks().forEach((track) => track.stop());
+	}
+	$effect(() => {
+		if (app.privacyLocked) stopForPrivacy();
+	});
 	onMount(() => {
+		const hide = () => {
+			if (!document.hidden) return;
+			stopForPrivacy();
+		};
+		document.addEventListener('visibilitychange', hide);
 		void trpc.lomi.capabilities
 			.query()
 			.then((c) => (voice = c.voice))
 			.catch(() => {});
 		return () => {
+			document.removeEventListener('visibilitychange', hide);
 			alive = false;
 			clearTimeout(limit);
 			if (recorder?.state === 'recording') recorder.stop();
@@ -48,8 +68,13 @@
 		}
 		message = '';
 		preview = null;
+		const revision = ++recordingRevision;
 		try {
 			stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			if (!alive || document.hidden || app.privacyLocked || revision !== recordingRevision) {
+				stream.getTracks().forEach((track) => track.stop());
+				return;
+			}
 			const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find((t) =>
 				MediaRecorder.isTypeSupported(t)
 			);
@@ -68,7 +93,7 @@
 				clearTimeout(limit);
 				stream?.getTracks().forEach((t) => t.stop());
 				recording = false;
-				if (!alive) return;
+				if (!alive || revision !== recordingRevision) return;
 				busy = true;
 				try {
 					const blob = new Blob(chunks, { type: mime });

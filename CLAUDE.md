@@ -177,8 +177,14 @@ STT_RECOGNIZER=                  # Speech-to-Text v2 recognizer (Chirp)
 AWS_REGION=
 AWS_ROLE_ARN=                    # IAM role trusted for the worker's Google identity
 SES_FROM_ADDRESS=
+SES_CONFIGURATION_SET=           # Publishes bounces/complaints to SES_EVENTS_TOPIC_ARN
 SMS_ORIGINATION_IDENTITY=        # 10DLC phone number ID
-SMS_CONFIGURATION_SET=
+SMS_CONFIGURATION_SET=           # Publishes delivery events to SMS_EVENTS_TOPIC_ARN
+SES_EVENTS_TOPIC_ARN=            # SNS topics the worker's /api/webhooks/aws/* accept
+SMS_EVENTS_TOPIC_ARN=
+PUSH_DRIVER=                     # console (local) | fcm
+EMAIL_DRIVER=                    # smtp (local, Mailpit) | ses
+SMS_DRIVER=                      # console (local) | aws
 
 # PowerSync and device keys
 PUBLIC_POWERSYNC_URL=            # PowerSync service URL

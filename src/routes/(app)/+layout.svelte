@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -9,10 +10,12 @@
 		hasWrappedKey,
 		unwrapKey,
 		wrapKey,
+		verifyOfflineAccess,
 		WrongPinError
 	} from '#lib/sync/device-key.ts';
 	import { signOutEverywhere } from '#lib/auth/firebase.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import { clearShellCaches } from '#lib/pwa/cache.ts';
 	import { provideSession } from '#lib/app/session.svelte.ts';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
@@ -82,7 +85,33 @@
 		try {
 			const unlocked = step === 'set-pin' ? key! : await unwrapKey(pin, app.user.profileId);
 			if (step === 'set-pin') await wrapKey(unlocked, pin, app.user.profileId);
-			app.connect(await openDb(unlocked, app.user.profileId));
+			const database = await openDb(unlocked, app.user.profileId);
+			app.connect(database);
+			// Only a fresh server response can renew saved access; an offline PIN unlock cannot.
+			void Promise.all([trpc.auth.me.query(), trpc.agency.get.query()])
+				.then(async ([profile, agency]) => {
+					if (
+						profile.id !== app.user.profileId ||
+						profile.agencyId !== app.user.agencyId ||
+						agency.id !== profile.agencyId
+					)
+						return;
+					const snapshot = {
+						profileId: profile.id,
+						agencyId: profile.agencyId,
+						name: profile.name,
+						role: profile.role,
+						homeIds: profile.homeIds,
+						medCertified: profile.medCertified,
+						timeZone: agency.timezone
+					};
+					await database.execute(
+						'INSERT OR REPLACE INTO offline_sessions (id, user_json) VALUES (?, ?)',
+						[profile.id, JSON.stringify(snapshot)]
+					);
+					await verifyOfflineAccess(profile.id);
+				})
+				.catch(() => {});
 			unlocked.fill(0);
 			key = undefined;
 			step = 'open';
@@ -114,6 +143,7 @@
 		app.dispose();
 		await closeDb();
 		await signOutEverywhere();
+		await clearShellCaches();
 		await goto(resolve('/login'), { refreshAll: true });
 	}
 	app.lock = lock;
@@ -169,67 +199,84 @@
 		</div>
 	</main>
 {:else}
-	<a class="skip-link" href="#main">Skip to content</a>
-	<div class="app-shell">
-		<aside class="sidebar">
-			<a class="wordmark" href={resolve('/')}>Guad<span class="lemon-dot">●</span></a>
-			<p class="eyebrow">Your workspace</p>
-			<nav aria-label="Main navigation">
-				{#each nav as item (item.href)}<a
+	<PrivacyShield
+		profileId={app.user.profileId}
+		onPrivacyChange={(masked) => {
+			app.privacyLocked = masked;
+		}}
+		onReady={(lock) => {
+			app.lock = lock;
+		}}
+		onLock={async () => {
+			app.dispose();
+			await closeDb();
+		}}
+		onUnlock={async (key) => {
+			app.connect(await openDb(key, app.user.profileId));
+		}}
+	>
+		<a class="skip-link" href="#main">Skip to content</a>
+		<div class="app-shell">
+			<aside class="sidebar">
+				<a class="wordmark" href={resolve('/')}>Guad<span class="lemon-dot">●</span></a>
+				<p class="eyebrow">Your workspace</p>
+				<nav aria-label="Main navigation">
+					{#each nav as item (item.href)}<a
+							href={resolve(('/(app)' + item.href) as '/(app)/today')}
+							aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
+						>{/each}
+				</nav>
+				<div class="sidebar-bottom">
+					<b>{data.user.name}</b><span class="muted">{data.user.role}</span><button
+						class="textbtn"
+						onclick={() => app.lock()}>Lock device</button
+					>
+				</div>
+			</aside>
+			<div class="workspace">
+				<header class="topbar">
+					<a class="wordmark mobile-brand" href={resolve('/')}>Guad</a>
+					<label class="home-select"
+						><span class="sr">Current home</span><select
+							class="input"
+							bind:value={app.homeId}
+							aria-label="Current home"
+							>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
+								>{/each}</select
+						></label
+					>
+					<span class="sync-label" role="status" data-testid="sync-status"
+						>{app.pending ? `${app.pending} changes waiting to sync` : app.status}</span
+					>
+					<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
+					<a
+						class="textbtn"
+						href={resolve('/(app)/notifications')}
+						aria-label={`Alerts, ${app.unreadAlerts} unread`}
+						>Alerts{app.unreadAlerts ? ` (${app.unreadAlerts})` : ''}</a
+					>
+				</header>
+				<main id="main" class="main-content" tabindex="-1">
+					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
+					{#if app.failed.length}<div class="callout bad" role="alert">
+							<b>{app.failed.length} changes need attention</b>
+							<p>
+								Your server did not accept these changes. Keep this device unlocked while you review
+								them.
+							</p>
+							<ul>
+								{#each app.failed as f (f.id)}<li>{f.message}</li>{/each}
+							</ul>
+						</div>{/if}
+					{@render children()}
+				</main>
+			</div>
+			<nav class="mobile-nav" aria-label="Mobile navigation">
+				{#each data.user.role === 'caregiver' ? nav : [nav[0], nav[1], nav.find((item) => item.href === '/shifts')!, nav.find((item) => item.href === '/me')!] as item (item.href)}<a
 						href={resolve(('/(app)' + item.href) as '/(app)/today')}
 						aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
 					>{/each}
 			</nav>
-			<div class="sidebar-bottom">
-				<b>{data.user.name}</b><span class="muted">{data.user.role}</span><button
-					class="textbtn"
-					onclick={lock}>Lock device</button
-				>
-			</div>
-		</aside>
-		<div class="workspace">
-			<header class="topbar">
-				<a class="wordmark mobile-brand" href={resolve('/')}>Guad</a>
-				<label class="home-select"
-					><span class="sr">Current home</span><select
-						class="input"
-						bind:value={app.homeId}
-						aria-label="Current home"
-						>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
-							>{/each}</select
-					></label
-				>
-				<span class="sync-label" role="status" data-testid="sync-status"
-					>{app.pending ? `${app.pending} changes waiting to sync` : app.status}</span
-				>
-				<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
-				<a
-					class="textbtn"
-					href={resolve('/(app)/notifications')}
-					aria-label={`Alerts, ${app.unreadAlerts} unread`}
-					>Alerts{app.unreadAlerts ? ` (${app.unreadAlerts})` : ''}</a
-				>
-			</header>
-			<main id="main" class="main-content" tabindex="-1">
-				{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
-				{#if app.failed.length}<div class="callout bad" role="alert">
-						<b>{app.failed.length} changes need attention</b>
-						<p>
-							Your server did not accept these changes. Keep this device unlocked while you review
-							them.
-						</p>
-						<ul>
-							{#each app.failed as f (f.id)}<li>{f.message}</li>{/each}
-						</ul>
-					</div>{/if}
-				{@render children()}
-			</main>
 		</div>
-		<nav class="mobile-nav" aria-label="Mobile navigation">
-			{#each data.user.role === 'caregiver' ? nav : [nav[0], nav[1], nav.find((item) => item.href === '/shifts')!, nav.find((item) => item.href === '/me')!] as item (item.href)}<a
-					href={resolve(('/(app)' + item.href) as '/(app)/today')}
-					aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
-				>{/each}
-		</nav>
-	</div>
+	</PrivacyShield>
 {/if}

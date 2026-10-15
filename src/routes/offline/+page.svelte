@@ -1,0 +1,165 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
+	import {
+		offlineProfiles,
+		unwrapOfflineKey,
+		offlineAccessUntil,
+		WrongPinError
+	} from '#lib/sync/device-key.ts';
+	import { openDb, closeDb } from '#lib/sync/db.ts';
+	import type { PowerSyncDatabase } from '@powersync/web';
+	import type { Database } from '#lib/sync/schema.ts';
+	import type { AppUser } from '#lib/app/session.svelte.ts';
+	import OfflineWorkspace from '#lib/app/OfflineWorkspace.svelte';
+	import { offlinePermissions } from '#lib/domain/pwa.ts';
+	let profiles = $state<string[]>([]);
+	let profileId = $state('');
+	let pin = $state('');
+	let error = $state('');
+	let busy = $state(false);
+	let checked = $state(false);
+	let user = $state<AppUser | null>(null);
+	let database = $state.raw<PowerSyncDatabase | undefined>();
+	let expiresAt = $state(0);
+	onMount(() => {
+		void offlineProfiles()
+			.then((ids) => {
+				profiles = ids;
+				profileId = ids[0] ?? '';
+			})
+			.catch(() => {
+				error = 'This browser cannot open saved records. Reconnect and sign in.';
+			})
+			.finally(() => (checked = true));
+		const timer = setInterval(() => {
+			if (user && Date.now() >= expiresAt) {
+				void lock();
+				error = 'Saved access expired. Reconnect and sign in.';
+			}
+		}, 10000);
+		return () => {
+			clearInterval(timer);
+			void closeDb();
+		};
+	});
+	async function unlock(event: SubmitEvent) {
+		event.preventDefault();
+		busy = true;
+		error = '';
+		let key: Uint8Array | undefined;
+		try {
+			key = await unwrapOfflineKey(pin, profileId);
+			expiresAt = await offlineAccessUntil(profileId);
+			database = await openDb(key, profileId, { offline: true });
+			const person = await database.getOptional<Database['profiles']>(
+				'SELECT * FROM profiles WHERE id = ?',
+				[profileId]
+			);
+			if (
+				!person?.active ||
+				!person.agency_id ||
+				!person.name ||
+				!['caregiver', 'supervisor', 'admin'].includes(person.role ?? '')
+			)
+				throw new Error('Saved profile unavailable');
+			const snapshot = await database.getOptional<{ user_json: string }>(
+				'SELECT user_json FROM offline_sessions WHERE id = ?',
+				[profileId]
+			);
+			const cached: AppUser | null = snapshot ? JSON.parse(snapshot.user_json) : null;
+			if (
+				!cached ||
+				cached.profileId !== profileId ||
+				cached.agencyId !== person.agency_id ||
+				typeof cached.timeZone !== 'string' ||
+				!['caregiver', 'supervisor', 'admin'].includes(cached.role) ||
+				!Array.isArray(cached.homeIds) ||
+				!cached.homeIds.every((id) => typeof id === 'string') ||
+				typeof cached.medCertified !== 'boolean'
+			)
+				throw new Error('Saved profile unavailable');
+			new Intl.DateTimeFormat('en', { timeZone: cached.timeZone });
+			const homes: unknown = JSON.parse(person.home_ids ?? '[]');
+			if (!Array.isArray(homes) || !homes.every((id) => typeof id === 'string'))
+				throw new Error('Saved profile unavailable');
+			const syncedRole = person.role as AppUser['role'];
+			user = {
+				profileId,
+				agencyId: person.agency_id,
+				name: person.name,
+				...offlinePermissions(cached, {
+					role: syncedRole,
+					homeIds: homes,
+					medCertified: !!person.med_certified
+				}),
+				timeZone: cached.timeZone
+			};
+		} catch (e) {
+			await closeDb();
+			database = undefined;
+			error =
+				e instanceof WrongPinError
+					? e.message
+					: 'Saved access is unavailable or expired. Reconnect and sign in to refresh this device.';
+		} finally {
+			key?.fill(0);
+			pin = '';
+			busy = false;
+		}
+	}
+	async function lock() {
+		user = null;
+		await closeDb();
+		database = undefined;
+	}
+</script>
+
+<svelte:head><title>Saved workspace · Guad</title></svelte:head>
+<svelte:window
+	onpagehide={() => {
+		void lock();
+	}}
+	onpageshow={(event) => {
+		if (event.persisted) void lock();
+	}}
+/>
+{#if user && database}<OfflineWorkspace {user} db={database} {expiresAt} />{:else}
+	<main class="unlock-page">
+		<div class="card pad stack">
+			<span class="wordmark">Guad<span class="lemon-dot">●</span></span>
+			<p class="eyebrow">Saved workspace</p>
+			<h1>Your shift can continue.</h1>
+			<p class="muted">
+				Unlock records already saved on this device. Saved access lasts up to 12 hours after your
+				last verified sign-in.
+			</p>
+			{#if profiles.length}<form class="stack" onsubmit={unlock}>
+					{#if profiles.length > 1}<label
+							>Saved profile<select class="input" bind:value={profileId}
+								>{#each profiles as id, index (id)}<option value={id}
+										>Saved profile {index + 1} · {id.slice(0, 6)}</option
+									>{/each}</select
+							></label
+						>{/if}<label
+						>Device PIN<input
+							class="input"
+							type="password"
+							inputmode="numeric"
+							pattern={'[0-9]{6,8}'}
+							required
+							autocomplete="off"
+							bind:value={pin}
+						/></label
+					><button class="btn" disabled={busy}>{busy ? 'Opening…' : 'Unlock saved records'}</button>
+				</form>{:else if checked}<p class="callout">
+					Connect and sign in to prepare or refresh this device for offline use.
+				</p>{/if}
+			{#if error}<p class="callout bad" role="alert">{error}</p>{/if}<a
+				class="btn sec"
+				href={resolve('/')}
+				data-sveltekit-reload>Return to sign-in</a
+			>
+		</div>
+	</main>
+{/if}

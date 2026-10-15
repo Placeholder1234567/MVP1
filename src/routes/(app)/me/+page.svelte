@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { resolve } from '$app/paths';
+	import InstallCard from '#lib/app/InstallCard.svelte';
 
 	const app = useSession();
 	let error = $state('');
@@ -39,4 +40,5 @@
 	>{#if error}<p role="alert">
 			{error}
 		</p>{/if}
+	<InstallCard />
 </div>
