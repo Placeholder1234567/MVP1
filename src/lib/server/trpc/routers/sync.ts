@@ -1,0 +1,170 @@
+// sync.upload (trpc-router.md, offline-sync.md §3, §5, §6): the only path for
+// writes queued on a device. Each op goes, in order, through the same service
+// function its online procedure uses. Every op runs in its own savepoint, so a
+// rejected op is undone without affecting the ones before it; ops that depend
+// on a rejected one then fail on their own (e.g. a foreign key).
+import { z, ZodError } from 'zod';
+import type { Tx } from '../../db/index.ts';
+import { pgCode, ServiceError } from '../../errors.ts';
+import type { CurrentUser } from '../../services/auth/index.ts';
+import { createNote, updateNote } from '../../services/charting/index.ts';
+import { recordDose } from '../../services/medication/index.ts';
+import { sendMessage } from '../../services/message/index.ts';
+import { router, userProcedure } from '../middleware.ts';
+
+/** Codes in offline-sync.md Appendix B. */
+export type RejectCode =
+	| 'VALIDATION_FAILED'
+	| 'RULE_VIOLATION'
+	| 'NOT_FOUND'
+	| 'RLS_DENIED'
+	| 'CONSTRAINT_VIOLATION'
+	| 'FK_VIOLATION'
+	| 'NOT_ALLOWED_OFFLINE';
+
+class Reject extends Error {
+	constructor(
+		public readonly code: RejectCode,
+		message: string
+	) {
+		super(message);
+	}
+}
+
+const Op = z.object({
+	op: z.enum(['PUT', 'PATCH', 'DELETE']),
+	table: z.string().max(64),
+	id: z.uuid(),
+	data: z.record(z.string(), z.unknown()).nullish()
+});
+type Op = z.infer<typeof Op>;
+
+/** Device columns are SQLite: booleans arrive as 0/1, JSON as text. */
+const flag = (v: unknown) => v === true || v === 1 || v === '1';
+const str = (v: unknown) => (v == null ? undefined : String(v));
+
+interface Outcome {
+	notice?: { code: 'MAR_CONFLICT'; message: string };
+}
+
+type Handler = (tx: Tx, user: CurrentUser, op: Op) => Promise<Outcome | void>;
+
+/**
+ * Tables and operations a device may write. Anything else is refused with
+ * NOT_ALLOWED_OFFLINE (e.g. approving notes, which needs connectivity).
+ * Columns that decide identity (author, agency, home, recorded_by) are never
+ * read from the device; the services set them from the session.
+ */
+const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
+	notes: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			await createNote(tx, user.agencyId, user, {
+				id,
+				clientId: str(d!.client_id)!,
+				day: str(d!.day)!,
+				shift: str(d!.shift) as 'am',
+				type: str(d!.type) as 'shift',
+				content: d!.content ?? {},
+				lomiDrafted: flag(d!.lomi_drafted),
+				status: (str(d!.status) as 'draft' | undefined) ?? 'draft'
+			});
+		},
+		PATCH: async (tx, user, { id, data: d = {} }) => {
+			await updateNote(
+				tx,
+				user.agencyId,
+				user,
+				id,
+				{ content: d!.content, status: str(d!.status) as 'draft' | undefined },
+				{ fromOfflineQueue: true }
+			);
+		}
+	},
+	mar_records: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			const r = await recordDose(tx, user.agencyId, user, {
+				id,
+				clientId: str(d!.client_id)!,
+				medicationId: str(d!.medication_id)!,
+				day: str(d!.day)!,
+				scheduledTime: str(d!.scheduled_time) ?? null,
+				status: str(d!.status) as 'given',
+				reason: str(d!.reason) ?? null,
+				effect: str(d!.effect) ?? null,
+				recordedAt: str(d!.recorded_at) as unknown as Date | undefined,
+				amendsId: str(d!.amends_id) ?? null
+			});
+			if (r.result === 'conflict') {
+				return {
+					notice: {
+						code: 'MAR_CONFLICT',
+						message: `${r.otherName ?? 'Someone else'} also recorded this dose. Your supervisor has been alerted.`
+					}
+				};
+			}
+		}
+		// No PATCH or DELETE: MAR records are permanent. Corrections are a PUT with amends_id.
+	},
+	messages: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			await sendMessage(tx, user.agencyId, user, {
+				id,
+				homeId: str(d!.home_id)!,
+				body: str(d!.body) ?? '',
+				sentAt: str(d!.sent_at) as unknown as Date | undefined
+			});
+		}
+	}
+};
+
+/** Maps an error to a rejection, or rethrows it (unexpected: the client retries). */
+function toReject(e: unknown): Reject {
+	if (e instanceof Reject) return e;
+	if (e instanceof ServiceError) {
+		return new Reject(e.code === 'FORBIDDEN' ? 'RLS_DENIED' : e.code, e.message);
+	}
+	if (e instanceof ZodError || e instanceof SyntaxError) {
+		return new Reject('VALIDATION_FAILED', 'Some of the information is missing or invalid');
+	}
+	switch (pgCode(e)) {
+		case '42501': // RLS policy or an integrity trigger refused it
+			return new Reject('RLS_DENIED', "You don't have permission to save this change.");
+		case '23505':
+			return new Reject('CONSTRAINT_VIOLATION', 'This record was already saved by another user.');
+		case '23503':
+			return new Reject('FK_VIOLATION', 'The referenced record no longer exists.');
+		case '23514':
+		case '22P02':
+		case '22007':
+		case '22008':
+			return new Reject('VALIDATION_FAILED', 'Some of the information is missing or invalid');
+	}
+	throw e;
+}
+
+export const syncRouter = router({
+	upload: userProcedure
+		.input(z.object({ transactionId: z.number().int(), ops: z.array(Op).max(200) }))
+		.mutation(async ({ ctx, input }) => {
+			const applied: string[] = [];
+			const rejected: { id: string; table: string; code: RejectCode; message: string }[] = [];
+			const notices: { id: string; table: string; code: 'MAR_CONFLICT'; message: string }[] = [];
+
+			for (const op of input.ops) {
+				try {
+					const handler = HANDLERS[op.table]?.[op.op];
+					if (!handler) {
+						throw new Reject('NOT_ALLOWED_OFFLINE', 'This change has to be made while online.');
+					}
+					// Savepoint per op: a rejected op is rolled back on its own.
+					const outcome = await ctx.db.transaction((sp) => handler(sp, ctx.user, op));
+					applied.push(op.id);
+					if (outcome?.notice) notices.push({ id: op.id, table: op.table, ...outcome.notice });
+				} catch (e) {
+					const r = toReject(e);
+					rejected.push({ id: op.id, table: op.table, code: r.code, message: r.message });
+				}
+			}
+			return { applied, rejected, notices };
+		})
+});

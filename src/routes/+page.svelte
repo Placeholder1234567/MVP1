@@ -25,6 +25,16 @@
 	let homes = $state<{ id: string; name: string }[]>([]);
 	let people = $state<{ id: string; name: string }[]>([]);
 	let syncStatus = $state('Connecting…');
+	let board = $state<{ id: string; from_name: string; body: string; sent_at: string }[]>([]);
+	let failed = $state<{ id: string; code: string; message: string }[]>([]);
+	let pending = $state(0);
+	let draft = $state('');
+	let postTo = $state('');
+	// Caregivers post to their own homes; supervisors to any home in the agency.
+	const myHomes = $derived(
+		data.user.role === 'caregiver' ? homes.filter((h) => data.user.homeIds.includes(h.id)) : homes
+	);
+	let db: Awaited<ReturnType<typeof openDb>> | undefined;
 	// Held only until a PIN is set; never stored unwrapped.
 	let newKey: Uint8Array | undefined;
 
@@ -48,7 +58,8 @@
 	});
 
 	async function open(key: Uint8Array) {
-		const db = await openDb(key);
+		db = await openDb(key);
+		const local = db;
 		step = 'open';
 		db.watch('SELECT id, name FROM homes ORDER BY name', [], {
 			onResult: (r) => (homes = (r.rows?._array ?? []) as typeof homes)
@@ -57,8 +68,17 @@
 		db.watch('SELECT id, name FROM clients WHERE active = 1 ORDER BY name', [], {
 			onResult: (r) => (people = (r.rows?._array ?? []) as typeof people)
 		});
+		local.watch(
+			'SELECT id, from_name, body, sent_at FROM messages ORDER BY sent_at DESC LIMIT 20',
+			[],
+			{ onResult: (r) => (board = (r.rows?._array ?? []) as typeof board) }
+		);
+		local.watch('SELECT id, code, message FROM failed_writes ORDER BY failed_at DESC', [], {
+			onResult: (r) => (failed = (r.rows?._array ?? []) as typeof failed)
+		});
 		const show = () => {
-			const s = db.currentStatus;
+			const s = local.currentStatus;
+			void local.getUploadQueueStats().then((q) => (pending = q.count));
 			syncStatus = s.connected
 				? s.lastSyncedAt
 					? `Synced ${s.lastSyncedAt.toLocaleTimeString()}`
@@ -68,7 +88,23 @@
 					: 'Offline';
 		};
 		show();
-		db.registerListener({ statusChanged: show });
+		local.registerListener({ statusChanged: show });
+		local.onChange({
+			onChange: () => void local.getUploadQueueStats().then((q) => (pending = q.count))
+		});
+	}
+
+	/** Writes to the local database only; works offline. The queue uploads it via sync.upload. */
+	async function post(event: SubmitEvent) {
+		event.preventDefault();
+		const home = postTo || myHomes[0]?.id;
+		if (!db || !home || !draft.trim()) return;
+		const now = new Date().toISOString();
+		await db.execute(
+			'INSERT INTO messages (id, home_id, from_name, body, sent_at, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?)',
+			[home, data.user.name, draft.trim(), now, now, now]
+		);
+		draft = '';
 	}
 
 	async function setPin(event: SubmitEvent) {
@@ -162,10 +198,39 @@
 				<li>{home.name}</li>
 			{/each}
 		</ul>
+		{#if pending}<p data-testid="pending">
+				{pending} change{pending === 1 ? '' : 's'} waiting to sync
+			</p>{/if}
+		{#if failed.length}
+			<div role="alert" data-testid="failed">
+				<p>{failed.length} change{failed.length === 1 ? '' : 's'} could not be saved:</p>
+				<ul>
+					{#each failed as f (f.id)}<li>{f.message}</li>{/each}
+				</ul>
+			</div>
+		{/if}
 		<h2>People</h2>
 		<ul data-testid="people">
 			{#each people as person (person.id)}
 				<li>{person.name}</li>
+			{/each}
+		</ul>
+		<h2>Team messages</h2>
+		<form onsubmit={post}>
+			<select bind:value={postTo} aria-label="Home">
+				{#each myHomes as h (h.id)}<option value={h.id}>{h.name}</option>{/each}
+			</select>
+			<input
+				bind:value={draft}
+				placeholder="Message your team"
+				aria-label="Message"
+				maxlength="2000"
+			/>
+			<button>Send</button>
+		</form>
+		<ul data-testid="board">
+			{#each board as m (m.id)}
+				<li><strong>{m.from_name}:</strong> {m.body}</li>
 			{/each}
 		</ul>
 	{:else}

@@ -68,6 +68,23 @@ export function withUser<T>(
 }
 
 /**
+ * Runs fn inside the caller's existing transaction as app_service, then
+ * restores the previous role. For a cross-user write that must commit or roll
+ * back together with the user's own change (e.g. alerting supervisors about a
+ * possible double dose). Same limits as withService.
+ */
+export async function asService<T>(tx: Tx, fn: (tx: Tx) => Promise<T>): Promise<T> {
+	const { rows } = await tx.execute<{ role: string }>(sql`SELECT current_setting('role') AS role`);
+	const previous = rows[0]?.role;
+	await tx.execute(sql`SET LOCAL ROLE app_service`);
+	try {
+		return await fn(tx);
+	} finally {
+		if (previous === 'app_user') await tx.execute(sql`SET LOCAL ROLE app_user`);
+	}
+}
+
+/**
  * Runs fn as app_service, which bypasses RLS. Only for job handlers and the
  * cross-user writes listed at the end of rls.sql; never for a user's own request.
  */

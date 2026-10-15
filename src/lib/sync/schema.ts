@@ -313,6 +313,8 @@ const user_settings = new Table({
 	updated_at: column.text,
 });
 
-export const AppSchema = new Schema({ agencies, attendance, client_health_info, clients, clock_records, coverage_requests, coverage_steps, goal_templates, goals, health_entries, homes, incidents, mar_records, medications, messages, note_goals, notes, notification_preferences, notifications, profiles, schedule_slots, user_settings });
+export const syncedTables = { agencies, attendance, client_health_info, clients, clock_records, coverage_requests, coverage_steps, goal_templates, goals, health_entries, homes, incidents, mar_records, medications, messages, note_goals, notes, notification_preferences, notifications, profiles, schedule_slots, user_settings };
+
+export const AppSchema = new Schema(syncedTables);
 
 export type Database = (typeof AppSchema)['types'];

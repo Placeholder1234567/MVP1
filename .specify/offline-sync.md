@@ -96,6 +96,8 @@ For a feature to be considered offline-capable, all of the following must be tru
 | Reading client info, goals, medications | Full -- pre-synced to device within sync window |
 | Browsing schedule | Full -- schedule_slots pre-synced |
 | Sending home messages | Full -- write locally, delivered on sync |
+
+> **Two connections, not one.** Reads stream from PowerSync; queued writes go to the app server (`sync.upload`). A device can upload while PowerSync is down, and can read saved data while the app server is down. "Offline" in the UI means PowerSync isn't connected; the upload count shows what hasn't reached the app server yet.
 | Viewing recent history (notes, incidents, MAR) | Full -- 30-day window synced |
 
 ### What Requires Connectivity
@@ -429,7 +431,7 @@ PowerSync applies this model automatically. The write queue replays mutations th
 |-----------|------------------|---------------------|-----------------|
 | **Create note** | Two caregivers create notes for the same client on the same day while both offline | Both accepted -- different `note.id` UUIDs, different records. No conflict. | Both notes appear. Supervisor reviews both. This is normal (AM/PM shifts). |
 | **Update note (draft)** | Caregiver edits a draft note offline. Another device (or same user on another tab) also edits. | Last write wins at server. The second write to reach the server overwrites the first. | User sees their local edits until sync completes. After sync, the note content reflects the server state. If the user's edits were overwritten, a toast shows "Note updated from another device." |
-| **Sign note (draft -> submitted)** | Caregiver signs a note offline. Meanwhile, a supervisor returns the note from another device (changing status to `returned`). | Server state wins. The supervisor's `returned` status is authoritative. The caregiver's `submitted` transition is rejected because the note is no longer in `draft` status. | Caregiver sees "Note was returned by supervisor" on sync. They must review the supervisor comment and re-submit. |
+| **Sign note (draft -> submitted)** | Caregiver signs a note offline. Meanwhile, a supervisor returns the note from another device (changing status to `returned`). | Server state wins. The supervisor's `returned` status is authoritative. A queued sign of a `returned` note is always rejected (`RULE_VIOLATION`), because the queue can't tell whether the caregiver saw the comment; signing a returned note online is allowed. | Caregiver sees "Note was returned by supervisor" on sync. They must review the supervisor comment and re-submit. |
 | **Approve note** | Supervisor approves a note while the caregiver is editing the same note offline. | Server state wins. The note is `approved`. The caregiver's offline edits are rejected because the note is no longer in `draft` or `returned` status. | Caregiver sees "Note already approved" on sync. Their local edits are lost. The approved version is authoritative. |
 | **Record MAR (scheduled)** | Two med-certified caregivers record the same dose slot (same client, medication, day and `scheduled_time`) while both offline. | **Neither record is discarded.** Two records for one slot may mean the person was given the dose twice, which is a safety event. `sync.upload` catches the unique-index violation and saves the second record with `conflict_with` pointing at the first (the index excludes conflict records). It then sends a mandatory `med_possible_double_dose` alert to the home's supervisors. | Second caregiver sees "[Name] also recorded this dose. Your supervisor has been alerted." The supervisor reviews both records and, if a second dose was actually given, files a medication-error incident. |
 | **Record MAR (PRN)** | Two caregivers record PRN doses for the same medication while offline. | Both accepted -- PRN doses are not subject to the unique constraint. Each PRN record has a unique ID. | Both PRN entries appear in the MAR. This is valid -- PRN medications can be given multiple times. |
@@ -513,7 +515,7 @@ Non-retryable errors (constraint violations, RLS rejections, 4xx HTTP status) ar
 When a write permanently fails:
 
 1. The mutation is removed from the active queue to prevent blocking subsequent writes.
-2. The failed mutation metadata (table, operation, error reason) is stored in a local `_failed_writes` table in wa-sqlite.
+2. The failed mutation metadata (table, operation, error reason) is stored in the local-only `failed_writes` table (`src/lib/sync/app-schema.ts`). Notices such as `MAR_CONFLICT` go to the local-only `sync_notices` table.
 3. The UI shows a persistent banner: "1 change could not be saved. Tap to review."
 4. The user can view the failed write details and either discard or retry manually.
 5. Failed writes are logged with enough context to diagnose the issue without exposing PHI in the error message.
@@ -912,5 +914,9 @@ npm run test:e2e -- --grep @offline
 | `RLS_DENIED` | Row-Level Security policy rejected the write | "You don't have permission to save this change." | Discard; may indicate role/home change |
 | `FK_VIOLATION` | Foreign key reference missing (e.g., note references deleted client) | "The referenced record no longer exists." | Discard; data was deleted server-side |
 | `SESSION_EXPIRED` | Auth token expired and refresh failed | "Your session has expired. Please log in again." | Re-authenticate; writes preserved if re-auth succeeds within grace period |
+| `VALIDATION_FAILED` | Missing or invalid data (wrong dose slot, refusal without a reason, malformed fields) | The service's message, e.g. "Say why the dose was refused or held" | Discard; details kept in `failed_writes` |
+| `RULE_VIOLATION` | A business rule refused it (note already signed or approved; note sent back while the device was offline) | The service's message | Discard; for a sent-back note, read the comment and sign again |
+| `NOT_FOUND` | The record or the person it refers to isn't in the caller's homes | "That person is not in your homes" | Discard |
+| `NOT_ALLOWED_OFFLINE` | That table or operation can't be written from a device (e.g. approving notes, editing MAR records) | "This change has to be made while online." | Discard |
 | `SERVER_ERROR` | 5xx from the server | "Server error. Will retry automatically." | Retry with exponential backoff |
 | `NETWORK_ERROR` | Request failed to reach server | "No connection. Will retry when online." | Retry when connectivity restored |

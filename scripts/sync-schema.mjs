@@ -53,7 +53,8 @@ export function buildClientSchema() {
 		}
 		lines.push('});', '');
 	}
-	lines.push(`export const AppSchema = new Schema({ ${names.join(', ')} });`, '');
+	lines.push(`export const syncedTables = { ${names.join(', ')} };`, '');
+	lines.push('export const AppSchema = new Schema(syncedTables);', '');
 	lines.push("export type Database = (typeof AppSchema)['types'];", '');
 	return lines.join('\n');
 }
