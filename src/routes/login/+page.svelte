@@ -36,18 +36,28 @@
 	<title>Sign in · Guad</title>
 </svelte:head>
 
-<main>
-	<h1>Sign in to Guad</h1>
-	<form onsubmit={submit}>
-		<label>
-			Email
-			<input type="email" autocomplete="username" required bind:value={email} />
-		</label>
-		<label>
-			Password
-			<input type="password" autocomplete="current-password" required bind:value={password} />
-		</label>
-		<button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-		{#if message}<p role="alert">{message}</p>{/if}
-	</form>
+<main class="unlock-page">
+	<div class="card pad stack">
+		<span class="wordmark">Guad<span class="lemon-dot">●</span></span>
+		<h1>A good day starts with care.</h1>
+		<p class="muted">Sign in to your workspace.</p>
+		<form class="stack" onsubmit={submit}>
+			<label>
+				Email
+				<input class="input" type="email" autocomplete="username" required bind:value={email} />
+			</label>
+			<label>
+				Password
+				<input
+					class="input"
+					type="password"
+					autocomplete="current-password"
+					required
+					bind:value={password}
+				/>
+			</label>
+			<button class="btn" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+			{#if message}<p role="alert">{message}</p>{/if}
+		</form>
+	</div>
 </main>

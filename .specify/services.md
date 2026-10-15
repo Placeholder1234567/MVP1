@@ -38,13 +38,13 @@ src/lib/server/services/
 - `updateProfile(agencyId, profileId, data): Profile` — update staff details, home assignments, med certification.
 - `deactivateUser(agencyId, profileId): void` — soft-delete (sets `active = false`), disables the Identity Platform account and revokes its refresh tokens; never hard-deletes.
 - `listActiveStaff(agencyId): Profile[]` — all active profiles for the agency.
-- `inviteUser(agencyId, email, name, role, homeIds, medCertified?): Profile` — create an Identity Platform user and a corresponding `profiles` row, set the `parameters` custom claims, and send an invitation email (password-setup link from the Admin SDK) via SES. Used by the `staff.invite` tRPC procedure.
+- `inviteUser(agencyId, email, name, role, homeIds, medCertified?): Profile` — create an Identity Platform user and a corresponding `profiles` row, and send an invitation email (password-setup link from the Admin SDK) via SES. Used by the `staff.invite` tRPC procedure.
 
 **Depends on:** None (foundational). Identity Platform is the upstream identity provider.
 
 **Jobs:** None.
 
-**Notes:** Sessions are Identity Platform session cookies, created and verified with the Admin SDK. `profiles.auth_uid` links each profile to its Identity Platform user. There is no `sessions` table in Guad's schema — Identity Platform owns session lifecycle. When `role` or `home_ids` change, `updateProfile` refreshes the custom claims and revokes refresh tokens so PowerSync gets the new scope.
+**Notes:** Sessions are Identity Platform session cookies, created and verified with the Admin SDK. `profiles.auth_uid` links each profile to its Identity Platform user. There is no `sessions` table in Guad's schema — Identity Platform owns session lifecycle. There are no custom claims: tRPC and PowerSync both read role, homes and active status from the profile row, so changes apply within seconds.
 
 ---
 

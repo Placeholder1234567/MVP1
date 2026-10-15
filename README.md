@@ -22,7 +22,7 @@ Needs Node 22+ and Docker.
 ```bash
 npm install
 cp .env.example .env
-npm run db:up        # Postgres 16 + Mailpit (email viewer at http://localhost:8025)
+npm run db:up        # Postgres 16, PowerSync (:8080), Mailpit (email viewer at http://localhost:8025)
 npm run db:setup     # migrations, RLS policies, integrity triggers, grants
 npm run dev:auth     # Firebase Auth emulator (separate terminal; needs Java 11+)
 npm run db:seed      # synthetic demo agency; staff sign in with DEV_PASSWORD from src/lib/server/seed.ts

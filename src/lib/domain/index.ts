@@ -7,3 +7,5 @@ export * from './note-lifecycle';
 export * from './geo';
 export * from './vitals';
 export * from './eligibility';
+export * from './charting';
+export * from './notifications';

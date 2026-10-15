@@ -2,8 +2,8 @@ name: guad
 
 # Local stack (infrastructure.md §6). Synthetic data only.
 #   npm run db:up      start
-#   npm run db:setup   create tables, RLS policies and grants
-# PowerSync joins this file when offline sync is wired up (Phase 2).
+#   npm run db:setup   create tables, RLS policies, grants and the PowerSync role
+# PowerSync restarts until db:setup has created its role and publication.
 services:
   postgres:
     image: postgres:16-alpine
@@ -21,6 +21,25 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U guad -d guad']
       interval: 2s
       retries: 30
+
+  powersync:
+    # Self-hosted PowerSync Open Edition (offline-sync.md). Sync API at http://localhost:8080
+    image: journeyapps/powersync-service:1.26.1
+    command: ['start', '-r', 'unified']
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/service.yaml
+      PS_DATA_SOURCE_URI: postgresql://powersync_replication:powersync-dev@postgres:5432/guad
+      PS_STORAGE_SOURCE_URI: postgresql://powersync_storage:powersync-dev@postgres:5432/powersync_storage
+      PS_DEV_JWT_KEY: ${PS_DEV_JWT_KEY:?set PS_DEV_JWT_KEY in .env (see .env.example)}
+      NODE_OPTIONS: --max-old-space-size=1000
+    volumes:
+      - ./powersync:/config:ro
+    ports:
+      - '8080:8080'
 
   mailpit:
     # Catches every email the app sends; view them at http://localhost:8025

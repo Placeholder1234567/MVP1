@@ -40,14 +40,13 @@ Identity is provided by Google Cloud Identity Platform (Firebase Auth). See infr
 - Session length: the session cookie lasts 12 hours (absolute), configurable per agency down to 15 minutes. Inactivity locks the app sooner on mobile (see Session Timeout Policy). Identity Platform session cookies can't be extended, so the user signs in again when one expires; unsynced local data is kept.
 - On logout: the server clears the cookie and revokes the user's refresh tokens (Admin SDK `revokeRefreshTokens`), and the service worker cache is purged. The local PowerSync database is deleted once its upload queue is empty; if changes are still unsynced (offline), the app locks instead and deletes the database after the next successful sync (offline-sync.md §7).
 
-### Identity Claims
+### Identity and Access Claims
 
-The ID token carries custom claims under `parameters`, used by PowerSync sync rules:
-- `agency_id` (uuid) — tenant isolation key, set at account creation, immutable by the user.
-- `role` (string) — `caregiver`, `supervisor`, or `admin`. Changed only by admins via a server-side function.
-- `profile_id` (uuid) — the user's `profiles.id`, for ownership checks.
+Tokens carry only the user ID. Nothing about agency, role or homes is put in a token, so there are no claims to go stale or to forge:
+- **Database:** for every request the server loads the profile by `auth_uid` and sets the Postgres session claims (`agency_id`, `role`, `profile_id`) from that row (rls.sql header).
+- **Offline sync:** PowerSync's sync streams look up the same active profile by `auth_uid` (offline-sync.md §4).
 
-These claims are set only by the server with the Admin SDK (`setCustomUserClaims`) and cannot be modified by the client. The database does not trust them: for every request the server loads the profile by `auth_uid` and sets the Postgres session claims from that row (rls.sql header).
+Changing a user's role, homes or active status takes effect on their next request and within seconds for sync.
 
 ### MFA Policy
 
@@ -187,7 +186,7 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 |-------|-----------|----------------|
 | Cloud SQL Postgres | AES-256 (Google-managed) | Google-managed keys; customer-managed keys (Cloud KMS) optional later |
 | Cloud SQL backups | AES-256 | Same as the instance |
-| PowerSync OPFS (device) | SQLCipher-style AES-256 (confirm encrypted wa-sqlite build) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2); server copy deleted on deactivation |
+| PowerSync OPFS (device) | SQLite3MultipleCiphers, ChaCha20-Poly1305 (verified in Chromium; Safari/Firefox still to verify) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2); server copy deleted on deactivation |
 | Cloud Storage (exports) | AES-256 (Google-managed) | Google-managed keys |
 | Cloud Tasks payloads | AES-256 (Google-managed) | Payloads hold record IDs only, never PHI |
 
@@ -325,7 +324,7 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 
 ### Local SQLite Encryption
 
-- PowerSync uses wa-sqlite compiled with SQLCipher, providing AES-256-CBC encryption for the local OPFS database.
+- PowerSync's web SDK encrypts the local OPFS database with SQLite3MultipleCiphers (ChaCha20-Poly1305). The key is the per-device key described in offline-sync.md "Local Database Encryption Key".
 - The key is a random per-device key issued by the server at first sign-in. It is held in memory and stored on disk only wrapped with a PIN-derived key, so caregivers can reopen the app offline across token expiry without losing unsynced work.
 - Five wrong PINs delete the wrapped key; the database can then only be reopened by signing in online. Deactivating the user or device deletes the server copy of the key.
 

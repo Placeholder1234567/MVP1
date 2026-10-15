@@ -9,6 +9,10 @@ import { dev } from '$app/env';
 if (dev && existsSync('.env')) process.loadEnvFile('.env');
 import { SESSION_COOKIE, verifySession } from '#lib/server/identity.ts';
 import { getCurrentUser } from '#lib/server/services/auth/index.ts';
+import { startLocalSchedule } from '#lib/server/jobs/schedule.ts';
+
+// Start after loading local settings; production uses Cloud Scheduler.
+if (dev) startLocalSchedule();
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 

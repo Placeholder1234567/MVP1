@@ -20,6 +20,16 @@ export const SHIFTS: readonly ShiftDef[] = [
 
 export const SHIFT_HOURS = 8;
 
+/** A previous shift cannot be offered for coverage after it has ended. */
+export function shiftIsPast(day: string, shift: ShiftKey, at: Date, timeZone: string): boolean {
+	const current = shiftAt(at, timeZone);
+	return (
+		day < current.day ||
+		(day === current.day &&
+			SHIFTS.findIndex((s) => s.key === shift) < SHIFTS.findIndex((s) => s.key === current.shift))
+	);
+}
+
 /** Which shift a clock time (HH:MM) falls in. */
 export function shiftForTime(time: string): ShiftKey {
 	const t = hhmm(time);

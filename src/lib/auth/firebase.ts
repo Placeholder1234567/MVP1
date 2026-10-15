@@ -53,17 +53,22 @@ export async function signIn(email: string, password: string): Promise<{ role: s
 }
 
 /**
- * The in-memory ID token PowerSync needs. After a reload there is no Firebase
- * user, so get a custom token from the server (the session cookie proves who
- * we are) and exchange it.
+ * The token PowerSync connects with, held in memory only. The server decides
+ * the form (see createSyncCredential): in production a custom token we
+ * exchange for an Identity Platform ID token; with the local emulator a
+ * ready-made PowerSync token. The session cookie proves who we are.
  */
-export async function getSyncIdToken(): Promise<{ token: string; expiresAt: Date }> {
-	const a = firebaseAuth();
-	if (!a.currentUser) {
-		const res = await fetch('/auth/sync-token', { method: 'POST' });
-		if (!res.ok) throw new Error('Not signed in');
-		await signInWithCustomToken(a, (await res.json()).customToken);
+export async function getSyncToken(): Promise<{ token: string; expiresAt: Date }> {
+	// Ask the server every time: even right after sign-in, an emulator ID token
+	// is unsigned and PowerSync would reject it.
+	const res = await fetch('/auth/sync-token', { method: 'POST' });
+	if (!res.ok) throw new Error('Not signed in');
+	const cred = await res.json();
+	if (cred.kind === 'powersync-token') {
+		return { token: cred.token, expiresAt: new Date(cred.expiresAt) };
 	}
+	const a = firebaseAuth();
+	if (!a.currentUser) await signInWithCustomToken(a, cred.customToken);
 	const result = await a.currentUser!.getIdTokenResult();
 	return { token: result.token, expiresAt: new Date(result.expirationTime) };
 }

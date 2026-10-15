@@ -55,7 +55,7 @@ beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx
 			.insert(agencies)
-			.values({ id: agencyId, name: 'Session Test Agency', slug: `session-${agencyId}` });
+			.values({ id: agencyId, name: 'Session Test Agency', subscription_tier: 'complete', slug: `session-${agencyId}` });
 		await tx.insert(profiles).values({
 			id: profileId,
 			agency_id: agencyId,
@@ -101,18 +101,36 @@ describe('sign-in', () => {
 		expect(hasRole(user!, 'admin')).toBe(false);
 	});
 
-	it('the sync token carries the PowerSync claims', async () => {
-		await identity.setSyncClaims(uid, {
-			agency_id: agencyId,
-			role: 'supervisor',
-			profile_id: profileId
-		});
-		const claims = await exchangeCustomToken(await identity.createSyncToken(uid));
-		expect(claims.parameters).toEqual({
-			agency_id: agencyId,
-			role: 'supervisor',
-			profile_id: profileId
-		});
+	it('in emulator mode, the sync credential is a 1-hour PowerSync token for this user only', async () => {
+		const { jwtVerify } = await import('jose');
+		const key = 'gi3XNOLkX6khPVxN4PpCoi7zVjDi9lljHRkgCTItfss'; // .env.example dev key
+		process.env.PS_DEV_JWT_KEY = key;
+		try {
+			const cred = await identity.createSyncCredential(uid);
+			if (cred.kind !== 'powersync-token')
+				throw new Error(`expected powersync-token, got ${cred.kind}`);
+			const { payload, protectedHeader } = await jwtVerify(
+				cred.token,
+				Buffer.from(key, 'base64url'),
+				{
+					audience: identity.DEV_POWERSYNC_AUDIENCE
+				}
+			);
+			expect(protectedHeader).toMatchObject({ alg: 'HS256', kid: 'guad-local-1' });
+			expect(payload.sub).toBe(uid);
+			expect(payload.exp! - payload.iat!).toBe(3600);
+			// Only the user ID: streams look up agency, role and homes live.
+			expect(Object.keys(payload).sort()).toEqual(['aud', 'exp', 'iat', 'sub']);
+		} finally {
+			delete process.env.PS_DEV_JWT_KEY;
+		}
+	});
+
+	it('without the dev key, the sync credential is a Firebase custom token for this user', async () => {
+		const cred = await identity.createSyncCredential(uid);
+		if (cred.kind !== 'custom-token') throw new Error(`expected custom-token, got ${cred.kind}`);
+		const claims = await exchangeCustomToken(cred.customToken);
+		expect(claims.sub).toBe(uid);
 	});
 
 	it('signing out everywhere makes existing cookies stop verifying', async () => {

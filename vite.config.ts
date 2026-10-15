@@ -3,6 +3,9 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	// PowerSync ships web workers and WASM (wa-sqlite); Vite must not pre-bundle it.
+	optimizeDeps: { exclude: ['@powersync/web'] },
+	worker: { format: 'es' },
 	plugins: [
 		sveltekit({
 			compilerOptions: {
