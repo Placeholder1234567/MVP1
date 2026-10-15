@@ -9,10 +9,12 @@
 		hasWrappedKey,
 		unwrapKey,
 		wrapKey,
+		verifyOfflineAccess,
 		WrongPinError
 	} from '#lib/sync/device-key.ts';
 	import { signOutEverywhere } from '#lib/auth/firebase.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import { clearShellCaches } from '#lib/pwa/cache.ts';
 	import { provideSession } from '#lib/app/session.svelte.ts';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
@@ -82,7 +84,33 @@
 		try {
 			const unlocked = step === 'set-pin' ? key! : await unwrapKey(pin, app.user.profileId);
 			if (step === 'set-pin') await wrapKey(unlocked, pin, app.user.profileId);
-			app.connect(await openDb(unlocked, app.user.profileId));
+			const database = await openDb(unlocked, app.user.profileId);
+			app.connect(database);
+			// Only a fresh server response can renew saved access; an offline PIN unlock cannot.
+			void Promise.all([trpc.auth.me.query(), trpc.agency.get.query()])
+				.then(async ([profile, agency]) => {
+					if (
+						profile.id !== app.user.profileId ||
+						profile.agencyId !== app.user.agencyId ||
+						agency.id !== profile.agencyId
+					)
+						return;
+					const snapshot = {
+						profileId: profile.id,
+						agencyId: profile.agencyId,
+						name: profile.name,
+						role: profile.role,
+						homeIds: profile.homeIds,
+						medCertified: profile.medCertified,
+						timeZone: agency.timezone
+					};
+					await database.execute(
+						'INSERT OR REPLACE INTO offline_sessions (id, user_json) VALUES (?, ?)',
+						[profile.id, JSON.stringify(snapshot)]
+					);
+					await verifyOfflineAccess(profile.id);
+				})
+				.catch(() => {});
 			unlocked.fill(0);
 			key = undefined;
 			step = 'open';
@@ -114,6 +142,7 @@
 		app.dispose();
 		await closeDb();
 		await signOutEverywhere();
+		await clearShellCaches();
 		await goto(resolve('/login'), { refreshAll: true });
 	}
 	app.lock = lock;

@@ -13,8 +13,18 @@
 	let {
 		clientId,
 		type = 'shift',
-		noteId
-	}: { clientId?: string; type?: 'shift' | 'behavior'; noteId?: string } = $props();
+		noteId,
+		offlineOnly = false,
+		onBack,
+		onDirtyChange
+	}: {
+		clientId?: string;
+		type?: 'shift' | 'behavior';
+		noteId?: string;
+		offlineOnly?: boolean;
+		onBack?: () => void;
+		onDirtyChange?: (dirty: boolean) => void;
+	} = $props();
 	const app = useSession();
 	const current = shiftAt(new Date(), app.user.timeZone);
 	const note = $derived(
@@ -65,6 +75,9 @@
 	let dirty = $state(false);
 	let assisted = $state(false);
 	let scope = $state('');
+	$effect(() => {
+		onDirtyChange?.(dirty);
+	});
 	beforeNavigate(({ cancel }) => {
 		if (
 			dirty &&
@@ -240,7 +253,12 @@
 	><title>{kind === 'behavior' ? app.labels.behavior : app.labels.shift} · Guad</title></svelte:head
 >
 <div class="stack editor">
-	<a class="textbtn" href={resolve('/(app)/today')}>← Back to today</a>
+	{#if onBack}<button
+			class="textbtn"
+			onclick={() => {
+				if (!dirty || confirm('Discard your unsaved note text?')) onBack();
+			}}>← Saved records</button
+		>{:else}<a class="textbtn" href={resolve('/(app)/today')}>← Back to today</a>{/if}
 	{#if person}<div>
 			<p class="eyebrow">{person.name}</p>
 			<h1>{kind === 'behavior' ? app.labels.behavior : app.labels.shift}</h1>
@@ -257,7 +275,7 @@
 				<p>{message}</p>
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
-		{#if editable}<LomiComposer
+		{#if editable && !offlineOnly}<LomiComposer
 				clientId={person.id}
 				type={kind as 'shift' | 'behavior'}
 				onDraft={(result) => {

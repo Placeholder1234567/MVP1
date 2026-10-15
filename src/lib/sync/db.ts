@@ -12,7 +12,11 @@ export function currentDb(): PowerSyncDatabase | undefined {
 	return db;
 }
 
-export async function openDb(key: Uint8Array, profileId?: string): Promise<PowerSyncDatabase> {
+export async function openDb(
+	key: Uint8Array,
+	profileId?: string,
+	options: { offline?: boolean } = {}
+): Promise<PowerSyncDatabase> {
 	if (db) return db;
 	db = new PowerSyncDatabase({
 		schema: DeviceSchema,
@@ -26,7 +30,7 @@ export async function openDb(key: Uint8Array, profileId?: string): Promise<Power
 		}
 	});
 	await db.init();
-	await db.connect(new GuadConnector());
+	if (!options.offline) await db.connect(new GuadConnector());
 	return db;
 }
 

@@ -34,4 +34,11 @@ const sync_notices = new Table(
 	{ localOnly: true }
 );
 
-export const DeviceSchema = new Schema({ ...syncedTables, failed_writes, sync_notices });
+// The last server-verified workspace identity, kept inside the encrypted database.
+const offline_sessions = new Table({ user_json: column.text }, { localOnly: true });
+export const DeviceSchema = new Schema({
+	...syncedTables,
+	failed_writes,
+	sync_notices,
+	offline_sessions
+});
