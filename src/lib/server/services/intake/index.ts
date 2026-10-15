@@ -104,12 +104,19 @@ export async function convertToClient(
 export async function updateRoom(
 	tx: Tx,
 	agencyId: string,
-	input: { id: string; status?: q.Room['status']; occupiedBy?: string | null }
+	input: {
+		id: string;
+		name?: string;
+		capacity?: number;
+		status?: q.Room['status'];
+		occupiedBy?: string | null;
+	}
 ) {
 	const initial = await q.room(tx, agencyId, input.id);
 	if (!initial || !(await q.home(tx, agencyId, initial.home_id)))
 		throw new ServiceError('NOT_FOUND', 'Room not found');
 	const row = (await q.room(tx, agencyId, input.id))!;
+	if (input.name) await checkRoomName(tx, agencyId, row.home_id, input.name, row.id);
 	const occupant = input.occupiedBy === undefined ? row.occupied_by : input.occupiedBy;
 	if (occupant) {
 		const person = await q.client(tx, agencyId, occupant);
@@ -130,9 +137,46 @@ export async function updateRoom(
 	} else if (input.status === 'occupied')
 		throw new ServiceError('RULE_VIOLATION', 'An occupied room needs a client');
 	return q.saveRoom(tx, agencyId, row.id, {
+		name: input.name,
+		capacity: input.capacity,
 		occupied_by: occupant,
 		status: occupant
 			? 'occupied'
 			: (input.status ?? (input.occupiedBy === null ? 'available' : row.status))
+	});
+}
+
+// Hold the home lock before checking names or changing inventory. This also
+// serializes creation with admission and existing-client room assignment.
+async function checkRoomName(
+	tx: Tx,
+	agencyId: string,
+	homeId: string,
+	name: string,
+	exceptId?: string
+) {
+	const inventory = await q.listRooms(tx, agencyId, { homeId });
+	if (
+		inventory.some(
+			(r) => r.id !== exceptId && r.name.trim().toLowerCase() === name.trim().toLowerCase()
+		)
+	)
+		throw new ServiceError('RULE_VIOLATION', 'Choose a different room name within this home');
+}
+
+export async function createRoom(
+	tx: Tx,
+	agencyId: string,
+	input: { homeId: string; name: string; capacity: number; status: 'available' | 'reserved' }
+) {
+	if (!(await q.home(tx, agencyId, input.homeId)))
+		throw new ServiceError('NOT_FOUND', 'Home not found');
+	await checkRoomName(tx, agencyId, input.homeId, input.name);
+	return q.insertRoom(tx, {
+		agency_id: agencyId,
+		home_id: input.homeId,
+		name: input.name,
+		capacity: input.capacity,
+		status: input.status
 	});
 }
