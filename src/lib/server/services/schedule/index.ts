@@ -11,6 +11,7 @@ import {
 	weekSlots
 } from './schedule.queries';
 import { settleCoverage } from './coverage';
+import { requestById } from './coverage.queries';
 export {
 	startCoverage,
 	searchCoverage,
@@ -65,4 +66,9 @@ export async function setScheduleSlot(
 	const row = await saveSlot(tx, user.agencyId, input);
 	await settleCoverage(tx, user.agencyId, input, input.profileId);
 	return row;
+}
+
+/** A coverage request's status (for replies that arrive after it closed). */
+export async function coverageStatus(tx: Tx, agencyId: string, id: string) {
+	return (await requestById(tx, agencyId, id))?.status ?? null;
 }

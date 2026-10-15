@@ -21,6 +21,7 @@ export {
 	listNotifications,
 	markNotificationsRead,
 	updatePreferences,
+	setSmsOptOut,
 	PreferencesInput
 } from './inbox';
 

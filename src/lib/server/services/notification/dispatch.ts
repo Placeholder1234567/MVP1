@@ -61,6 +61,8 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 				await removeDeadTokens(row.profileId, result.deadTokens);
 			} else if (channel === 'sms') {
 				if (!row.phone) throw new Error('no phone number');
+				// Texted STOP: carriers block it anyway, and opted-out numbers must not be texted.
+				if (row.smsEnabled === false) throw new Error('opted out of SMS');
 				result = await send.sms(row.phone, d);
 			} else {
 				result = await send.email(row.email, d);

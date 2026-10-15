@@ -83,3 +83,31 @@ export async function updatePreferences(
 	}
 	return { updated: rows.length };
 }
+
+/**
+ * Texting STOP turns SMS off for every type, mandatory ones included: carriers
+ * block messages to opted-out numbers, and dispatch skips SMS when the saved
+ * preference says no (notifications.md §6 "Opt-Out"). START restores each
+ * type's role default. Push and email keep their saved or default values.
+ * Runs as app_service, since the sender has no session.
+ */
+export async function setSmsOptOut(
+	tx: Tx,
+	agencyId: string,
+	profile: { id: string; role: CurrentUser['role'] },
+	optedOut: boolean
+) {
+	const saved = await lockPreferences(tx, agencyId, profile.id);
+	for (const type of NOTIFICATION_TYPES) {
+		const previous = saved.find((r) => r.notification_type === type);
+		const defaults = channelsFor(type, profile.role);
+		await savePreference(tx, {
+			agency_id: agencyId,
+			profile_id: profile.id,
+			notification_type: type,
+			push_enabled: previous?.push_enabled ?? defaults.includes('push'),
+			sms_enabled: !optedOut && defaults.includes('sms'),
+			email_enabled: previous?.email_enabled ?? defaults.includes('email')
+		});
+	}
+}
