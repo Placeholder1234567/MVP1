@@ -3,6 +3,8 @@
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { shiftAt, SHIFTS } from '#lib/domain/index.ts';
+	import ClockPanel from '#lib/app/ClockPanel.svelte';
+	import CoverageOffers from '#lib/app/CoverageOffers.svelte';
 	const app = useSession();
 	let now = $state(new Date());
 	onMount(() => {
@@ -55,6 +57,8 @@
 		</div>
 		<span class="pill">{clock ? 'Clocked in' : 'Not clocked in'}</span>
 	</div>
+	<ClockPanel />
+	<CoverageOffers />
 	<div class="card pad stack">
 		<div class="spread">
 			<b>Notes this shift</b><span class="muted">{completed} of {people.length} done</span>

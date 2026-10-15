@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { beforeNavigate } from '$app/navigation';
 	import { useSession, parseJson } from './session.svelte';
 	import {
 		PROMPT_LEVELS,
@@ -63,7 +64,25 @@
 	let signature = $state(false);
 	let dirty = $state(false);
 	let assisted = $state(false);
+	let scope = $state('');
+	beforeNavigate(({ cancel }) => {
+		if (
+			dirty &&
+			!confirm('Leave without saving your draft? Choose Cancel to save your changes first.')
+		)
+			cancel();
+	});
 	$effect(() => {
+		const identity = `${noteId ?? clientId ?? ''}:${type}`;
+		if (scope !== identity) {
+			scope = identity;
+			savedId = '';
+			loaded = '';
+			dirty = false;
+			signature = false;
+			signed = false;
+			message = '';
+		}
 		const id = note?.id ?? person?.id ?? '';
 		const sourceGoals = app.noteGoals.filter((g) => g.note_id === note?.id);
 		const version = `${id}:${note?.updated_at ?? ''}:${JSON.stringify(sourceGoals)}`;
@@ -207,6 +226,15 @@
 		}
 	}
 </script>
+
+<svelte:window
+	onbeforeunload={(event) => {
+		if (dirty) {
+			event.preventDefault();
+			event.returnValue = '';
+		}
+	}}
+/>
 
 <svelte:head
 	><title>{kind === 'behavior' ? app.labels.behavior : app.labels.shift} · Guad</title></svelte:head

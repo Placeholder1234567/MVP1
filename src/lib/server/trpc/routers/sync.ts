@@ -13,6 +13,7 @@ import { sendMessage } from '../../services/message/index.ts';
 import { findAttendanceDay, saveAttendance } from '../../services/attendance/index.ts';
 import { createHealthEntry } from '../../services/health/index.ts';
 import { createIncident } from '../../services/incident/index.ts';
+import { clockIn, clockOut } from '../../services/clock/index.ts';
 import { router, userProcedure } from '../middleware.ts';
 
 /** Codes in offline-sync.md Appendix B. */
@@ -62,6 +63,24 @@ type Handler = (tx: Tx, user: CurrentUser, op: Op) => Promise<Outcome | void>;
  * read from the device; the services set them from the session.
  */
 const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
+	clock_records: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			await clockIn(tx, user, {
+				id,
+				homeId: str(d!.home_id)!,
+				lat: d!.clock_in_lat == null ? undefined : Number(d!.clock_in_lat),
+				lng: d!.clock_in_lng == null ? undefined : Number(d!.clock_in_lng),
+				recordedAt: str(d!.clock_in_at)
+			});
+			if (d!.clock_out_at)
+				await clockOut(tx, user, { id, recordedAt: new Date(String(d!.clock_out_at)) });
+		},
+		PATCH: async (tx, user, { id, data: d = {} }) => {
+			if (!d!.clock_out_at)
+				throw new Reject('NOT_ALLOWED_OFFLINE', 'Only clock-out can update a clock record');
+			await clockOut(tx, user, { id, recordedAt: new Date(String(d!.clock_out_at)) });
+		}
+	},
 	notes: {
 		PUT: async (tx, user, { id, data: d = {} }) => {
 			await createNote(tx, user.agencyId, user, {

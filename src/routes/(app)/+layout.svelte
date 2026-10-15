@@ -36,6 +36,7 @@
 					{ href: '/dashboard/notes', label: 'Review notes' },
 					{ href: '/today', label: 'Care records' },
 					{ href: '/shifts', label: 'Schedule' },
+					{ href: '/dashboard/timesheets', label: 'Timesheets' },
 					{ href: '/messages', label: 'Messages' },
 					{ href: '/me', label: 'Me' }
 				]
@@ -218,7 +219,7 @@
 			</main>
 		</div>
 		<nav class="mobile-nav" aria-label="Mobile navigation">
-			{#each nav.slice(0, 4) as item (item.href)}<a
+			{#each data.user.role === 'caregiver' ? nav : [nav[0], nav[1], nav.find((item) => item.href === '/shifts')!, nav.find((item) => item.href === '/me')!] as item (item.href)}<a
 					href={resolve(('/(app)' + item.href) as '/(app)/today')}
 					aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
 				>{/each}

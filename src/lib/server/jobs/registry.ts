@@ -4,6 +4,8 @@
 import { z } from 'zod';
 import { dispatchNotifications, sweepNotifications } from '../services/notification/index.ts';
 import { applySyncWindows } from '../services/sync/index.ts';
+import { searchCoverage, coverageTimer, sweepCoverage } from '../services/schedule/index.ts';
+import { checkMissedPunches } from '../services/clock/index.ts';
 
 export interface RunContext {
 	/** Cloud Tasks retry count (0 on the first attempt) */
@@ -23,6 +25,36 @@ interface JobDef<P> {
 const job = <P>(def: JobDef<P>) => def;
 
 const JOBS = {
+	'missed-punch-check': job({
+		queue: 'timekeeping',
+		payload: z.object({}),
+		maxAttempts: 2,
+		run: () => checkMissedPunches()
+	}),
+	'coverage-search': job({
+		queue: 'scheduling',
+		payload: z.object({ agencyId: z.uuid(), id: z.uuid() }),
+		maxAttempts: 3,
+		run: (p) => searchCoverage(p)
+	}),
+	'coverage-timeout': job({
+		queue: 'scheduling',
+		payload: z.object({ agencyId: z.uuid(), id: z.uuid() }),
+		maxAttempts: 1,
+		run: (p) => coverageTimer(p)
+	}),
+	'coverage-reminder': job({
+		queue: 'scheduling',
+		payload: z.object({ agencyId: z.uuid(), id: z.uuid() }),
+		maxAttempts: 1,
+		run: (p) => coverageTimer(p, true)
+	}),
+	'coverage-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}),
+		maxAttempts: 1,
+		run: () => sweepCoverage()
+	}),
 	'notifications-dispatch': job({
 		queue: 'notifications-push',
 		payload: z.object({ ids: z.array(z.uuid()).max(500).optional() }),
@@ -71,6 +103,8 @@ export async function runJob(name: string, payload: unknown, ctx: RunContext) {
  * (03:00 America/New_York is 07:00 or 08:00 UTC; per-agency times come later).
  */
 export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
+	{ job: 'missed-punch-check', cron: '*/15 * * * *' },
+	{ job: 'coverage-sweep', cron: '*/5 * * * *' },
 	{ job: 'notifications-sweep', cron: '*/5 * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' }
 ];

@@ -8,12 +8,15 @@ import { lomiRouter } from './routers/lomi.ts';
 import { marRouter, medicationRouter } from './routers/mar.ts';
 import { noteRouter } from './routers/note.ts';
 import { syncRouter } from './routers/sync.ts';
+import { clockRouter, scheduleRouter, coverageRouter } from './routers/workforce.ts';
 
 // Root router (trpc-router.md). One router per domain, added as they're built.
 export const appRouter = router({
 	auth: authRouter,
 	agency: agencyRouter,
 	attendance: attendanceRouter,
+	clock: clockRouter,
+	coverage: coverageRouter,
 	device: deviceRouter,
 	health: healthRouter,
 	home: homeRouter,
@@ -22,6 +25,7 @@ export const appRouter = router({
 	mar: marRouter,
 	medication: medicationRouter,
 	note: noteRouter,
+	schedule: scheduleRouter,
 	sync: syncRouter
 });
 

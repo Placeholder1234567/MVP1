@@ -21,6 +21,12 @@
 <div class="stack">
 	<p class="eyebrow">Your home at a glance</p>
 	<h1>A clearer picture of care.</h1>
+	<div class="actions">
+		<a class="btn sec" href={resolve('/(app)/today')}>Care records</a><a
+			class="btn sec"
+			href={resolve('/(app)/shifts')}>Schedule</a
+		><a class="btn sec" href={resolve('/(app)/dashboard/timesheets')}>Timesheets</a>
+	</div>
 	<p class="muted">
 		Documentation and attention for {app.homes.find((h) => h.id === app.homeId)?.name ??
 			'your home'}.

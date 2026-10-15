@@ -36,6 +36,7 @@ export class CareSession {
 	doses = $state<Database['mar_records'][]>([]);
 	clocks = $state<Database['clock_records'][]>([]);
 	shifts = $state<Database['schedule_slots'][]>([]);
+	staff = $state<Database['profiles'][]>([]);
 	messages = $state<Database['messages'][]>([]);
 	agencies = $state<Database['agencies'][]>([]);
 	failed = $state<{ id: string; message: string }[]>([]);
@@ -89,6 +90,7 @@ export class CareSession {
 			(r) => (this.messages = r)
 		);
 		watch<Database['agencies']>('SELECT * FROM agencies', (r) => (this.agencies = r));
+		watch<Database['profiles']>('SELECT * FROM profiles ORDER BY name', (r) => (this.staff = r));
 		watch<{ id: string; message: string }>(
 			'SELECT id, message FROM failed_writes ORDER BY failed_at DESC',
 			(r) => (this.failed = r)
