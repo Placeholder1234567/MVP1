@@ -4,6 +4,8 @@
 // (PBKDF2-SHA256, 600k iterations, AES-256-GCM). No PHI, and nothing in
 // localStorage or IndexedDB.
 
+import { offlineAccessValid, OFFLINE_ACCESS_MS } from '../domain/pwa';
+
 const deviceFile = (profileId?: string) =>
 	profileId ? 'guad-device-' + profileId + '.json' : 'guad-device.json';
 const ITERATIONS = 600_000;
@@ -14,6 +16,8 @@ interface DeviceRecord {
 	/** Present once a PIN has been set on this device */
 	wrapped?: { salt: string; iv: string; ciphertext: string };
 	failedAttempts: number;
+	/** Non-PHI freshness marker; offline access never renews it. */
+	verifiedAt?: number;
 }
 
 const b64 = (bytes: ArrayBuffer | Uint8Array) =>
@@ -68,6 +72,32 @@ export async function deviceId(profileId?: string): Promise<string> {
 /** Whether a PIN-wrapped key exists, so the app can ask for the PIN offline. */
 export async function hasWrappedKey(profileId?: string): Promise<boolean> {
 	return !!(await readRecord(profileId))?.wrapped;
+}
+
+/** Called only in the server-authenticated workspace after unlocking. */
+export async function verifyOfflineAccess(profileId: string): Promise<void> {
+	const record = await readRecord(profileId);
+	if (record?.wrapped) await writeRecord({ ...record, verifiedAt: Date.now() }, profileId);
+}
+/** Lists only profile UUIDs; names and records remain behind the PIN. */
+export async function offlineProfiles(): Promise<string[]> {
+	const dir = await navigator.storage.getDirectory();
+	const profiles: string[] = [];
+	for await (const [name] of dir.entries()) {
+		const match = /^guad-device-([0-9a-f-]{36})\.json$/i.exec(name);
+		if (!match) continue;
+		const record = await readRecord(match[1]);
+		if (record?.wrapped && offlineAccessValid(record.verifiedAt)) profiles.push(match[1]);
+	}
+	return profiles.sort();
+}
+export async function unwrapOfflineKey(pin: string, profileId: string): Promise<Uint8Array> {
+	if (!offlineAccessValid((await readRecord(profileId))?.verifiedAt))
+		throw new Error('Connect and sign in to refresh this device');
+	return unwrapKey(pin, profileId);
+}
+export async function offlineAccessUntil(profileId: string): Promise<number> {
+	return ((await readRecord(profileId))?.verifiedAt ?? 0) + OFFLINE_ACCESS_MS;
 }
 
 /** Stores the key wrapped with the PIN. The plain key never touches disk. */
