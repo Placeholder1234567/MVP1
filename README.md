@@ -24,6 +24,8 @@ npm install
 cp .env.example .env
 npm run db:up        # Postgres 16 + Mailpit (email viewer at http://localhost:8025)
 npm run db:setup     # migrations, RLS policies, integrity triggers, grants
+npm run dev:auth     # Firebase Auth emulator (separate terminal; needs Java 11+)
+npm run db:seed      # synthetic demo agency; staff sign in with DEV_PASSWORD from src/lib/server/seed.ts
 npm run dev          # http://localhost:5173
 ```
 
@@ -31,7 +33,7 @@ npm run dev          # http://localhost:5173
 
 ```bash
 npm test                  # unit tests (domain rules)
-npm run test:integration  # database tests (needs db:up and db:setup)
+npm run test:integration  # database + sign-in tests (needs db:up and db:setup; starts its own Auth emulator)
 npm run lint              # ESLint (incl. import boundaries) + svelte-check
 npm run spec:lint         # cross-spec consistency
 npm run spec:rls-test     # SQL-level RLS and trigger tests (starts its own Postgres)

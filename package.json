@@ -12,7 +12,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run tests/unit",
 		"test:unit": "vitest run tests/unit",
-		"test:integration": "vitest run tests/integration",
+		"test:integration": "firebase emulators:exec --only auth --project demo-guad \"vitest run tests/integration\"",
 		"lint": "eslint . && npm run check",
 		"format": "prettier --write .",
 		"db:up": "docker compose up -d",
@@ -24,7 +24,11 @@
 		"spec:rls-test": "bash .specify/tests/rls/run.sh",
 		"db:setup": "node scripts/db-setup.mjs",
 		"db:reset": "node scripts/db-setup.mjs --reset",
-		"test:all": "vitest run"
+		"test:all": "vitest run",
+		"dev:auth": "firebase emulators:start --only auth --project demo-guad",
+		"db:seed": "tsx --env-file=.env src/lib/server/seed.ts",
+		"pretest": "svelte-kit sync",
+		"pretest:integration": "svelte-kit sync"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -35,11 +39,13 @@
 		"drizzle-kit": "^0.31.11",
 		"eslint": "^10.12.0",
 		"eslint-plugin-svelte": "^3.23.1",
+		"firebase-tools": "^15.33.0",
 		"globals": "^17.13.0",
 		"prettier": "^3.9.10",
 		"prettier-plugin-svelte": "^4.1.1",
 		"svelte": "^5.57.1",
 		"svelte-check": "^4.6.0",
+		"tsx": "^4.23.15",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.71.2",
 		"vite": "^8.3.0",
@@ -55,6 +61,8 @@
 	},
 	"dependencies": {
 		"drizzle-orm": "^0.45.4",
+		"firebase": "^13.0.0",
+		"firebase-admin": "^14.5.0",
 		"pg": "^8.23.1",
 		"zod": "^4.6.7"
 	}

@@ -43,7 +43,8 @@ const SERVICE_INTERNALS = {
 	message: 'Import a service only through its index.ts (constitution principle 15).'
 };
 const SIBLING_SERVICE_INTERNALS = {
-	regex: '^\\.\\./[^/]+/(?!index(\\.ts)?$)[^/]+$',
+	// '../other-service/file' (not '../../db', which every service may use)
+	regex: '^\\.\\./(?!\\.\\.)[^/]+/(?!index(\\.ts)?$)[^/]+$',
 	message: 'Import another service only through its index.ts (constitution principle 15).'
 };
 const DB_DRIVERS = {

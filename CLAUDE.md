@@ -2,13 +2,15 @@
 
 ## Quick Start
 
-> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, the shared domain rules and their tests; sign-in, tRPC and PowerSync come next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
+> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, and sign-in (Identity Platform session cookies, Auth emulator locally); tRPC and PowerSync come next. The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
 
 ```bash
 npm install
 cp .env.example .env
 npm run db:up               # Local Postgres 16 + Mailpit (infrastructure.md §6); PowerSync joins in Phase 2
 npm run db:setup            # Drizzle migrations, then .specify/rls.sql (policies, triggers) and grants
+npm run dev:auth            # Firebase Auth emulator (separate terminal; needs Java 11+)
+npm run db:seed             # Synthetic demo agency + 5 staff; password is DEV_PASSWORD in src/lib/server/seed.ts
 npm run dev                 # SvelteKit dev server at http://localhost:5173
 ```
 
@@ -20,7 +22,8 @@ npm run dev                 # SvelteKit dev server at http://localhost:5173
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build locally |
 | `npm test` | Unit tests (vitest) |
-| `npm run test:integration` | Database tests against the local Docker Postgres |
+| `npm run test:integration` | Database and sign-in tests (local Docker Postgres; starts its own Auth emulator) |
+| `npm run dev:auth` / `db:seed` | Auth emulator / synthetic demo data with emulator-only accounts |
 | `npm run db:up` / `db:down` | Start / stop the local stack |
 | `npm run db:setup` | Apply migrations, RLS policies, triggers and grants (`db:reset` drops everything first) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `.specify/schema.ts` |
@@ -108,6 +111,11 @@ These are absolute. Do not deviate.
 - Use runes: `$state`, `$derived`, `$effect`
 - Do NOT use legacy reactive declarations (`$:`) or legacy stores (`writable`, `readable`) in new code
 - Pass data via props, not global stores (stores only for auth and sync state)
+
+### SvelteKit 3
+- App imports use `#lib/...` **with the file extension**: `#lib/server/identity.ts`, `#lib/server/services/auth/index.ts`. Relative imports inside a folder stay extensionless.
+- Environment variables are declared in `src/env.ts` (`defineEnvVars`) and imported from `$app/env/public` / `$app/env/private`. Server modules that also run in scripts and tests read `process.env`, using server-side names (SvelteKit keeps `PUBLIC_*` out of server code).
+- Hook types come from `@sveltejs/kit/hooks`; `dev` / `browser` from `$app/env`; navigate with `goto(resolve('/path'))`.
 
 ### tRPC
 - One router file per domain in `src/lib/server/trpc/routers/`

@@ -1,0 +1,74 @@
+// Firebase Auth in the browser. Tokens live in memory only (inMemoryPersistence):
+// never localStorage, sessionStorage or IndexedDB (constitution principle 7).
+// The durable session is the HttpOnly cookie set by /auth/session.
+import * as env from '$app/env/public';
+import { initializeApp, getApps } from 'firebase/app';
+import {
+	connectAuthEmulator,
+	inMemoryPersistence,
+	initializeAuth,
+	signInWithCustomToken,
+	signInWithEmailAndPassword,
+	signOut,
+	type Auth
+} from 'firebase/auth';
+
+let auth: Auth | undefined;
+
+export function firebaseAuth(): Auth {
+	if (!auth) {
+		const app =
+			getApps()[0] ??
+			initializeApp({
+				// Public identifiers, not secrets (CLAUDE.md "NO secrets in client bundle")
+				apiKey: env.PUBLIC_FIREBASE_API_KEY || 'demo-key',
+				authDomain: env.PUBLIC_FIREBASE_AUTH_DOMAIN,
+				projectId: env.PUBLIC_FIREBASE_PROJECT_ID || 'demo-guad'
+			});
+		auth = initializeAuth(app, { persistence: inMemoryPersistence });
+		if (env.PUBLIC_AUTH_EMULATOR_URL) {
+			connectAuthEmulator(auth, env.PUBLIC_AUTH_EMULATOR_URL, { disableWarnings: true });
+		}
+	}
+	return auth;
+}
+
+async function postJson(url: string, body?: unknown): Promise<Response> {
+	return fetch(url, {
+		method: body === undefined ? 'DELETE' : 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: body === undefined ? undefined : JSON.stringify(body)
+	});
+}
+
+/** Email + password sign-in, then trade the ID token for the session cookie. */
+export async function signIn(email: string, password: string): Promise<{ role: string }> {
+	const cred = await signInWithEmailAndPassword(firebaseAuth(), email, password);
+	const res = await postJson('/auth/session', { idToken: await cred.user.getIdToken() });
+	if (!res.ok) {
+		await signOut(firebaseAuth());
+		throw new Error((await res.json().catch(() => null))?.message ?? 'Sign-in failed');
+	}
+	return res.json();
+}
+
+/**
+ * The in-memory ID token PowerSync needs. After a reload there is no Firebase
+ * user, so get a custom token from the server (the session cookie proves who
+ * we are) and exchange it.
+ */
+export async function getSyncIdToken(): Promise<{ token: string; expiresAt: Date }> {
+	const a = firebaseAuth();
+	if (!a.currentUser) {
+		const res = await fetch('/auth/sync-token', { method: 'POST' });
+		if (!res.ok) throw new Error('Not signed in');
+		await signInWithCustomToken(a, (await res.json()).customToken);
+	}
+	const result = await a.currentUser!.getIdTokenResult();
+	return { token: result.token, expiresAt: new Date(result.expirationTime) };
+}
+
+export async function signOutEverywhere(): Promise<void> {
+	await postJson('/auth/session');
+	await signOut(firebaseAuth());
+}
