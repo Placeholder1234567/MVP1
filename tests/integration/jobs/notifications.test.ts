@@ -103,7 +103,7 @@ it('dispatches email, keeps in-app rows, and does not resend completed deliverie
 			{ ids: rows.map((r) => r.id) },
 			{ attempt: 1, final: true }
 		)
-	).toEqual({ sent: 0, held: 0, failed: 0 });
+	).toEqual({ sent: 0, held: 0, failed: 0, suppressed: 0 });
 	expect(email).toHaveBeenCalledTimes(calls);
 	expect((await rowsFor(reference)).find((r) => r.channel === 'email')?.provider_message_id).toBe(
 		'test-email'
@@ -146,7 +146,8 @@ it('holds normal push during quiet hours but sends urgent push', async () => {
 	expect(await runJob('notifications-dispatch', { ids }, { attempt: 0, final: true })).toEqual({
 		sent: 1,
 		held: 1,
-		failed: 0
+		failed: 0,
+		suppressed: 0
 	});
 });
 
