@@ -118,8 +118,7 @@
 			>
 			<a class="row" href={resolve('/(app)/people/[id]/incident', { id: person.id })}
 				><span class="avatar sq" aria-hidden="true">!</span><span class="grow"
-					><b>Report {app.labels.incident === 'GER' ? 'a GER' : 'an incident'}</b><span
-						>Falls, injuries, medication errors and more</span
+					><b>{app.labels.reportIncident}</b><span>Falls, injuries, medication errors and more</span
 					></span
 				>{@render chev()}</a
 			>
@@ -134,7 +133,7 @@
 			>
 		</div>
 
-		<div class="section-title"><h2>{app.labels.goals}</h2></div>
+		<div class="section-title"><h2>{app.labels.goalsNav}</h2></div>
 		{#each goals as goal (goal.id)}<div class="card pad">
 				<b>{goal.area}</b>
 				<p>{goal.text}</p>

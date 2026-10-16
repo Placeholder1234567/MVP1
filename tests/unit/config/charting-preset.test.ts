@@ -10,6 +10,27 @@ describe('charting presets (charting-ux.md §2)', () => {
 		expect(Object.keys(therap).sort()).toEqual(Object.keys(plain).sort());
 		expect(therap.shift).toBe('T-Log');
 		expect(therap.medications).toBe('eMAR');
+		// charting-ux.md §2 label map, in the MVP's sentence case for the default preset.
+		expect(therap).toMatchObject({
+			behavior: 'GER',
+			goals: 'ISP Data Collection',
+			goalsNav: 'ISP Data',
+			incident: 'GER (Incident)',
+			approve: 'Approve T-Log',
+			sendBack: 'Return T-Log'
+		});
+		expect(plain).toMatchObject({
+			shift: 'Shift note',
+			goals: 'Goal tracking',
+			goalsNav: 'Goals',
+			incident: 'Incident report',
+			approve: 'Approve note',
+			sendBack: 'Send back'
+		});
+		// Section ordering: same sections, preset order.
+		expect(therap.shiftOrder).toEqual(['activities', 'goals', 'health', 'meals', 'mood']);
+		expect(plain.shiftOrder).toEqual(['activities', 'meals', 'mood', 'health', 'goals']);
+		expect([...therap.shiftOrder].sort()).toEqual([...plain.shiftOrder].sort());
 		expect(plain.shift).not.toBe(therap.shift);
 		// Unknown or missing presets fall back to the default labels.
 		expect(chartingLabels(undefined)).toEqual(plain);
