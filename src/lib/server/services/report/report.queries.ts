@@ -33,7 +33,8 @@ export async function recordExport(
 	profileId: string,
 	format: string,
 	rows: number,
-	request: RequestInfo
+	request: RequestInfo,
+	type = 'timesheets'
 ) {
 	await tx.insert(auditLog).values({
 		agency_id: agencyId,
@@ -43,6 +44,6 @@ export async function recordExport(
 		performed_by: profileId,
 		ip_address: request.ip,
 		user_agent: request.user_agent,
-		new_values: { type: 'timesheets', format, rows }
+		new_values: { type, format, rows }
 	});
 }
