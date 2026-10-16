@@ -6,11 +6,13 @@
 	import type { PowerSyncDatabase } from '@powersync/web';
 	import { provideSession, type AppUser } from './session.svelte';
 	import NoteEditor from './NoteEditor.svelte';
+	import ClinicalWorkspace from './ClinicalWorkspace.svelte';
 	let { user, db, expiresAt }: { user: AppUser; db: PowerSyncDatabase; expiresAt: number } =
 		$props();
 	const app = provideSession(untrack(() => user));
 	let clientId = $state('');
 	let noteId = $state('');
+	let clinicalId = $state('');
 	let type = $state<'shift' | 'behavior'>('shift');
 	const notes = $derived(app.notes.filter((n) => n.home_id === app.homeId).slice(0, 30));
 	onMount(() => {
@@ -48,7 +50,10 @@
 			).toLocaleTimeString()}; save your work before then.
 		</p>
 		<a class="textbtn" href={resolve('/')} data-sveltekit-reload>Reconnect and sync →</a>
-		{#if clientId || noteId}<NoteEditor
+		{#if clinicalId}<ClinicalWorkspace
+				clientId={clinicalId}
+				onBack={() => (clinicalId = '')}
+			/>{:else if clientId || noteId}<NoteEditor
 				{clientId}
 				{noteId}
 				{type}
@@ -72,6 +77,7 @@
 			{#each app.currentPeople as person (person.id)}<article class="card pad stack">
 					<h2>{person.name}</h2>
 					<div class="actions">
+						<button class="btn sec" onclick={() => (clinicalId = person.id)}>Care record</button>
 						<button
 							class="btn"
 							onclick={() => {

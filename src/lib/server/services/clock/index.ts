@@ -142,9 +142,15 @@ export async function timesheet(
 	filter: { homeId?: string; profileId?: string; from: Date; to: Date }
 ) {
 	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
-	if (filter.to.getTime() - filter.from.getTime() > 366 * 86400000)
+	const span = filter.to.getTime() - filter.from.getTime();
+	if (!Number.isFinite(span) || span <= 0 || span > 366 * 86400000)
 		throw new ServiceError('VALIDATION_FAILED', 'Choose a range of one year or less');
-	const entries = await clockRows(tx, user.agencyId, { ...filter, overlap: true });
+	const entries = await clockRows(tx, user.agencyId, { ...filter, overlap: true, limit: 5001 });
+	if (entries.length > 5000)
+		throw new ServiceError(
+			'VALIDATION_FAILED',
+			'Too many entries. Choose a shorter period or one home.'
+		);
 	const totals = { totalHours: 0, verifiedHours: 0, unverifiedHours: 0, manualHours: 0 };
 	for (const row of entries) {
 		if (!row.clock_out_at) continue;

@@ -45,7 +45,33 @@ export default defineConfig(({ mode }) => ({
 			// Google OIDC token or an SNS signature. SvelteKit's own check only
 			// covers form content types, and would reject AWS SNS webhooks
 			// (text/plain, no Origin header), so it's turned off here.
-			csrf: { trustedOrigins: ['*'] }
+			csrf: { trustedOrigins: ['*'] },
+			// Strict CSP (security.md): SvelteKit nonces its own inline scripts.
+			// Runtime origins (PowerSync, the local Auth emulator) are added to
+			// connect-src in hooks.server.ts. 'wasm-unsafe-eval' is for the
+			// encrypted wa-sqlite database; inline styles are Svelte style bindings.
+			csp: {
+				mode: 'auto',
+				directives: {
+					'default-src': ['self'],
+					'script-src': ['self', 'wasm-unsafe-eval'],
+					'style-src': ['self', 'unsafe-inline'],
+					'img-src': ['self', 'data:', 'blob:'],
+					'font-src': ['self'],
+					'connect-src': [
+						'self',
+						'https://identitytoolkit.googleapis.com',
+						'https://securetoken.googleapis.com'
+					],
+					'worker-src': ['self', 'blob:'],
+					'manifest-src': ['self'],
+					'media-src': ['self', 'blob:'],
+					'frame-ancestors': ['none'],
+					'base-uri': ['self'],
+					'form-action': ['self'],
+					'object-src': ['none']
+				}
+			}
 		})
 	]
 }));

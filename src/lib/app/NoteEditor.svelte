@@ -275,16 +275,20 @@
 				<p>{message}</p>
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
-		{#if editable && !offlineOnly}<LomiComposer
-				clientId={person.id}
-				type={kind as 'shift' | 'behavior'}
-				onDraft={(result) => {
-					content = result.content;
-					assisted = true;
-					dirty = true;
-					signature = false;
-				}}
-			/>{/if}
+		{#if editable && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
+					clientId={person.id}
+					type={kind as 'shift' | 'behavior'}
+					onDirty={() => {
+						dirty = true;
+						signature = false;
+					}}
+					onDraft={(result) => {
+						content = result.content;
+						assisted = true;
+						dirty = true;
+						signature = false;
+					}}
+				/>{/key}{/if}
 		{#if !editable}<p class="callout">
 				This note is {note?.status}. Signed records are read-only.
 			</p>{/if}

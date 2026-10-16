@@ -28,3 +28,6 @@ it('never invents a behavior antecedent or outcome', () => {
 		duration: ''
 	});
 });
+it('detects a slip as a possible incident, matching the MVP pattern', () => {
+	expect(draftLocally('Had a slip in the bathroom.', 'shift').incident.detected).toBe(true);
+});
