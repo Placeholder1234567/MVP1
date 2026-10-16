@@ -1,5 +1,19 @@
 # Lomi AI Pipeline
 
+## Implemented drafting review increment
+
+The current Svelte app uses `lomi.draft`, `lomi.edit`, and `lomi.route` tRPC mutations (the REST endpoints below remain architecture references). Section edits and follow-up observations produce proposals; caregivers explicitly apply or discard them, then separately use the reviewed draft in the note. The note's signature remains a separate action. Empty sections offer direct editing. Direct text and conservative sorting remain available without configured providers.
+
+Draft goal references are deliberately more conservative than the target trial-matching design below: the server loads active goals through the caller's tenant/home access and accepts references only to those IDs with exact observation quotes. The review screen displays all active goals and asks the caregiver to record actual trial levels manually. Lomi never fills trial scores. This avoids treating a model-inferred outcome as an observed clinical fact.
+
+The bounded edit API accepts one of the four shift or five behavior sections, current text up to 6000 characters, and additional observations up to 2000 characters. Follow-up routing supports shift sections only, with a combined current-text/message maximum of 8000 characters. Longer sections keep direct editing available. The hourly per-user limits are 60 edits and 30 routes, inside the shared 500-call agency allowance. Configured `LOMI_FAST_MODEL` is used for edits/routes, otherwise the draft model is used. Provider failure returns a clearly labeled verbatim-append/sorting proposal; access checks and rate limits never become successful generated results.
+
+Where an accepted proposal differs from Mode 2/3 below: the target design applies a rewrite immediately with a 10-second undo, but this increment shows "Now" and "Proposed" text and changes nothing until the caregiver taps "Apply proposed changes" (or "Discard suggestion"). After applying, "Undo last accepted change" restores the previous section text until the next direct edit. Chat routing does not update goals (Mode 3's goal example is not implemented).
+
+Vague language flags are shown per section from the current text (`vagueFlags`, `openSectionFlags` in `src/lib/domain/`), with "Fix it" (focuses and selects the phrase) and "Keep as is". The reviewed draft can't be used in the note until every flag is fixed or kept, matching frontend-spec-2.md §3.2's sign-time rule one step earlier.
+
+Recordings remain bounded to 55 seconds inline for the brain dump and 30 seconds for a per-section clip, without object storage. A per-section clip is transcribed into that section's "additional observations" field only; the caregiver then asks for a revision and reviews it like a typed one. The later five-minute, multi-call/streaming pipeline remains target work requiring provider verification. No real provider or cloud resource is needed for local/mock validation.
+
 ## Overview
 
 Lomi ("lemon" in Amharic) is Guad's AI assistant. It drafts clinical documentation, transcribes voice, and summarizes daily status for supervisors.
