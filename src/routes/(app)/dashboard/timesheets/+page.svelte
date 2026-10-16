@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import { resolve } from '$app/paths';
 	const app = useSession();
 	const localInput = (d: Date) =>
 		new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -95,6 +96,7 @@
 <div class="stack">
 	<p class="eyebrow">Timekeeping</p>
 	<h1>Make every hour clear.</h1>
+	<a class="textbtn" href={resolve('/(app)/dashboard/reports')}>Care record reports →</a>
 	<p class="muted">
 		Choose a period, review location exceptions, then export. Date inputs use your device’s time
 		zone.

@@ -1,8 +1,16 @@
 import { TRPCError } from '@trpc/server';
-import { exportPayroll, PayrollExport } from '../../services/report/index.ts';
+import {
+	exportPayroll,
+	PayrollExport,
+	exportClinical,
+	ClinicalExport
+} from '../../services/report/index.ts';
 import { featureRoleProcedure, router } from '../middleware.ts';
 
 export const reportRouter = router({
+	exportClinical: featureRoleProcedure('reports', 'supervisor')
+		.input(ClinicalExport)
+		.mutation(({ ctx, input }) => exportClinical(ctx.db, ctx.user, input, ctx.request)),
 	// A mutation keeps report parameters out of query URLs and audits every export.
 	exportTimesheet: featureRoleProcedure(['reports_basic', 'reports'], 'supervisor')
 		.input(PayrollExport)
