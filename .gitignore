@@ -30,3 +30,6 @@ firebase-debug.log
 
 # Deploy settings (deploy/app.env.example.yaml)
 deploy/app.env.yaml
+# Synthetic browser-test artifacts
+/playwright-report/
+/test-results/

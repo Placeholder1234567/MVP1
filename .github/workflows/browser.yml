@@ -1,0 +1,45 @@
+name: Browser regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    name: Chromium desktop, phone and accessibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://guad:guad@localhost:5433/guad
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: cp .env.example .env
+      - run: docker compose up -d --wait postgres mailpit
+      - run: npm run db:setup
+      - run: docker compose up -d powersync
+      - name: Wait for PowerSync
+        run: timeout 120 bash -c 'until curl -sf http://localhost:8080/probes/liveness; do sleep 2; done'
+      - run: npm run test:e2e
+      - name: Synthetic browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-browser-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
