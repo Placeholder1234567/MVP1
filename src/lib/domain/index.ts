@@ -10,3 +10,4 @@ export * from './eligibility';
 export * from './charting';
 export * from './notifications';
 export * from './sms-replies';
+export * from './escalation';
