@@ -16,6 +16,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npx svelte-kit sync
       - run: npx eslint .
       - run: npm run check
@@ -25,6 +26,7 @@ jobs:
       - run: node scripts/sync-schema.mjs --check # src/lib/sync/schema.ts matches the streams and the schema
       - run: npm run build
       - run: npm run pwa:check
+      - run: npm run build:check
 
   database:
     name: Database, sign-in and sync (Postgres, PowerSync, Auth emulator)
