@@ -9,35 +9,11 @@
 import { randomUUID } from 'node:crypto';
 import { closeDb, withService } from './db';
 import { agencies, clients, homes, medications, profiles, rooms } from './db/schema';
+import { DEMO_STAFF, DEV_PASSWORD } from './demo-accounts';
 import { createIdentity, deleteIdentity } from './identity';
 
-export const DEV_PASSWORD = 'guad-dev-only-1';
-
-const STAFF = [
-	{
-		name: 'Ada Admin',
-		email: 'admin@guad.test',
-		role: 'admin',
-		homes: ['oak', 'maple'],
-		med: true
-	},
-	{
-		name: 'Sam Supervisor',
-		email: 'supervisor@guad.test',
-		role: 'supervisor',
-		homes: ['oak', 'maple'],
-		med: true
-	},
-	{ name: 'Cara Giver', email: 'cara@guad.test', role: 'caregiver', homes: ['oak'], med: true },
-	{
-		name: 'Dev Okafor',
-		email: 'dev@guad.test',
-		role: 'caregiver',
-		homes: ['oak', 'maple'],
-		med: false
-	},
-	{ name: 'Lena Park', email: 'lena@guad.test', role: 'caregiver', homes: ['maple'], med: true }
-] as const;
+export { DEV_PASSWORD } from './demo-accounts';
+const STAFF = DEMO_STAFF;
 
 async function main() {
 	if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
@@ -175,7 +151,9 @@ async function main() {
 
 	console.log(`Seeded "Sunrise Demo Agency" with ${staff.length} staff. Sign in with any of:`);
 	for (const s of staff) console.log(`  ${s.email.padEnd(22)} ${s.role}`);
-	console.log('Password: DEV_PASSWORD in src/lib/server/seed.ts');
+	console.log(
+		'Password: DEV_PASSWORD in src/lib/server/demo-accounts.ts (also listed on the local sign-in page)'
+	);
 }
 
 main()
