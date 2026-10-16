@@ -352,6 +352,8 @@ How the settings map to Cloud Tasks:
 - **No priorities.** Cloud Tasks dispatches roughly in order. Queues are sized so urgent sends aren't delayed; the `priority` field drives quiet hours and rate-limit bypass. If backlog ever delays urgent sends, priority 1 moves to its own queue.
 - Handlers must be idempotent (delivery is at least once): they skip a notification whose status is already `sent`.
 
+**As built:** one job per channel queue (`notifications-push`, `-sms`, `-email`). Provider errors are retried by Cloud Tasks (the handler throws `RetryLater` and leaves the rows pending); deliveries that can never work (no phone, opted out, no device, deactivated) fail at once; the last attempt marks the row `failed` and logs `notification.dead`. The digest runs from a 15-minute `daily-digest-sweep` that queues one `daily-digest` task per agency at 06:00 local time.
+
 ### 3.1 notifications-push
 
 | Setting | Value |
@@ -764,6 +766,8 @@ All "View All" links point to authenticated app screens. No PHI (client names, h
 ---
 
 ## 8. Escalation Engine
+
+**As built:** `domain/escalation.ts` holds the chains below (minus `coverage_offer`, owned by the Schedule Service, and `med_due_reminder`, which waits for a dose-reminder job). `notify()` queues step 1 as a delayed `notifications-escalate` task named per event (type + referenced record), so one chain runs per event, not per recipient. A step fires only if no in-app copy of the event has been read; admins brought in by a step also get an inbox copy, and reading it stops the chain.
 
 ### How It Works
 

@@ -83,6 +83,5 @@ Push (FCM) needs nothing beyond `PUSH_DRIVER=fcm`. Email and SMS need an AWS acc
 
 ## Known gaps
 
-- **SMS rate limit.** One `notifications-dispatch` job sends push, SMS and email from the `notifications-push` queue. So the spec's 1-SMS-per-second limit on `notifications-sms` doesn't apply yet; that needs per-channel jobs.
 - **Retry counts.** A queue's retry count is the highest `maxAttempts` among its jobs, because Cloud Tasks retries per queue. So a job meant to run once (e.g. `coverage-timeout` on `scheduling`) is retried if it throws; its handler still sees `final` on the first attempt.
 - **Not covered.** Cloud Storage exports, MFA enforcement and Cloud Audit Logs aren't set up by these scripts yet.
