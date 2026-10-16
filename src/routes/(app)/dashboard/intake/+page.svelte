@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import RoomInventory from '#lib/components/intake/RoomInventory.svelte';
 	import { beforeNavigate } from '$app/navigation';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
@@ -146,21 +147,6 @@
 			message =
 				'Admission could not be completed. Refresh availability and check that this referral is still accepted.';
 			await load();
-		} finally {
-			busy = false;
-		}
-	}
-	async function roomAction(id: string, status: 'available' | 'reserved', release = false) {
-		if (release && !confirm('Release this room? The client record stays active in the home.'))
-			return;
-		busy = true;
-		message = '';
-		try {
-			await trpc.intake.updateRoom.mutate({ id, status, ...(release ? { occupiedBy: null } : {}) });
-			await load();
-			message = 'Room availability updated.';
-		} catch {
-			message = 'Could not change this room. Connect and refresh availability.';
 		} finally {
 			busy = false;
 		}
@@ -343,6 +329,48 @@
 							admitting.
 						</p>
 						{#if dirty}<p class="callout">Save your referral changes before admission.</p>{/if}
+						<div class="stack" aria-label="Placement availability guidance">
+							<h3>Compare homes</h3>
+							<p class="muted">
+								Availability guidance only. Review needs, accessibility, caregiver skills and
+								staffing before choosing a home. Referral notes are not used to infer clinical
+								eligibility.
+							</p>
+							{#each app.homes as home (home.id)}
+								{@const inventory = rooms.filter((r) => r.homeId === home.id)}
+								{@const openRooms = inventory.filter(
+									(r) => r.status === 'available' && !r.occupiedBy
+								)}
+								<div class="card pad stack">
+									<h4>
+										{home.name}{selected.assigned_home_id === home.id ? ' · Proposed home' : ''}
+									</h4>
+									<p>
+										{openRooms.length} available {openRooms.length === 1 ? 'room' : 'rooms'} · {inventory.filter(
+											(r) => r.status === 'reserved'
+										).length} reserved
+									</p>
+									{#if openRooms.length}<p class="muted">
+											{openRooms.map((r) => r.name).join(', ')}
+										</p>{:else}<p class="muted">
+											{inventory.length
+												? 'No available rooms recorded.'
+												: 'Room inventory is not configured.'} Confirm placement arrangements before admitting
+											without a room.
+										</p>{/if}
+									<button
+										type="button"
+										class="btn sec"
+										disabled={busy || dirty}
+										aria-pressed={homeId === home.id}
+										onclick={() => {
+											homeId = home.id;
+											roomId = '';
+										}}>Choose {home.name}</button
+									>
+								</div>
+							{/each}
+						</div>
 						<label
 							>Client’s full name<input
 								class="input"
@@ -374,38 +402,7 @@
 			{:else}<div class="card empty">Choose a referral to review, or start a new inquiry.</div>{/if}
 		</section>
 	</div>
-	<section class="stack" aria-label="Room availability">
-		<h2>Room availability across homes</h2>
-		<p class="muted">
-			Each room record tracks one occupant. Reserved rooms are held out of admissions. Refresh
-			before making a placement.
-		</p>
-		<div class="grid">
-			{#each rooms as room (room.id)}<article class="card pad stack">
-					<div class="spread">
-						<h3>{room.name}</h3>
-						<span class="pill" class:ok={room.status === 'available'}>{room.status}</span>
-					</div>
-					<p>{room.homeName}</p>
-					{#if room.occupiedByName}<p>{room.occupiedByName}</p>{/if}
-					{#if room.occupiedBy}<button
-							class="btn sec"
-							disabled={busy}
-							onclick={() => roomAction(room.id, 'available', true)}>Release room</button
-						>{:else}<button
-							class="btn sec"
-							disabled={busy}
-							onclick={() =>
-								roomAction(room.id, room.status === 'reserved' ? 'available' : 'reserved')}
-							>{room.status === 'reserved' ? 'Make available' : 'Reserve room'}</button
-						>{/if}
-				</article>{:else}<p class="card empty">
-					{loaded
-						? 'No rooms have been configured for this agency.'
-						: 'Room inventory will appear when connected.'}
-				</p>{/each}
-		</div>
-	</section>
+	<RoomInventory {rooms} loading={busy} {loaded} refresh={load} />
 </div>
 
 <style>

@@ -96,6 +96,20 @@ describe('feature gating', () => {
 		});
 	});
 
+	it('a Starter agency is refused Lomi drafting and section edits', async () => {
+		const cg = await as('cg');
+		await expect(
+			cg.lomi.edit({ clientId: people.starter, section: 'meals', current: '', input: 'Test.' })
+		).rejects.toMatchObject({ code: 'FORBIDDEN', message: PLAN_MESSAGE });
+		await expect(
+			cg.lomi.route({
+				clientId: people.starter,
+				message: 'Test.',
+				current: { activities: '', meals: '', mood: '', health: '' }
+			})
+		).rejects.toMatchObject({ code: 'FORBIDDEN', message: PLAN_MESSAGE });
+	});
+
 	it('the plan is checked before the role', async () => {
 		// A caregiver on Starter gets the plan message, not "no access".
 		await expect((await as('cg')).note.approve({ id: randomUUID() })).rejects.toMatchObject({

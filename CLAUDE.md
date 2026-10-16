@@ -182,6 +182,7 @@ SMS_ORIGINATION_IDENTITY=        # 10DLC phone number ID
 SMS_CONFIGURATION_SET=           # Publishes delivery events to SMS_EVENTS_TOPIC_ARN
 SES_EVENTS_TOPIC_ARN=            # SNS topics the worker's /api/webhooks/aws/* accept
 SMS_EVENTS_TOPIC_ARN=
+SMS_INBOUND_TOPIC_ARN=           # Two-way SMS: coverage YES/NO replies, STOP/START
 PUSH_DRIVER=                     # console (local) | fcm
 EMAIL_DRIVER=                    # smtp (local, Mailpit) | ses
 SMS_DRIVER=                      # console (local) | aws

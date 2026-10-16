@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
-	import { csvRows } from '#lib/domain/csv.ts';
 	const app = useSession();
 	const localInput = (d: Date) =>
 		new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -65,44 +64,30 @@
 			busy = false;
 		}
 	}
-	function exportCsv() {
-		if (!report || !reportRange) return;
-		const data = csvRows([
-			[
-				'Staff',
-				'Home',
-				'Clock in (UTC)',
-				'Clock out (UTC)',
-				'Hours in report period',
-				'Location verified',
-				'Manual entry',
-				'Acknowledged'
-			],
-			...report.entries.map((r) => [
-				app.staff.find((p) => p.id === r.profile_id)?.name ?? r.profile_id,
-				app.homes.find((h) => h.id === r.home_id)?.name ?? r.home_id,
-				r.clock_in_at.toISOString(),
-				r.clock_out_at?.toISOString() ?? '',
-				r.clock_out_at
-					? Math.max(
-							0,
-							Math.min(r.clock_out_at.getTime(), reportRange!.to.getTime()) -
-								Math.max(r.clock_in_at.getTime(), reportRange!.from.getTime())
-						) / 3600000
-					: 0,
-				r.verified ? 'Yes' : 'No',
-				r.manual_override ? 'Yes' : 'No',
-				r.acknowledged ? 'Yes' : 'No'
-			])
-		]);
-		const url = URL.createObjectURL(
-			new Blob(['\uFEFF' + data], { type: 'text/csv;charset=utf-8' })
-		);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = 'guad-timesheet.csv';
-		link.click();
-		setTimeout(() => URL.revokeObjectURL(url), 1000);
+	async function exportReport(format: 'csv' | 'json') {
+		if (!reportRange || busy) return;
+		busy = true;
+		message = '';
+		try {
+			const file = await trpc.report.exportTimesheet.mutate({
+				homeId: reportRange.homeId,
+				from: reportRange.from,
+				to: reportRange.to,
+				format
+			});
+			const url = URL.createObjectURL(new Blob([file.content], { type: file.contentType }));
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = file.filename;
+			link.click();
+			setTimeout(() => URL.revokeObjectURL(url), 1000);
+			message = `Exported ${file.rows} records. Keep downloaded files in your agency’s approved storage.`;
+		} catch {
+			message =
+				'Could not export. Reconnect and check your report permissions or choose a shorter period.';
+		} finally {
+			busy = false;
+		}
 	}
 </script>
 
@@ -147,7 +132,18 @@
 				<p class="stat-number">{report.manualHours.toFixed(2)}</p>
 			</div>
 		</div>
-		<button class="btn sec" onclick={exportCsv}>Download CSV</button>
+		<div class="spread">
+			<button class="btn sec" disabled={busy} onclick={() => exportReport('csv')}
+				>Download CSV</button
+			><button class="btn sec" disabled={busy} onclick={() => exportReport('json')}
+				>Download JSON</button
+			>
+		</div>
+		<p class="muted">
+			Exports refresh this loaded period from the server and record an audit event. Up to 5,000
+			records and one year per export. Staff and home IDs are stable payroll references; location
+			coordinates and correction reasons are excluded. Open shifts contribute zero hours.
+		</p>
 		{#each report.entries as row (row.id)}<article class="card pad stack">
 				<div class="spread">
 					<b>{app.staff.find((p) => p.id === row.profile_id)?.name ?? 'Staff member'}</b><span
