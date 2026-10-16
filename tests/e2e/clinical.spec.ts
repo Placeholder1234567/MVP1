@@ -262,9 +262,9 @@ test('supervisor downloads bounded payroll and clinical exports with safe format
 	// Requires the clinical export increment to be integrated before this CI suite runs.
 	await page.getByRole('link', { name: 'Care record reports →', exact: true }).click();
 	await page.getByLabel('Current home', { exact: true }).selectOption({ label: home });
-	await page.getByLabel('Report', { exact: true }).selectOption('health');
-	await page.getByLabel('Person', { exact: true }).selectOption({ label: person });
-	await page.getByLabel('Format', { exact: true }).selectOption('json');
+	await page.getByRole('combobox', { name: 'Report', exact: true }).selectOption('health');
+	await page.getByRole('combobox', { name: 'Person', exact: true }).selectOption({ label: person });
+	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('json');
 	const clinicalDownload = page.waitForEvent('download');
 	const exportRequest = page.waitForRequest(
 		(r) => r.url().includes('report.exportClinical') && r.method() === 'POST'
@@ -283,7 +283,7 @@ test('supervisor downloads bounded payroll and clinical exports with safe format
 	expect(clinical.rows.some((r: Record<string, unknown>) => 'dob' in r || 'address' in r)).toBe(
 		false
 	);
-	await page.getByLabel('Format', { exact: true }).selectOption('html');
+	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('html');
 	const htmlDownload = page.waitForEvent('download');
 	await page.getByRole('button', { name: 'Download care report', exact: true }).click();
 	const html = await downloaded(await htmlDownload, info, 'care-report.html');
