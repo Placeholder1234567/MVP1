@@ -1,0 +1,35 @@
+name: Performance budget
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    # constitution.md "Performance Targets": time to interactive < 2 s on a
+    # throttled mobile connection, measured with Lighthouse CI. Budgets are in
+    # lighthouserc.json; only public pages (sign-in, offline unlock) are
+    # measured, so no database or sign-in is needed.
+    name: Lighthouse (public pages, mobile throttling)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx --yes @lhci/cli@0.14.0 autorun
+      - name: Lighthouse reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: .lighthouseci/
+          retention-days: 7
