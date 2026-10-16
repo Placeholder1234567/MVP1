@@ -3,12 +3,13 @@ import { dev } from '$app/env';
 import { z } from 'zod';
 import {
 	createSession,
+	mfaEnforced,
 	revokeSessions,
 	SESSION_COOKIE,
 	SignInError,
 	verifySession
 } from '#lib/server/identity.ts';
-import { getCurrentUser } from '#lib/server/services/auth/index.ts';
+import { checkMfa, getCurrentUser } from '#lib/server/services/auth/index.ts';
 import type { RequestHandler } from './$types';
 
 const Body = z.object({ idToken: z.string().min(1).max(4096) });
@@ -30,6 +31,23 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const user = await getCurrentUser(session.uid);
 	if (!user) error(403, 'This account is not set up in Guad, or has been deactivated');
 
+	// MFA policy (security.md): no session without TOTP when the role needs it.
+	// The browser still holds the signed-in Firebase user, so it can enroll now.
+	let mfaGraceDaysLeft: number | undefined;
+	if (mfaEnforced()) {
+		const mfa = await checkMfa(user, session.secondFactor);
+		if (!mfa.satisfied) {
+			return json(
+				{
+					code: 'mfa_enrollment_required',
+					message: 'Your role needs two-step sign-in. Set up an authenticator app to continue.'
+				},
+				{ status: 403 }
+			);
+		}
+		if (mfa.kind === 'grace' && !session.secondFactor) mfaGraceDaysLeft = mfa.daysLeft;
+	}
+
 	cookies.set(SESSION_COOKIE, session.cookie, {
 		path: '/',
 		httpOnly: true,
@@ -37,7 +55,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		sameSite: 'lax',
 		maxAge: Math.floor(session.expiresIn / 1000)
 	});
-	return json({ ok: true, role: user.role });
+	return json({ ok: true, role: user.role, mfaGraceDaysLeft });
 };
 
 /** DELETE: sign out here and revoke sessions on every device. */
