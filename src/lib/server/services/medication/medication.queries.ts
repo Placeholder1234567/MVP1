@@ -30,7 +30,7 @@ export async function findMedication(
 
 export async function findMarRecord(tx: Tx, agencyId: string, id: string) {
 	const [row] = await tx
-		.select({ id: marRecords.id })
+		.select({ id: marRecords.id, clientId: marRecords.client_id })
 		.from(marRecords)
 		.where(and(eq(marRecords.agency_id, agencyId), eq(marRecords.id, id)))
 		.limit(1);

@@ -2,6 +2,7 @@
 // (constitution principle 13); corrections are new records with amendsId.
 import { z } from 'zod';
 import { addDays, hhmm, localTime, medTimes } from '../../../domain/index.ts';
+import { doseNeedsReason } from '../../../domain/clinical.ts';
 import { asService, type Tx } from '../../db';
 import { pgConstraint, pgCode, ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -76,14 +77,27 @@ export async function recordDose(
 	if (!isPrn && (!slot || !times.includes(slot))) {
 		throw new ServiceError('VALIDATION_FAILED', 'Pick one of this medication’s scheduled times');
 	}
-	if (dose.status !== 'given' && !dose.reason) {
-		throw new ServiceError('VALIDATION_FAILED', 'Say why the dose was refused or held');
+	if (doseNeedsReason(dose.status, isPrn, !!dose.amendsId) && !dose.reason) {
+		throw new ServiceError(
+			'VALIDATION_FAILED',
+			dose.amendsId
+				? 'Explain the correction'
+				: dose.status !== 'given'
+					? 'Say why the dose was refused or held'
+					: 'Say why the as-needed dose was given'
+		);
 	}
-	if (isPrn && dose.status === 'given' && !dose.reason) {
-		throw new ServiceError('VALIDATION_FAILED', 'Say why the as-needed dose was given');
-	}
-	if (dose.amendsId && !(await findMarRecord(tx, agencyId, dose.amendsId))) {
-		throw new ServiceError('NOT_FOUND', 'The record being corrected was not found');
+	if (dose.amendsId) {
+		// The query keeps its agency filter and the caller's RLS visibility.
+		// A visible record for a different person is still not a valid audit link.
+		const original = await findMarRecord(tx, agencyId, dose.amendsId);
+		if (!original) throw new ServiceError('NOT_FOUND', 'The record being corrected was not found');
+		// Match PostgreSQL UUID equality for callers using uppercase UUID text.
+		if (original.clientId.toLowerCase() !== dose.clientId.toLowerCase())
+			throw new ServiceError(
+				'VALIDATION_FAILED',
+				'A correction must refer to this person’s record'
+			);
 	}
 
 	const row = {
