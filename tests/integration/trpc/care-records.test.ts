@@ -36,7 +36,12 @@ beforeAll(async () => {
 	await withService(async (t) => {
 		await t
 			.insert(s.agencies)
-			.values({ id: AGENCY, name: 'Care Test Agency', subscription_tier: 'complete', slug: `care-${AGENCY}` });
+			.values({
+				id: AGENCY,
+				name: 'Care Test Agency',
+				subscription_tier: 'complete',
+				slug: `care-${AGENCY}`
+			});
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }
@@ -119,6 +124,67 @@ describe('Lomi access and labels', () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
+	});
+	it('returns section edits and follow-ups as proposals without touching any note', async () => {
+		vi.stubEnv('LOMI_MODEL', '');
+		try {
+			const cara = await as(CARA);
+			expect(
+				await cara.lomi.edit({
+					clientId: PERSON,
+					section: 'meals',
+					current: 'Ate breakfast.',
+					input: 'Drank water at lunch.'
+				})
+			).toEqual({ text: 'Ate breakfast. Drank water at lunch.', fallback: true });
+			const routed = await cara.lomi.route({
+				clientId: PERSON,
+				message: 'Ate lunch. Smiled at staff.',
+				current: { activities: 'Walked.', meals: 'Ate breakfast.', mood: '', health: '' }
+			});
+			expect(routed).toEqual({
+				updates: [
+					{ section: 'meals', text: 'Ate breakfast. Ate lunch.' },
+					{ section: 'mood', text: 'Smiled at staff.' }
+				],
+				fallback: true
+			});
+			await expect(
+				cara.lomi.edit({ clientId: MAPLE_PERSON, section: 'meals', current: '', input: 'Test.' })
+			).rejects.toMatchObject({ code: 'NOT_FOUND' });
+			await expect(
+				cara.lomi.route({
+					clientId: MAPLE_PERSON,
+					message: 'Test.',
+					current: { activities: '', meals: '', mood: '', health: '' }
+				})
+			).rejects.toMatchObject({ code: 'NOT_FOUND' });
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+	it('rejects unknown sections and oversized assisted edits', async () => {
+		const cara = await as(CARA);
+		await expect(
+			cara.lomi.edit({
+				clientId: PERSON,
+				// @ts-expect-error goal scores are never an editable Lomi section
+				section: 'goal_scores',
+				current: '',
+				input: 'Independent'
+			})
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		await expect(
+			cara.lomi.edit({ clientId: PERSON, section: 'meals', current: 'x'.repeat(6001), input: 'y' })
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		const long = 'x'.repeat(2500);
+		await expect(
+			cara.lomi.route({
+				clientId: PERSON,
+				message: 'Ate lunch.',
+				current: { activities: long, meals: long, mood: long, health: long }
+			})
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 	});
 	it('keeps the Lomi label after a manual draft is edited with Lomi online or offline', async () => {
 		const cara = await as(CARA);
