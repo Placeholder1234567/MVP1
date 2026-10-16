@@ -1,6 +1,9 @@
 {
 	"name": "guad",
 	"private": true,
+	"overrides": {
+		"@grpc/grpc-js": "^1.14.6"
+	},
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
@@ -10,6 +13,7 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p src/service-worker/tsconfig.json && tsc -p tsconfig.e2e.json",
 		"pwa:check": "node scripts/check-pwa.mjs",
+		"build:check": "node --test tests/artifacts/client-artifacts.test.mjs && node scripts/check-client-artifacts.mjs",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run tests/unit",
 		"test:unit": "vitest run tests/unit",
@@ -46,7 +50,7 @@
 		"drizzle-kit": "^0.31.11",
 		"eslint": "^10.12.0",
 		"eslint-plugin-svelte": "^3.23.1",
-		"firebase-tools": "^15.33.0",
+		"firebase-tools": "^15.34.0",
 		"globals": "^17.13.0",
 		"prettier": "^3.9.10",
 		"prettier-plugin-svelte": "^4.1.1",
