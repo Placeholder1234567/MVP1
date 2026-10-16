@@ -282,6 +282,7 @@ src/lib/server/services/
 - `getRoomsByHome(agencyId, homeId): Room[]` — room inventory for a specific home.
 - `assignRoom(agencyId, roomId, clientId): Room` — mark room as occupied, link to client.
 - `releaseRoom(agencyId, roomId): Room` — mark room as available.
+- `createRoom(agencyId, homeId, name, capacity, status): Room` — add a room to a home's inventory (supervisor). Names are unique ignoring case within a home. `capacity` is physical and informational: each room record holds at most one occupant, so availability counts rooms, not beds. Room name, capacity and availability (`available` / `reserved`) are edited through `updateRoom`, which also performs assign and release; rooms never move between homes.
 - `matchToHome(agencyId, referralId): MatchSuggestion[]` — internal helper (not exposed via tRPC). Suggests homes based on open rooms, caregiver certifications, and client needs. Called by `convertToClient` to surface placement suggestions.
 - `convertToClient(agencyId, referralId, homeId, name, roomId?): { clientId: uuid, referralId: uuid }` — converts an accepted referral into a client record. Transitions the referral status to `placed`, creates the Client and ClientHealthInfo records (via Client Service), and optionally assigns the specified room.
 

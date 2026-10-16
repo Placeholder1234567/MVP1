@@ -657,6 +657,8 @@ All SMS messages must be under 160 characters to avoid multi-segment billing. Te
 
 ### Incoming Replies (two-way SMS)
 
+**As built:** `src/lib/server/services/sms/` handles `/api/webhooks/aws/sms-inbound` (topic `SMS_INBOUND_TOPIC_ARN`). The 4-digit offer code is derived from the coverage request ID (`offerCode()` in `domain/sms-replies.ts`), so no column stores it. A reply runs `respondCoverage()` as the sender, with the same eligibility and first-acceptance rules as the app. STOP saves SMS-off preferences for every type, mandatory ones included, and dispatch skips SMS while that preference is off; START restores the role defaults. Texts from unknown numbers get no answer.
+
 The `coverage_offer` SMS template (Section 2.1) instructs candidates to "Reply YES or NO." Two-way SMS is enabled on the origination number, with inbound messages published to an SNS topic subscribed to the worker:
 
 - **Webhook URL:** `/api/webhooks/aws/sms-inbound` (SNS HTTPS subscription; the handler confirms the subscription once, then receives each inbound message)

@@ -62,7 +62,9 @@ export function pendingDeliveries(tx: Tx, ids?: string[]) {
 			id: notifications.id,
 			agencyId: notifications.agency_id,
 			channel: notifications.channel,
+			type: notifications.type,
 			title: notifications.title,
+			referenceId: notifications.reference_id,
 			priority: notifications.priority,
 			profileId: notifications.profile_id,
 			email: profiles.email,
@@ -70,12 +72,21 @@ export function pendingDeliveries(tx: Tx, ids?: string[]) {
 			active: profiles.active,
 			timeZone: agencies.timezone,
 			quietStart: userSettings.quiet_hours_start,
-			quietEnd: userSettings.quiet_hours_end
+			quietEnd: userSettings.quiet_hours_end,
+			/** false after the person texted STOP (sms-inbound), even for mandatory types */
+			smsEnabled: notificationPreferences.sms_enabled
 		})
 		.from(notifications)
 		.innerJoin(profiles, eq(profiles.id, notifications.profile_id))
 		.innerJoin(agencies, eq(agencies.id, notifications.agency_id))
 		.leftJoin(userSettings, eq(userSettings.profile_id, notifications.profile_id))
+		.leftJoin(
+			notificationPreferences,
+			and(
+				eq(notificationPreferences.profile_id, notifications.profile_id),
+				eq(notificationPreferences.notification_type, notifications.type)
+			)
+		)
 		.where(and(...where))
 		.limit(500);
 }
