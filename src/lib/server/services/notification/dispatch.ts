@@ -1,26 +1,47 @@
 // Sends pending notification deliveries (notifications.md §3-7). Idempotent:
 // only rows still 'pending' are sent, so a retried or duplicate task never
 // sends twice once a row is marked sent.
+//
+// Each channel has its own Cloud Tasks queue (notifications-push / -sms /
+// -email), so SMS keeps to 1 message a second and its own retry policy. A
+// provider error is retried by Cloud Tasks; a delivery that can never work
+// (no phone, opted out, no device, deactivated) fails at once. On the last
+// attempt a failure is final: the row is marked failed and `notification.dead`
+// is logged for alerting (notifications.md §3, §11).
 import { canSendNow, localTime, type Channel } from '../../../domain/index.ts';
 import { withService } from '../../db';
 import { enqueue } from '../../jobs/queue.ts';
 import { providers } from '../../messaging/index.ts';
 import { render } from '../../messaging/templates.ts';
 import { deleteDeviceTokens, isSuppressed } from './events.queries';
-import {
-	markDelivery,
-	pendingDeliveries,
-	pushTokens,
-	stalePendingIds
-} from './notification.queries';
+import { markDelivery, pendingDeliveries, pushTokens, stalePending } from './notification.queries';
 
-export async function dispatchNotifications(payload: { ids?: string[] }): Promise<{
+/** A delivery that will never succeed, so retrying is pointless. */
+class Undeliverable extends Error {
+	name = 'Undeliverable';
+}
+
+/** Retry later: Cloud Tasks backs off and calls the handler again. */
+export class RetryLater extends Error {
+	name = 'RetryLater';
+}
+
+export interface DispatchContext {
+	/** False while Cloud Tasks will still retry this task. */
+	final: boolean;
+}
+
+export async function dispatchNotifications(
+	payload: { ids?: string[] },
+	ctx: DispatchContext = { final: true }
+): Promise<{
 	sent: number;
 	held: number;
 	failed: number;
 	suppressed: number;
 }> {
 	const stats = { sent: 0, held: 0, failed: 0, suppressed: 0 };
+	let retry = 0;
 	const rows = await withService((tx) => pendingDeliveries(tx, payload.ids));
 	const send = providers();
 	for (const row of rows) {
@@ -44,25 +65,28 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 			continue;
 		}
 		try {
-			if (!row.active) throw new Error('recipient deactivated');
+			if (!row.active) throw new Undeliverable('recipient deactivated');
 			const d = render(channel, row);
 			let result;
 			if (channel === 'push') {
 				const tokens = (await withService((tx) => pushTokens(tx, row.profileId))).map(
 					(t) => t.token
 				);
-				if (!tokens.length) throw new Error('no push device registered');
+				if (!tokens.length) throw new Undeliverable('no push device registered');
 				try {
 					result = await send.push(tokens, d);
 				} catch (e) {
-					await removeDeadTokens(row.profileId, (e as { deadTokens?: string[] }).deadTokens);
+					const dead = (e as { deadTokens?: string[] }).deadTokens;
+					await removeDeadTokens(row.profileId, dead);
+					// Every device was rejected for good: nothing left to retry.
+					if (dead?.length === tokens.length) throw new Undeliverable('all push tokens dead');
 					throw e;
 				}
 				await removeDeadTokens(row.profileId, result.deadTokens);
 			} else if (channel === 'sms') {
-				if (!row.phone) throw new Error('no phone number');
+				if (!row.phone) throw new Undeliverable('no phone number');
 				// Texted STOP: carriers block it anyway, and opted-out numbers must not be texted.
-				if (row.smsEnabled === false) throw new Error('opted out of SMS');
+				if (row.smsEnabled === false) throw new Undeliverable('opted out of SMS');
 				result = await send.sms(row.phone, d);
 			} else {
 				result = await send.email(row.email, d);
@@ -73,11 +97,18 @@ export async function dispatchNotifications(payload: { ids?: string[] }): Promis
 			stats.sent++;
 		} catch (e) {
 			// The reason is logged by name only; addresses and tokens are never logged.
-			console.error(`notification ${row.id} ${channel} failed: ${(e as Error).name}`);
+			if (!(e instanceof Undeliverable) && !ctx.final) {
+				console.warn(`notification ${row.id} ${channel} will retry: ${(e as Error).name}`);
+				retry++;
+				continue;
+			}
+			console.error(`notification.dead ${row.id} ${channel}: ${(e as Error).name}`);
 			await withService((tx) => markDelivery(tx, row.id, { status: 'failed' }));
 			stats.failed++;
 		}
 	}
+	// Rows left pending get the next attempt; sent ones are skipped then.
+	if (retry) throw new RetryLater(`${retry} deliveries will be retried`);
 	return stats;
 }
 
@@ -86,13 +117,28 @@ async function removeDeadTokens(profileId: string, tokens: string[] | undefined)
 	if (tokens?.length) await withService((tx) => deleteDeviceTokens(tx, profileId, tokens));
 }
 
+/** Queues deliveries on their channel's queue. */
+export async function queueDeliveries(rows: { id: string; channel: string }[]) {
+	const byChannel = new Map<string, string[]>();
+	for (const r of rows) {
+		if (r.channel === 'in_app') continue;
+		byChannel.set(r.channel, [...(byChannel.get(r.channel) ?? []), r.id]);
+	}
+	for (const [channel, ids] of byChannel) {
+		for (let i = 0; i < ids.length; i += 500) {
+			await enqueue(`notifications-${channel}`, { ids: ids.slice(i, i + 500) });
+		}
+	}
+}
+
 /**
  * Safety net (Cloud Scheduler, every 5 minutes): re-queues deliveries still
- * pending after a minute, e.g. a dispatch that crashed or rows held for quiet
- * hours, which go out once the window ends.
+ * pending after 3 minutes (longer than any queue's retry backoff), e.g. a
+ * dispatch that crashed, or rows held for quiet hours, which go out once the
+ * window ends.
  */
 export async function sweepNotifications(): Promise<{ queued: number }> {
-	const ids = await withService((tx) => stalePendingIds(tx, new Date(Date.now() - 60_000)));
-	if (ids.length) await enqueue('notifications-dispatch', { ids });
-	return { queued: ids.length };
+	const rows = await withService((tx) => stalePending(tx, new Date(Date.now() - 3 * 60_000)));
+	await queueDeliveries(rows);
+	return { queued: rows.length };
 }

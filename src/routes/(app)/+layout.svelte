@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
+	import InstallCard from '#lib/app/InstallCard.svelte';
+	import { inspectDevice, deviceIssue } from '#lib/pwa/readiness.ts';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -25,6 +27,7 @@
 	let again = $state('');
 	let message = $state('');
 	let busy = $state(false);
+	let unsupported = $state(false);
 	let key: Uint8Array | undefined;
 	const nav = $derived(
 		data.user.role === 'caregiver'
@@ -56,6 +59,14 @@
 		let alive = true;
 		void (async () => {
 			try {
+				const issue = deviceIssue(await inspectDevice());
+				if (issue) {
+					if (alive) {
+						unsupported = true;
+						message = issue;
+					}
+					return;
+				}
 				if (await hasWrappedKey(app.user.profileId)) {
 					if (alive) step = 'enter-pin';
 				} else await fetchKey();
@@ -196,6 +207,7 @@
 			{#if message}<p role="alert" class="callout bad">{message}</p>
 				<button class="textbtn" onclick={() => location.reload()}>Try again</button>{/if}
 			<button class="textbtn" onclick={signOut}>Sign out</button>
+			{#if unsupported}<InstallCard showWorkspace={false} />{/if}
 		</div>
 	</main>
 {:else}

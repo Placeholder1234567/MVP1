@@ -64,6 +64,7 @@ export function pendingDeliveries(tx: Tx, ids?: string[]) {
 			channel: notifications.channel,
 			type: notifications.type,
 			title: notifications.title,
+			body: notifications.body,
 			referenceId: notifications.reference_id,
 			priority: notifications.priority,
 			profileId: notifications.profile_id,
@@ -114,10 +115,10 @@ export async function markDelivery(
 		.where(eq(notifications.id, id));
 }
 
-/** IDs of deliveries still pending after `olderThan` (the sweeper's safety net). */
-export async function stalePendingIds(tx: Tx, olderThan: Date) {
-	const rows = await tx
-		.select({ id: notifications.id })
+/** Deliveries still pending after `olderThan` (the sweeper's safety net). */
+export function stalePending(tx: Tx, olderThan: Date) {
+	return tx
+		.select({ id: notifications.id, channel: notifications.channel })
 		.from(notifications)
 		.where(
 			and(
@@ -127,5 +128,4 @@ export async function stalePendingIds(tx: Tx, olderThan: Date) {
 			)
 		)
 		.limit(500);
-	return rows.map((r) => r.id);
 }

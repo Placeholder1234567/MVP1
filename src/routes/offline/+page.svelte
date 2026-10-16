@@ -13,17 +13,28 @@
 	import type { AppUser } from '#lib/app/session.svelte.ts';
 	import OfflineWorkspace from '#lib/app/OfflineWorkspace.svelte';
 	import { offlinePermissions } from '#lib/domain/pwa.ts';
+	import { inspectDevice, deviceIssue } from '#lib/pwa/readiness.ts';
+	import InstallCard from '#lib/app/InstallCard.svelte';
 	let profiles = $state<string[]>([]);
 	let profileId = $state('');
 	let pin = $state('');
 	let error = $state('');
 	let busy = $state(false);
 	let checked = $state(false);
+	let unsupported = $state(false);
 	let user = $state<AppUser | null>(null);
 	let database = $state.raw<PowerSyncDatabase | undefined>();
 	let expiresAt = $state(0);
 	onMount(() => {
-		void offlineProfiles()
+		void inspectDevice()
+			.then(async (state) => {
+				const issue = deviceIssue(state);
+				if (issue) {
+					unsupported = true;
+					throw new Error('Device unavailable');
+				}
+				return offlineProfiles();
+			})
 			.then((ids) => {
 				profiles = ids;
 				profileId = ids[0] ?? '';
@@ -160,6 +171,7 @@
 				href={resolve('/')}
 				data-sveltekit-reload>Return to sign-in</a
 			>
+			{#if unsupported}<InstallCard showWorkspace={false} />{/if}
 		</div>
 	</main>
 {/if}

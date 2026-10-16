@@ -6,7 +6,13 @@ import type { Delivery } from './index.ts';
 
 export function render(
 	channel: 'push' | 'sms' | 'email',
-	n: { id: string; title: string; type?: string; referenceId?: string | null }
+	n: {
+		id: string;
+		title: string;
+		type?: string;
+		referenceId?: string | null;
+		body?: string | null;
+	}
 ): Delivery {
 	const link = `/notifications/${n.id}`;
 	if (channel === 'push') {
@@ -27,10 +33,17 @@ export function render(
 			: `Guad: ${title}. Open the app to review.`;
 		return { notificationId: n.id, title: n.title, body: body.slice(0, 160), link };
 	}
+	// The daily summary's body is counts and home names only (digest.ts).
+	const details =
+		n.type === 'daily_summary' && n.body
+			? `${n.body}
+
+`
+			: '';
 	return {
 		notificationId: n.id,
 		title: n.title,
-		body: `${n.title}. Sign in to Guad to see the details.`,
+		body: `${details}${n.title}. Sign in to Guad to see the details.`,
 		link
 	};
 }

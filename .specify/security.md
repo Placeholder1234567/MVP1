@@ -4,6 +4,8 @@ Guad operates as a Business Associate under HIPAA. This document defines the sec
 
 ---
 
+See security-audit.md for the latest code-level review: what was fixed and what is still open.
+
 ## Threat Model
 
 | # | Threat | Likelihood | Impact | Mitigation |
@@ -55,6 +57,8 @@ Changing a user's role, homes or active status takes effect on their next reques
 | Caregiver | Optional (encouraged). Agency can mandate via `agencies.settings.mfa_required_roles`. |
 | Supervisor | Required after go-live. 30-day grace period on account creation. |
 | Admin | Required immediately. Cannot access admin functions without MFA enrolled. |
+
+**As built:** `domain/mfa.ts` holds the policy, and `/auth/session` refuses a session cookie when the role needs MFA but the sign-in didn't use a second factor (Identity Platform's `sign_in_second_factor` claim). The login page answers TOTP challenges and walks the user through enrollment when it's required. Enforcement is off with the Auth emulator, which has no TOTP, and when `MFA_ENFORCE=off`.
 
 MFA is implemented with Identity Platform's TOTP multi-factor. SMS codes are not offered (cost and SIM-swap risk). Identity Platform has no backup codes, so a user who loses their authenticator is reset by an admin: the admin unenrolls the factor (Admin SDK), the action is audited, and the user must enroll again at next sign-in.
 
@@ -227,7 +231,7 @@ All PHI tables trigger audit logging: `clients`, `client_health_info`, `goals`, 
 - The `audit_log` table has **no UPDATE or DELETE RLS policies**. Application code cannot modify or remove audit entries.
 - The `app_user` database role used for user requests has no `DELETE` or `TRUNCATE` grant on `audit_log`.
 - A Postgres trigger prevents direct `UPDATE` or `DELETE` on `audit_log` rows even for superusers within the application context.
-- **Known risk:** `audit_log.agency_id` currently has `onDelete: 'cascade'` in the schema, meaning deleting an agency would cascade-delete its entire audit trail. This must be changed to `onDelete: 'restrict'` (preventing agency deletion while audit records exist) or `onDelete: 'set null'` (preserving orphaned audit records) before production to meet the 7-year retention requirement. A Postgres trigger should also prevent `DELETE` on the `agencies` table while `audit_log` rows reference it.
+- `audit_log.agency_id` uses `onDelete: 'restrict'`, so an agency can't be deleted while audit records reference it (7-year retention).
 
 ### Retention
 

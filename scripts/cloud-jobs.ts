@@ -12,7 +12,7 @@ const SETTINGS: Record<string, { concurrency: number; perSecond?: number }> = {
 	timekeeping: { concurrency: 5 },
 	'notifications-push': { concurrency: 20 },
 	'notifications-sms': { concurrency: 5, perSecond: 1 },
-	'notifications-email': { concurrency: 10 },
+	'notifications-email': { concurrency: 10, perSecond: 14 },
 	'notifications-escalation': { concurrency: 5 },
 	'notifications-digest': { concurrency: 3 },
 	reports: { concurrency: 2 },
