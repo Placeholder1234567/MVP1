@@ -2,7 +2,13 @@
 // (services.md "Job Registry"). Handlers call services and database helpers,
 // never UI code (constitution principle 15).
 import { z } from 'zod';
-import { dispatchNotifications, sweepNotifications } from '../services/notification/index.ts';
+import {
+	dispatchNotifications,
+	escalate,
+	sendDigest,
+	sweepDigests,
+	sweepNotifications
+} from '../services/notification/index.ts';
 import { applySyncWindows } from '../services/sync/index.ts';
 import { searchCoverage, coverageTimer, sweepCoverage } from '../services/schedule/index.ts';
 import { checkMissedPunches } from '../services/clock/index.ts';
@@ -23,6 +29,7 @@ interface JobDef<P> {
 }
 
 const job = <P>(def: JobDef<P>) => def;
+const deliveryIds = z.object({ ids: z.array(z.uuid()).max(500).optional() });
 
 const JOBS = {
 	'missed-punch-check': job({
@@ -55,11 +62,56 @@ const JOBS = {
 		maxAttempts: 1,
 		run: () => sweepCoverage()
 	}),
+	// One job per channel queue (notifications.md §3): SMS is rate limited to
+	// 1/s and each channel has its own retries.
+	'notifications-push': job({
+		queue: 'notifications-push',
+		payload: deliveryIds,
+		maxAttempts: 3,
+		run: (p, ctx) => dispatchNotifications(p, ctx)
+	}),
+	'notifications-sms': job({
+		queue: 'notifications-sms',
+		payload: deliveryIds,
+		maxAttempts: 2,
+		run: (p, ctx) => dispatchNotifications(p, ctx)
+	}),
+	'notifications-email': job({
+		queue: 'notifications-email',
+		payload: deliveryIds,
+		maxAttempts: 3,
+		run: (p, ctx) => dispatchNotifications(p, ctx)
+	}),
+	// Kept so tasks queued before the per-channel queues still run.
 	'notifications-dispatch': job({
 		queue: 'notifications-push',
-		payload: z.object({ ids: z.array(z.uuid()).max(500).optional() }),
+		payload: deliveryIds,
 		maxAttempts: 3,
-		run: (p) => dispatchNotifications(p)
+		run: (p, ctx) => dispatchNotifications(p, ctx)
+	}),
+	'notifications-escalate': job({
+		queue: 'notifications-escalation',
+		payload: z.object({
+			agencyId: z.uuid(),
+			type: z.string().max(64),
+			referenceId: z.uuid().nullable(),
+			notificationId: z.uuid(),
+			step: z.number().int().min(1).max(3)
+		}),
+		maxAttempts: 1,
+		run: (p) => escalate(p)
+	}),
+	'daily-digest-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => sweepDigests()
+	}),
+	'daily-digest': job({
+		queue: 'notifications-digest',
+		payload: z.object({ agencyId: z.uuid() }),
+		maxAttempts: 1,
+		run: (p) => sendDigest(p)
 	}),
 	'notifications-sweep': job({
 		queue: 'maintenance',
@@ -115,5 +167,7 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	{ job: 'missed-punch-check', cron: '*/15 * * * *' },
 	{ job: 'coverage-sweep', cron: '*/5 * * * *' },
 	{ job: 'notifications-sweep', cron: '*/5 * * * *' },
+	// Each agency's digest goes out at 06:00 its local time (digest.ts).
+	{ job: 'daily-digest-sweep', cron: '*/15 * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' }
 ];

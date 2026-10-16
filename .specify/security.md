@@ -4,6 +4,8 @@ Guad operates as a Business Associate under HIPAA. This document defines the sec
 
 ---
 
+See security-audit.md for the latest code-level review: what was fixed and what is still open.
+
 ## Threat Model
 
 | # | Threat | Likelihood | Impact | Mitigation |
@@ -229,7 +231,7 @@ All PHI tables trigger audit logging: `clients`, `client_health_info`, `goals`, 
 - The `audit_log` table has **no UPDATE or DELETE RLS policies**. Application code cannot modify or remove audit entries.
 - The `app_user` database role used for user requests has no `DELETE` or `TRUNCATE` grant on `audit_log`.
 - A Postgres trigger prevents direct `UPDATE` or `DELETE` on `audit_log` rows even for superusers within the application context.
-- **Known risk:** `audit_log.agency_id` currently has `onDelete: 'cascade'` in the schema, meaning deleting an agency would cascade-delete its entire audit trail. This must be changed to `onDelete: 'restrict'` (preventing agency deletion while audit records exist) or `onDelete: 'set null'` (preserving orphaned audit records) before production to meet the 7-year retention requirement. A Postgres trigger should also prevent `DELETE` on the `agencies` table while `audit_log` rows reference it.
+- `audit_log.agency_id` uses `onDelete: 'restrict'`, so an agency can't be deleted while audit records reference it (7-year retention).
 
 ### Retention
 
