@@ -1,0 +1,29 @@
+{
+	"ci": {
+		"collect": {
+			"startServerCommand": "node -e \"process.env.PORT='4176';process.env.HOST='127.0.0.1';import('./build/index.js')\"",
+			"startServerReadyPattern": "Listening",
+			"url": ["http://127.0.0.1:4176/login", "http://127.0.0.1:4176/offline"],
+			"numberOfRuns": 3,
+			"settings": {
+				"onlyCategories": ["performance"],
+				"chromeFlags": "--headless=new --no-sandbox"
+			}
+		},
+		"assert": {
+			"assertions": {
+				"interactive": ["error", { "maxNumericValue": 2000, "aggregationMethod": "median-run" }],
+				"first-contentful-paint": [
+					"error",
+					{ "maxNumericValue": 2000, "aggregationMethod": "median-run" }
+				],
+				"total-blocking-time": [
+					"error",
+					{ "maxNumericValue": 200, "aggregationMethod": "median-run" }
+				],
+				"resource-summary:script:size": ["error", { "maxNumericValue": 153600 }]
+			}
+		},
+		"upload": { "target": "filesystem", "outputDir": ".lighthouseci" }
+	}
+}
