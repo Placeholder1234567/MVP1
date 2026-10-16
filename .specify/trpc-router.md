@@ -259,6 +259,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### notification
 
+Implemented own-account settings procedures (all require the notifications entitlement): `quietHours` reads `{ start, end, timeZone }`, and `setQuietHours` saves `{ start: HH:MM, end: HH:MM }` after validating a 4–10 hour period. `pushDevices` returns only `{ id, platform, lastSeenAt, createdAt }`; `registerPushDevice` accepts `{ token, platform: 'web' | 'ios' | 'android' }` and returns `{ id }` only when FCM registration is configured; `removePushDevice` accepts `{ id: uuid }` and returns `{ removed: boolean }`. Every target profile comes from the authenticated caller. Registration is limited to ten devices, never transfers another profile's token, and does not call providers. Browser-side push provisioning remains separate work.
+
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
 | `notification.list` | query | `{ unreadOnly?: boolean, limit?: number, offset?: number }` | `Array<{ id, type, title, body, channel, status, sentAt, readAt, referenceId, referenceType }>` | caregiver | Returns the caller's notifications, newest first. |

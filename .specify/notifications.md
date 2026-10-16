@@ -870,6 +870,10 @@ For mandatory notifications, the system always sends via push. SMS escalation st
 
 ### Quiet Hours
 
+The Me → Delivery preferences screen currently reads and updates the signed-in user's quiet hours through `notification.quietHours` and `notification.setQuietHours`. Both endpoints use the caller's identity; updates validate a 4–10 hour window, accept midnight crossings, and preserve unrelated settings. The screen shows the agency timezone, protects unsaved edits and requires a connection to save. Existing urgent/high bypass rules in dispatch remain unchanged.
+
+Push registration management uses authenticated own-row `notification.pushDevices`, `notification.registerPushDevice` and `notification.removePushDevice`. Lists return only registration IDs, platform and timestamps, never tokens. Registration/refresh accepts a bounded token and platform, caps each user at ten devices, never transfers another account's token, and is disabled unless `PUSH_DRIVER=fcm`. This API writes registrations without making provider calls. The settings screen can inspect/remove existing registrations; browser permission, VAPID/Firebase client token provisioning, service-worker push reception and token refresh wiring are not implemented by this increment. It must not display successful browser registration without those pieces.
+
 - Default quiet hours: **23:00 to 06:00** in the user's timezone (derived from agency timezone).
 - During quiet hours, **normal** and **low** priority notifications are held and delivered at 06:00 as a batch.
 - **High** and **urgent** priority notifications are delivered immediately regardless of quiet hours.

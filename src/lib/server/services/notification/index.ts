@@ -15,6 +15,15 @@ import { enqueue } from '../../jobs/queue.ts';
 import { activeStaffByRole, insertNotifications, preferencesFor } from './notification.queries';
 
 export { dispatchNotifications, sweepNotifications } from './dispatch';
+export {
+	quietHours,
+	saveQuietHours,
+	QuietHoursInput,
+	listPushDevices,
+	registerPushDevice,
+	removePushDevice,
+	PushDeviceInput
+} from './settings';
 export { handleEmailEvent, handleSmsEvent, type EventOutcome } from './events';
 export {
 	getNotification,
