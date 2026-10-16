@@ -17,6 +17,15 @@ import { queueEscalation } from './escalation';
 import { activeStaffByRole, insertNotifications, preferencesFor } from './notification.queries';
 
 export { dispatchNotifications, sweepNotifications, RetryLater } from './dispatch';
+export {
+	quietHours,
+	saveQuietHours,
+	QuietHoursInput,
+	listPushDevices,
+	registerPushDevice,
+	removePushDevice,
+	PushDeviceInput
+} from './settings';
 export { escalate, type EscalationPayload } from './escalation';
 export { sweepDigests, sendDigest } from './digest';
 export { handleEmailEvent, handleSmsEvent, type EventOutcome } from './events';

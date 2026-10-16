@@ -30,6 +30,8 @@ export function firebaseAuth(): Auth {
 				// Public identifiers, not secrets (CLAUDE.md "NO secrets in client bundle")
 				apiKey: env.PUBLIC_FIREBASE_API_KEY || 'demo-key',
 				authDomain: env.PUBLIC_FIREBASE_AUTH_DOMAIN,
+				appId: env.PUBLIC_FIREBASE_APP_ID,
+				messagingSenderId: env.PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
 				projectId: env.PUBLIC_FIREBASE_PROJECT_ID || 'demo-guad'
 			});
 		auth = initializeAuth(app, { persistence: inMemoryPersistence });

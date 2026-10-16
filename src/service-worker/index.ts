@@ -3,6 +3,57 @@ import { immutable } from '$app/manifest';
 import { version } from '$app/env';
 import workerAssets from 'virtual:guad-worker-assets';
 import { pwaAssetPaths, pwaRequestKind } from '../lib/domain/pwa';
+import { pushNotice, pushNotificationId, pushPath } from '../lib/domain/push';
+import { pushEnabled } from '../lib/pwa/push-storage';
+
+// Raw Push API handling intentionally avoids Firebase's automatic display of payload text.
+// Only the canonical notification UUID survives; messages and links are ignored.
+self.addEventListener('message', (event) => {
+	if (event.data?.type === 'guad-push-version') event.ports[0]?.postMessage({ guadPushVersion: 1 });
+});
+self.addEventListener('push', (event) => {
+	event.waitUntil(
+		(async () => {
+			if (!(await pushEnabled())) return;
+			let payload: unknown;
+			try {
+				payload = event.data?.json();
+			} catch {
+				return;
+			}
+			const notice = pushNotice(payload);
+			if (!notice) return;
+			const notificationId = notice.id;
+			const clients = await self.clients.matchAll({ type: 'window' });
+			const visible = clients.filter((client) => client.visibilityState === 'visible');
+			if (visible.length) {
+				for (const client of visible) client.postMessage({ type: 'guad-push', notificationId });
+				return;
+			}
+			await self.registration.showNotification(notice.title, notice.options);
+		})()
+	);
+});
+self.addEventListener('notificationclick', (event) => {
+	const notificationId = pushNotificationId({ data: event.notification.data });
+	if (!notificationId) return;
+	event.notification.close();
+	event.waitUntil(
+		(async () => {
+			if (!(await pushEnabled())) return;
+			const clients = await self.clients.matchAll({ type: 'window' });
+			const existing = clients.find(
+				(client) => new URL(client.url).origin === self.location.origin
+			);
+			if (existing) {
+				// Preserve open charts and unsaved text; the user follows an in-app link after focus.
+				await existing.focus();
+				existing.postMessage({ type: 'guad-push', notificationId });
+			} else
+				await self.clients.openWindow(new URL(pushPath(notificationId), self.location.origin).href);
+		})()
+	);
+});
 
 const CACHE = `guad-shell-${version}`;
 const ASSETS = pwaAssetPaths([
