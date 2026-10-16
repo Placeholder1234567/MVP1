@@ -8,7 +8,9 @@ import {
 	marRecords,
 	healthEntries,
 	incidents,
-	attendance
+	attendance,
+	goals,
+	noteGoals
 } from '../../db/schema';
 import type { ClinicalType, ClinicalRow } from '../../../domain/clinical-export';
 
@@ -52,6 +54,50 @@ export async function clinicalRows(
 	);
 	const cap = 1001;
 	switch (f.type) {
+		case 'goals':
+			return tx
+				.select({
+					id: noteGoals.id,
+					noteId: notes.id,
+					clientId: notes.client_id,
+					clientName: clients.name,
+					homeId: notes.home_id,
+					day: notes.day,
+					shift: notes.shift,
+					noteStatus: notes.status,
+					authorId: notes.author_id,
+					authorName: notes.author_name,
+					goalId: goals.id,
+					currentGoalArea: goals.area,
+					currentGoalText: goals.text,
+					goalStoppedAt: goals.stopped_at,
+					trials: noteGoals.trials,
+					notAttempted: noteGoals.not_attempted,
+					reason: noteGoals.reason
+				})
+				.from(noteGoals)
+				.innerJoin(notes, eq(notes.id, noteGoals.note_id))
+				.innerJoin(clients, eq(clients.id, notes.client_id))
+				.innerJoin(
+					goals,
+					and(eq(goals.id, noteGoals.goal_id), eq(goals.client_id, notes.client_id))
+				)
+				.where(
+					and(
+						clientWhere,
+						eq(noteGoals.agency_id, agencyId),
+						eq(notes.agency_id, agencyId),
+						eq(goals.agency_id, agencyId),
+						eq(notes.home_id, f.homeId),
+						gte(notes.day, f.fromDay),
+						lt(notes.day, f.toDayExclusive),
+						f.approvedOnly
+							? eq(notes.status, 'approved')
+							: inArray(notes.status, ['submitted', 'approved'])
+					)
+				)
+				.orderBy(asc(notes.day), asc(notes.id), asc(noteGoals.id))
+				.limit(cap);
 		case 'notes':
 			return tx
 				.select({
