@@ -1,5 +1,13 @@
 # Offline Sync Architecture
 
+## Device readiness checks
+
+The PIN gates and Me install card check a secure context, WebCrypto PBKDF2/AES-GCM operations, and a write to a unique disposable OPFS file containing one synthetic byte. The probe removes only its own file; it never lists or reads saved records. Missing or blocked storage produces recovery guidance without clearing existing data. Passing this probe does not prove that the encrypted SQLite worker will open: PIN unlock still performs the real database initialization and handles failure separately.
+
+The install card reports service-worker registration and storage persistence separately. `persisted()` checks status; `persist()` is called only when the caregiver explicitly chooses **Ask browser to keep saved data**. A denial or unsupported API keeps the current workspace intact. Persistent storage reduces browser eviction risk, but it is not a backup or a guarantee against user clearing or device loss. See [MDN StorageManager.persist](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/persist).
+
+Install instructions describe browser menus and Safari Share → Add to Home Screen, following [Apple's web app instructions](https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios). The installed icon must be opened online and signed in separately where browser storage is isolated. No automated capability check establishes native iOS/Android compatibility; physical-device installation, storage-pressure behavior and actual encrypted database recovery still require device testing.
+
 ## 1. Overview
 
 Guad uses [PowerSync](https://www.powersync.com/) to deliver offline-first functionality for IDD residential care charting. The architecture has three tiers:

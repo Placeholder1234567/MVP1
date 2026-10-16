@@ -10,6 +10,7 @@ import { notificationRouter } from './routers/notification.ts';
 import { marRouter, medicationRouter } from './routers/mar.ts';
 import { noteRouter } from './routers/note.ts';
 import { syncRouter } from './routers/sync.ts';
+import { reportRouter } from './routers/report.ts';
 import { clockRouter, scheduleRouter, coverageRouter } from './routers/workforce.ts';
 
 // Root router (trpc-router.md). One router per domain, added as they're built.
@@ -29,6 +30,7 @@ export const appRouter = router({
 	mar: marRouter,
 	medication: medicationRouter,
 	note: noteRouter,
+	report: reportRouter,
 	schedule: scheduleRouter,
 	sync: syncRouter
 });

@@ -28,7 +28,12 @@ beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx.insert(s.agencies).values([
 			{ id: agency, name: 'Workforce Test', subscription_tier: 'complete', slug: `work-${agency}` },
-			{ id: otherAgency, name: 'Other Workforce', subscription_tier: 'complete', slug: `work-${otherAgency}` }
+			{
+				id: otherAgency,
+				name: 'Other Workforce',
+				subscription_tier: 'complete',
+				slug: `work-${otherAgency}`
+			}
 		]);
 		await tx.insert(s.homes).values([
 			{ id: oak, agency_id: agency, name: 'Oak', lat: 40, lng: -75, radius: 150 },
@@ -77,6 +82,99 @@ beforeAll(async () => {
 	});
 });
 afterAll(closeDb);
+
+it('exports audited payroll CSV and JSON with clipped totals and no location or reason payloads', async () => {
+	const supervisor = await as(sam);
+	const from = new Date('2025-02-01T00:00:00Z'),
+		to = new Date('2025-02-02T00:00:00Z');
+	const row = await supervisor.clock.manualEntry({
+		profileId: cara,
+		homeId: oak,
+		clockInAt: new Date('2025-01-31T23:00:00Z'),
+		clockOutAt: new Date('2025-02-01T02:00:00Z'),
+		reason: 'Private correction explanation'
+	});
+	const file = await supervisor.report.exportTimesheet({ homeId: oak, from, to, format: 'json' });
+	const report = JSON.parse(file.content);
+	expect(report.totals).toEqual({
+		totalHours: 2,
+		verifiedHours: 0,
+		unverifiedHours: 0,
+		manualHours: 2
+	});
+	expect(report.entries).toHaveLength(1);
+	expect(report.entries[0]).toMatchObject({ id: row.id, hours: 2, staffId: cara, homeId: oak });
+	expect(file.content).not.toContain('Private correction');
+	expect(file.content).not.toContain('clock_in_lat');
+	const csv = await supervisor.report.exportTimesheet({ homeId: oak, from, to, format: 'csv' });
+	expect(csv.content).toContain('Hours in report period');
+	expect(csv.content).toContain(row.id);
+	const audit = await withService((tx) =>
+		tx
+			.select()
+			.from(s.auditLog)
+			.where(and(eq(s.auditLog.agency_id, agency), eq(s.auditLog.table_name, 'report_exports')))
+	);
+	expect(audit).toHaveLength(2);
+	expect(audit.every((r) => r.performed_by === sam)).toBe(true);
+	expect(audit.map((r) => r.new_values)).toEqual(
+		expect.arrayContaining([
+			{ type: 'timesheets', format: 'csv', rows: 1 },
+			{ type: 'timesheets', format: 'json', rows: 1 }
+		])
+	);
+});
+
+it('blocks caregivers, invalid/oversized ranges and foreign-tenant payroll filters', async () => {
+	const input = {
+		from: new Date('2025-02-01T00:00:00Z'),
+		to: new Date('2025-02-02T00:00:00Z'),
+		format: 'json' as const
+	};
+	await expect((await as(cara)).report.exportTimesheet(input)).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
+	const supervisor = await as(sam);
+	for (const to of [input.from, new Date('2024-01-01'), new Date('2027-01-01')])
+		await expect(supervisor.report.exportTimesheet({ ...input, to })).rejects.toMatchObject({
+			code: 'BAD_REQUEST'
+		});
+	const otherStaff = randomUUID();
+	await withService(async (tx) => {
+		await tx
+			.insert(s.profiles)
+			.values({
+				id: otherStaff,
+				agency_id: otherAgency,
+				auth_uid: uid(otherStaff),
+				email: `${otherStaff}@example.test`,
+				name: 'Foreign payroll staff',
+				role: 'caregiver',
+				home_ids: [foreignHome]
+			});
+		await tx
+			.insert(s.clockRecords)
+			.values({
+				agency_id: otherAgency,
+				profile_id: otherStaff,
+				home_id: foreignHome,
+				clock_in_at: input.from,
+				clock_out_at: input.to,
+				manual_override: true,
+				reason: 'Foreign record'
+			});
+	});
+	const foreign = await supervisor.report.exportTimesheet({ ...input, homeId: foreignHome });
+	expect(JSON.parse(foreign.content).entries).toEqual([]);
+	expect(foreign.content).not.toContain('Foreign payroll staff');
+	const allHomes = await supervisor.report.exportTimesheet(input);
+	expect(allHomes.content).not.toContain(otherStaff);
+	const current = await getCurrentUser(uid(sam));
+	for (const features of [[], ['reports_basic'], ['timekeeping']] as const) {
+		const denied = caller({ user: { ...current!, features: [...features] }, request: {} });
+		await expect(denied.report.exportTimesheet(input)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	}
+});
 
 it('manual entries cannot overlap and timesheets clip hours at period boundaries', async () => {
 	const supervisor = await as(sam);
