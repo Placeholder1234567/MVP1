@@ -89,7 +89,11 @@ export function clockRows(
 						? or(isNull(clockRecords.clock_out_at), gt(clockRecords.clock_out_at, filter.from))
 						: gte(clockRecords.clock_in_at, filter.from)
 					: undefined,
-				filter.to ? lte(clockRecords.clock_in_at, filter.to) : undefined
+				filter.to
+					? filter.overlap
+						? lt(clockRecords.clock_in_at, filter.to)
+						: lte(clockRecords.clock_in_at, filter.to)
+					: undefined
 			)
 		)
 		.orderBy(desc(clockRecords.clock_in_at));

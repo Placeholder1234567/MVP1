@@ -1,0 +1,9 @@
+# Local payroll exports
+
+The supervisor Timesheets screen exports CSV and versioned JSON for the loaded home and period. Exporting re-reads authoritative records through the existing clock aggregation service; a downloaded report may include updates since the screen was loaded. Downloads contain readable staff/home labels and stable references, UTC timestamps, clipped hours, verification/manual/review flags, and the report period. JSON also includes the four aggregation totals. Open clocks contribute zero hours.
+
+`report.exportTimesheet` is a POST-only tRPC mutation, requires supervisor/admin plus a reports entitlement and timekeeping, and uses the caller's tenant-scoped transaction and RLS. Every successful export appends a `report_exports` audit event with actor, request details, format and row count; only this insert elevates privileges. It stores no report contents. If auditing fails the export fails. CSV uses the shared spreadsheet formula neutralization helper.
+
+Ranges must be positive and no longer than 366 days. Queries fetch at most 5,001 rows and reject results exceeding 5,000, rather than quietly truncating payroll. Coordinates, client records and manual correction explanations are excluded. The browser creates a temporary object URL for the explicit download and revokes it after use; no report is stored in web storage or a service worker cache. Keep downloaded files in approved agency storage.
+
+This is a bounded synchronous local/test implementation. The broader specification's asynchronous clinical report queue, private cloud object storage, signed downloads, PDF, and other care-record report types are not implemented here. No cloud services or spending are enabled. When offline, export reports a reconnect message and preserves the loaded screen; it does not pretend an incomplete local cache is authoritative payroll.
