@@ -4,6 +4,7 @@ import { asService, type Tx, type RequestInfo } from '../../db';
 import type { CurrentUser } from '../auth/index.ts';
 import { timesheet } from '../clock/index.ts';
 import { recordExport, payrollLabels } from './report.queries';
+export { ClinicalExport, exportClinical } from './clinical';
 
 export const PayrollExport = z.object({
 	homeId: z.uuid().optional(),
