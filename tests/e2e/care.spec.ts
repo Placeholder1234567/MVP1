@@ -33,6 +33,7 @@ async function signIn(page: Page, email: string) {
 async function unlock(page: Page, button = 'Unlock workspace') {
 	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
 	await page.getByRole('button', { name: button, exact: true }).click();
+	await expect(page.getByRole('button', { name: button, exact: true })).toBeHidden();
 }
 
 test('sign-in and the public offline gate are accessible with a keyboard', async ({ page }) => {
