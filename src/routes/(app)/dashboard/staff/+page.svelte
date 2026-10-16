@@ -65,6 +65,27 @@
 		homeIds = on ? [...new Set([...homeIds, id])] : homeIds.filter((h) => h !== id);
 	}
 
+	async function resetMfa() {
+		if (
+			!editing ||
+			!confirm(
+				'Reset two-step sign-in? Their authenticator stops working, they are signed out everywhere, and they set it up again at their next sign-in. Only do this after confirming who they are.'
+			)
+		)
+			return;
+		saving = true;
+		try {
+			await trpc.staff.resetMfa.mutate({ id: editing });
+			message = 'Two-step sign-in was reset. They will set it up again when they next sign in.';
+			editing = null;
+			await load();
+		} catch (e) {
+			message = e instanceof Error ? e.message : 'Could not reset.';
+		} finally {
+			saving = false;
+		}
+	}
+
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		saving = true;
@@ -166,6 +187,11 @@
 				<div class="actions">
 					<button class="btn" disabled={saving}>{editing ? 'Save' : 'Send invitation'}</button>
 					<button type="button" class="btn sec" onclick={() => (editing = null)}>Cancel</button>
+					{#if editing && editing !== app.user.profileId && staff.find((p) => p.id === editing)?.mfaEnabled}<button
+							type="button"
+							class="btn sec"
+							onclick={resetMfa}>Reset two-step sign-in</button
+						>{/if}
 				</div>
 			</fieldset>
 		</form>
