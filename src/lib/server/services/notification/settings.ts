@@ -69,7 +69,8 @@ export async function listPushDevices(tx: Tx, user: CurrentUser) {
 }
 export const PushDeviceInput = z.object({
 	token: z.string().regex(/^[A-Za-z0-9_:.-]{20,4096}$/),
-	platform: z.enum(['web', 'ios', 'android'])
+	platform: z.enum(['web', 'ios', 'android']),
+	previousId: z.uuid().optional()
 });
 export async function registerPushDevice(
 	tx: Tx,
@@ -92,6 +93,10 @@ export async function registerPushDevice(
 		.select({ id: deviceTokens.id })
 		.from(deviceTokens)
 		.where(and(tokenOwner(user), eq(deviceTokens.token, value.token)));
+	if (value.previousId && value.previousId !== existing?.id) {
+		// Token rotation replaces only this account's previous registration, transactionally.
+		await removePushDevice(tx, user, value.previousId);
+	}
 	if (existing) {
 		await tx
 			.update(deviceTokens)

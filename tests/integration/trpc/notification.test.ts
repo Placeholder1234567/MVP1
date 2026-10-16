@@ -134,6 +134,15 @@ it('manages own push registrations without exposing or transferring tokens', asy
 		await expect(foreignApi.registerPushDevice({ token, platform: 'web' })).rejects.toMatchObject({
 			code: 'CONFLICT'
 		});
+		const previous = await foreignApi.registerPushDevice({
+			token: `synthetic:${randomUUID()}`,
+			platform: 'web'
+		});
+		await expect(
+			foreignApi.registerPushDevice({ token, platform: 'web', previousId: previous.id })
+		).rejects.toMatchObject({ code: 'CONFLICT' });
+		expect((await foreignApi.pushDevices()).some((row) => row.id === previous.id)).toBe(true);
+		await foreignApi.removePushDevice(previous);
 		expect(await cg.removePushDevice(created)).toEqual({ removed: true });
 		expect(await cg.removePushDevice(created)).toEqual({ removed: false });
 		expect(await cg.pushDevices()).toEqual([]);
@@ -172,6 +181,14 @@ it('bounds push registrations while allowing an existing device to refresh', asy
 		).rejects.toMatchObject({ code: 'CONFLICT' });
 		expect(await api.registerPushDevice({ token: tokens[0], platform: 'web' })).toEqual(devices[0]);
 		expect(await api.pushDevices()).toHaveLength(10);
+		const rotated = await api.registerPushDevice({
+			token: `rotated:${randomUUID()}`,
+			platform: 'web',
+			previousId: devices[0].id
+		});
+		expect(rotated.id).not.toBe(devices[0].id);
+		expect(await api.pushDevices()).toHaveLength(10);
+		expect((await api.pushDevices()).some((row) => row.id === devices[0].id)).toBe(false);
 	} finally {
 		vi.unstubAllEnvs();
 	}

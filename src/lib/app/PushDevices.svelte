@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
+	import { useSession } from './session.svelte';
+	import { readPushRegistration } from '#lib/pwa/push-storage.ts';
+	import { stopWebPush } from '#lib/pwa/web-push.ts';
+	const app = useSession();
 	let devices = $state<
 		Array<{ id: string; platform: string | null; lastSeenAt: Date | null; createdAt: Date }>
 	>([]);
@@ -33,6 +37,9 @@
 		message = '';
 		try {
 			await trpc.notification.removePushDevice.mutate({ id });
+			const local = await readPushRegistration();
+			if (local?.id === id && local.profileId === app.user.profileId)
+				await stopWebPush(app.user.profileId);
 			devices = devices.filter((device) => device.id !== id);
 			message = 'Push device removed. A delivery already in progress may still arrive.';
 		} catch {
@@ -50,9 +57,8 @@
 		are never displayed.
 	</p>
 	<p class="muted">
-		Registering a new browser for push is not available here yet. Enabling a delivery preference
-		alone does not register a device or grant browser permission. Your in-app alerts remain
-		available.
+		Use the browser push setup above to register this browser when your agency has configured it.
+		Enabling a delivery preference alone does not register a device or grant browser permission.
 	</p>
 	{#each devices as device, index (device.id)}<div class="spread">
 			<div>

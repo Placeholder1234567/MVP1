@@ -15,6 +15,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import QuietHoursSettings from '#lib/app/QuietHoursSettings.svelte';
 	import PushDevices from '#lib/app/PushDevices.svelte';
+	import WebPushSettings from '#lib/app/WebPushSettings.svelte';
 	const app = useSession();
 	let edits = $state<Partial<Record<NotificationType, Partial<Preference>>>>({});
 	let savedChanges = $state<Partial<Record<NotificationType, Partial<Preference>>>>({});
@@ -139,7 +140,7 @@
 	</div>
 	<button class="btn" disabled={busy || !changed}>Save preferences</button>
 </form>
-<div class="stack"><QuietHoursSettings /><PushDevices /></div>
+<div class="stack"><QuietHoursSettings /><WebPushSettings /><PushDevices /></div>
 
 <style>
 	fieldset {

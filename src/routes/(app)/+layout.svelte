@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
+	import PushNotice from '#lib/app/PushNotice.svelte';
+	import { stopWebPush } from '#lib/pwa/web-push.ts';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -140,6 +142,7 @@
 			}
 			await app.db.disconnectAndClear();
 		}
+		await stopWebPush(app.user.profileId);
 		app.dispose();
 		await closeDb();
 		await signOutEverywhere();
@@ -257,6 +260,7 @@
 					>
 				</header>
 				<main id="main" class="main-content" tabindex="-1">
+					<PushNotice />
 					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
 					{#if app.failed.length}<div class="callout bad" role="alert">
 							<b>{app.failed.length} changes need attention</b>

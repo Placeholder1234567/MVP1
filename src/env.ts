@@ -14,6 +14,13 @@ export const variables = defineEnvVars({
 		description: 'Firebase web API key. A public identifier, not a secret.'
 	},
 	PUBLIC_FIREBASE_AUTH_DOMAIN: { public: true, schema: optional },
+	PUBLIC_FIREBASE_APP_ID: { public: true, schema: optional },
+	PUBLIC_FIREBASE_MESSAGING_SENDER_ID: { public: true, schema: optional },
+	PUBLIC_FIREBASE_VAPID_KEY: {
+		public: true,
+		schema: optional,
+		description: 'Public web push VAPID key; never a private key.'
+	},
 	PUBLIC_FIREBASE_PROJECT_ID: {
 		public: true,
 		schema: z.string().default('demo-guad'),

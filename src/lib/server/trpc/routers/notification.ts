@@ -17,6 +17,9 @@ import {
 	PushDeviceInput
 } from '../../services/notification/index.ts';
 export const notificationRouter = router({
+	pushConfiguration: featureProcedure('notifications').query(() => ({
+		enabled: process.env.PUSH_DRIVER === 'fcm'
+	})),
 	quietHours: featureProcedure('notifications').query(({ ctx }) => quietHours(ctx.db, ctx.user)),
 	setQuietHours: featureProcedure('notifications')
 		.input(QuietHoursInput)
