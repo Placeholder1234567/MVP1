@@ -36,12 +36,13 @@ export async function insertClinical(
 		`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
 		Object.values(row)
 	);
+	await app.refreshUploadStatus();
 	return row.id;
 }
 
 /** True when an online-only action (supervisor review, PRN effect) can run now. */
 export function canReachServer(app: CareSession): boolean {
-	return !!app.db?.currentStatus.connected && !app.pending;
+	return !!app.db?.currentStatus.connected && !app.pending && !app.checkingSync;
 }
 
 /** "8:12am" in the agency's time zone. */

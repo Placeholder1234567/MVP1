@@ -2,6 +2,7 @@ import { getContext, setContext } from 'svelte';
 import type { PowerSyncDatabase } from '@powersync/web';
 import type { Database } from '#lib/sync/schema.ts';
 import { chartingLabels } from '#lib/config/charting-preset.ts';
+import { UploadStatus } from '#lib/sync/upload-status.ts';
 
 export interface AppUser {
 	profileId: string;
@@ -53,11 +54,16 @@ export class CareSession {
 	failed = $state<{ id: string; message: string }[]>([]);
 	status = $state('Connecting…');
 	pending = $state(0);
+	checkingSync = $state(true);
 	ready = $state(false);
 	error = $state('');
 	labels = $derived(chartingLabels(this.agencies[0]?.charting_preset));
 	currentPeople = $derived(this.people.filter((p) => p.active && p.home_id === this.homeId));
 	private stop: Array<() => void> = [];
+	private uploads: UploadStatus | undefined;
+	async refreshUploadStatus(): Promise<void> {
+		await this.uploads?.refresh();
+	}
 	constructor(user: AppUser) {
 		this.user = user;
 	}
@@ -134,17 +140,19 @@ export class CareSession {
 			'SELECT id, message FROM failed_writes ORDER BY failed_at DESC',
 			(r) => (this.failed = r)
 		);
+		const uploads = new UploadStatus(
+			async () => (await db.getUploadQueueStats()).count,
+			() => ({ connected: db.currentStatus.connected, synced: !!db.currentStatus.lastSyncedAt }),
+			(pending, label) => {
+				this.checkingSync = pending === null;
+				if (pending !== null) this.pending = pending;
+				this.status = label;
+			}
+		);
+		this.uploads = uploads;
+		this.stop.push(() => uploads.cancel());
 		const status = () => {
-			const s = db.currentStatus;
-			this.status = s.connected
-				? s.lastSyncedAt
-					? 'All changes synced'
-					: 'Syncing…'
-				: 'Offline · saved on this device';
-			void db
-				.getUploadQueueStats()
-				.then((q) => (this.pending = q.count))
-				.catch(() => {});
+			void uploads.refresh();
 		};
 		this.stop.push(db.registerListener({ statusChanged: status }));
 		this.stop.push(db.onChange({ onChange: status }));
@@ -156,6 +164,7 @@ export class CareSession {
 		this.stop = [];
 		this.ready = false;
 		this.db = undefined;
+		this.uploads = undefined;
 	}
 }
 export const provideSession = (user: AppUser) => setContext(CONTEXT, new CareSession(user));

@@ -40,7 +40,7 @@ src/lib/server/services/
 - `listActiveStaff(agencyId): Profile[]` — all active profiles for the agency.
 - `inviteUser(agencyId, email, name, role, homeIds, medCertified?): Profile` — create an Identity Platform user and a corresponding `profiles` row, and send an invitation email (password-setup link from the Admin SDK) via SES. Used by the `staff.invite` tRPC procedure.
 
-**Depends on:** None (foundational). Identity Platform is the upstream identity provider.
+**Depends on:** None for sessions (foundational). Identity Platform is the upstream identity provider. Staff management (`staff.ts`) also uses Home (to check home assignments) and the messaging providers (invite email).
 
 **Jobs:** None.
 

@@ -16,6 +16,17 @@ import {
 import { ROLE_RANK, type CurrentUser, type Role } from './auth.types';
 
 export type { CurrentUser, Role } from './auth.types';
+export {
+	getStaff,
+	inviteStaff,
+	InviteInput,
+	listStaff,
+	OwnProfileInput,
+	StaffFilter,
+	StaffUpdateInput,
+	updateOwnProfile,
+	updateStaff
+} from './staff';
 
 /**
  * The profile for a verified session. Runs as app_service because the claims
