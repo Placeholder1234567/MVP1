@@ -7,11 +7,9 @@
 		offlineAccessUntil,
 		WrongPinError
 	} from '#lib/sync/device-key.ts';
-	import { openDb, closeDb } from '#lib/sync/db.ts';
 	import type { PowerSyncDatabase } from '@powersync/web';
 	import type { Database } from '#lib/sync/schema.ts';
 	import type { AppUser } from '#lib/app/session.svelte.ts';
-	import OfflineWorkspace from '#lib/app/OfflineWorkspace.svelte';
 	import { offlinePermissions } from '#lib/domain/pwa.ts';
 	import { inspectDevice, deviceIssue } from '#lib/pwa/readiness.ts';
 	import InstallCard from '#lib/app/InstallCard.svelte';
@@ -25,6 +23,20 @@
 	let user = $state<AppUser | null>(null);
 	let database = $state.raw<PowerSyncDatabase | undefined>();
 	let expiresAt = $state(0);
+	// The encrypted database and the workspace are loaded on demand, not with
+	// the page: the PIN screen must be interactive fast on slow connections
+	// (constitution "Performance Targets"). Focusing the PIN field starts the
+	// download, so unlocking doesn't wait for it.
+	const dbModule = () => import('#lib/sync/db.ts');
+	let dbLoaded = false;
+	let Workspace = $state.raw<typeof import('#lib/app/OfflineWorkspace.svelte').default>();
+	function prefetch() {
+		void dbModule();
+		void import('#lib/app/OfflineWorkspace.svelte');
+	}
+	async function closeDb() {
+		if (dbLoaded) await (await dbModule()).closeDb();
+	}
 	onMount(() => {
 		void inspectDevice()
 			.then(async (state) => {
@@ -62,6 +74,12 @@
 		try {
 			key = await unwrapOfflineKey(pin, profileId);
 			expiresAt = await offlineAccessUntil(profileId);
+			const [{ openDb }, workspace] = await Promise.all([
+				dbModule(),
+				import('#lib/app/OfflineWorkspace.svelte')
+			]);
+			dbLoaded = true;
+			Workspace = workspace.default;
 			database = await openDb(key, profileId, { offline: true });
 			const person = await database.getOptional<Database['profiles']>(
 				'SELECT * FROM profiles WHERE id = ?',
@@ -135,7 +153,7 @@
 		if (event.persisted) void lock();
 	}}
 />
-{#if user && database}<OfflineWorkspace {user} db={database} {expiresAt} />{:else}
+{#if user && database && Workspace}<Workspace {user} db={database} {expiresAt} />{:else}
 	<main class="unlock-page">
 		<div class="card pad stack">
 			<span class="wordmark">Guad<span class="lemon-dot">●</span></span>
@@ -160,6 +178,7 @@
 							pattern={'[0-9]{6,8}'}
 							required
 							autocomplete="off"
+							onfocus={prefetch}
 							bind:value={pin}
 						/></label
 					><button class="btn" disabled={busy}>{busy ? 'Opening…' : 'Unlock saved records'}</button>
