@@ -31,24 +31,28 @@
 	let busy = $state(false);
 	let unsupported = $state(false);
 	let key: Uint8Array | undefined;
+	// Items outside the agency's plan are hidden, not greyed out (entitlements.md §7).
 	const nav = $derived(
-		data.user.role === 'caregiver'
+		(data.user.role === 'caregiver'
 			? [
 					{ href: '/today', label: 'Today' },
-					{ href: '/notes', label: 'Notes' },
-					{ href: '/shifts', label: 'Shifts' },
+					{ href: '/notes', label: 'Notes', feature: 'charting' },
+					{ href: '/shifts', label: 'Shifts', feature: 'scheduling' },
 					{ href: '/me', label: 'Me' }
 				]
 			: [
 					{ href: '/dashboard', label: 'Overview' },
-					{ href: '/dashboard/notes', label: 'Review notes' },
-					{ href: '/today', label: 'Care records' },
-					{ href: '/shifts', label: 'Schedule' },
-					{ href: '/dashboard/timesheets', label: 'Timesheets' },
-					{ href: '/dashboard/intake', label: 'Intake' },
-					{ href: '/messages', label: 'Messages' },
+					{ href: '/dashboard/notes', label: 'Review notes', feature: 'note_review' },
+					{ href: '/today', label: 'Care records', feature: 'charting' },
+					{ href: '/shifts', label: 'Schedule', feature: 'scheduling' },
+					{ href: '/dashboard/timesheets', label: 'Timesheets', feature: 'timekeeping' },
+					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake' },
+					{ href: '/messages', label: 'Messages', feature: 'messaging' },
 					{ href: '/me', label: 'Me' }
 				]
+		).filter(
+			(item) => !item.feature || (data.user.features as readonly string[]).includes(item.feature)
+		)
 	);
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
@@ -288,7 +292,7 @@
 				</main>
 			</div>
 			<nav class="mobile-nav" aria-label="Mobile navigation">
-				{#each data.user.role === 'caregiver' ? nav : [nav[0], nav[1], nav.find((item) => item.href === '/shifts')!, nav.find((item) => item.href === '/me')!] as item (item.href)}<a
+				{#each data.user.role === 'caregiver' ? nav : [...new Set( [nav[0], nav[1], nav.find((item) => item.href === '/shifts'), nav.find((item) => item.href === '/me')] )].filter((item) => item !== undefined) as item (item.href)}<a
 						href={resolve(('/(app)' + item.href) as '/(app)/today')}
 						aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
 					>{/each}
