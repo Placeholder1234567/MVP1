@@ -14,6 +14,8 @@ Vague language flags are shown per section from the current text (`vagueFlags`, 
 
 Recordings remain bounded to 55 seconds inline for the brain dump and 30 seconds for a per-section clip, without object storage. A per-section clip is transcribed into that section's "additional observations" field only; the caregiver then asks for a revision and reviews it like a typed one. The later five-minute, multi-call/streaming pipeline remains target work requiring provider verification. No real provider or cloud resource is needed for local/mock validation.
 
+The in-memory recording controller cancels on privacy lock, page hide, or component disposal. A late microphone grant is immediately released. Cancellation during audio encoding prevents the transcription request; if a request has already started, its late result is discarded (already transmitted audio cannot be recalled). Recorder errors, empty clips and the 2.5 MB byte limit release the microphone and restore typed editing. One-second recording chunks bound accumulated audio before upload; no audio is persisted on the device.
+
 ## Overview
 
 Lomi ("lemon" in Amharic) is Guad's AI assistant. It drafts clinical documentation, transcribes voice, and summarizes daily status for supervisors.

@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
-import { getAgency } from '../../services/agency/index.ts';
-import { router, userProcedure } from '../middleware.ts';
+import { AgencyChanges, getAgency, updateAgency } from '../../services/agency/index.ts';
+import { roleProcedure, router, userProcedure } from '../middleware.ts';
 
 export const agencyRouter = router({
 	/** The caller's agency and its configuration (trpc-router.md: agency.get). */
@@ -10,5 +10,10 @@ export const agencyRouter = router({
 		// The effective set (tier + overrides + prerequisites) the app uses to
 		// hide what the plan doesn't include (entitlements.md §7).
 		return { ...agency, features: ctx.user.features };
-	})
+	}),
+
+	/** Name, charting preset, time zone and settings (admin only; not the plan). */
+	update: roleProcedure('admin')
+		.input(AgencyChanges)
+		.mutation(({ ctx, input }) => updateAgency(ctx.db, ctx.user.agencyId, input))
 });

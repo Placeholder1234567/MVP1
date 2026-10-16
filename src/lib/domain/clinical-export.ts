@@ -1,7 +1,15 @@
 import { addDays } from './time';
 import { csvRows } from './csv';
+import type { GoalProgressSummary } from './goal-progress';
 
-export const CLINICAL_TYPES = ['notes', 'mar', 'health', 'incidents', 'attendance'] as const;
+export const CLINICAL_TYPES = [
+	'notes',
+	'mar',
+	'health',
+	'incidents',
+	'attendance',
+	'goals'
+] as const;
 export type ClinicalType = (typeof CLINICAL_TYPES)[number];
 export type ClinicalRow = Record<string, unknown>;
 export interface ClinicalReport {
@@ -15,6 +23,7 @@ export interface ClinicalReport {
 	generatedAt: string;
 	dateBasis: string;
 	rows: ClinicalRow[];
+	goalSummary?: GoalProgressSummary[];
 }
 
 /** Earliest instant in a calendar day, including DST and midnight offset changes. */
@@ -69,12 +78,22 @@ export const clinicalColumns = (rows: ClinicalRow[]) => [
 ];
 export function clinicalCsv(report: ClinicalReport) {
 	const columns = clinicalColumns(report.rows);
+	const summaryColumns = clinicalColumns(report.goalSummary ?? []);
 	return (
 		'\uFEFF' +
 		csvRows([
 			['Report type', 'Period from', 'Period to (inclusive)', 'Agency time zone', 'Date basis'],
 			[report.type, report.fromDay, report.toDay, report.timeZone, report.dateBasis],
 			[],
+			...(report.goalSummary
+				? [
+						['Goal progress summary'],
+						summaryColumns,
+						...report.goalSummary.map((r) => summaryColumns.map((k) => clinicalCell(r[k]))),
+						[],
+						['Source trial history']
+					]
+				: []),
 			columns,
 			...report.rows.map((r) => columns.map((k) => clinicalCell(r[k])))
 		])
@@ -90,5 +109,18 @@ export const escapeReportHtml = (v: unknown) =>
 export function clinicalHtml(report: ClinicalReport) {
 	const esc = escapeReportHtml,
 		columns = clinicalColumns(report.rows);
-	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><title>Guad care report</title><style>body{font:14px system-ui,sans-serif;color:#172c27;margin:28px}h1{font-size:25px}article{border-top:2px solid #52645e;padding-top:12px;margin-top:24px}h2{font-size:18px}dl{display:grid;grid-template-columns:minmax(100px,180px) minmax(0,1fr);gap:8px 16px}dt{font-weight:600}dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}.hint{color:#52645e}@media print{.hint{display:none}h2{break-after:avoid}dt{break-after:avoid}@page{margin:15mm}}</style></head><body><h1>Care records: ${esc(report.type)}</h1><p>${esc(report.fromDay)} through ${esc(report.toDay)} (inclusive), ${esc(report.timeZone)}</p><p>${esc(report.dateBasis)}. Generated ${esc(report.generatedAt)}. ${report.rows.length} records.</p><p class="hint">Use your browser’s Print command to print or save as PDF. Contains confidential care information; keep in approved agency storage.</p><p>Authoritative records; no draft notes. This report is not a new signature or an approval.</p>${report.rows.map((r, i) => `<article><h2>Record ${i + 1}</h2><dl>${columns.map((k) => `<dt>${esc(k.replace(/([A-Z])/g, ' $1'))}</dt><dd>${esc(r[k])}</dd>`).join('')}</dl></article>`).join('')}${report.rows.length ? '' : '<p>No records in this period.</p>'}</body></html>`;
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><title>Guad care report</title><style>body{font:14px system-ui,sans-serif;color:#172c27;margin:28px}h1{font-size:25px}article{border-top:2px solid #52645e;padding-top:12px;margin-top:24px}h2{font-size:18px}dl{display:grid;grid-template-columns:minmax(100px,180px) minmax(0,1fr);gap:8px 16px}dt{font-weight:600}dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}.hint{color:#52645e}@media print{.hint{display:none}h2{break-after:avoid}dt{break-after:avoid}@page{margin:15mm}}</style></head><body><h1>Care records: ${esc(report.type)}</h1><p>${esc(report.fromDay)} through ${esc(report.toDay)} (inclusive), ${esc(report.timeZone)}</p><p>${esc(report.dateBasis)}. Generated ${esc(report.generatedAt)}. ${report.rows.length} records.</p><p class="hint">Use your browser’s Print command to print or save as PDF. Contains confidential care information; keep in approved agency storage.</p><p>Authoritative records; no draft notes. This report is not a new signature or an approval.</p>${
+		report.goalSummary
+			? '<h2>Goal progress summary</h2>' +
+				report.goalSummary
+					.map(
+						(r, i) =>
+							`<article><h3>Goal ${i + 1}</h3><dl>${Object.keys(r)
+								.map((k) => `<dt>${esc(k.replace(/([A-Z])/g, ' $1'))}</dt><dd>${esc(r[k])}</dd>`)
+								.join('')}</dl></article>`
+					)
+					.join('') +
+				'<h2>Source trial history</h2>'
+			: ''
+	}${report.rows.map((r, i) => `<article><h2>Record ${i + 1}</h2><dl>${columns.map((k) => `<dt>${esc(k.replace(/([A-Z])/g, ' $1'))}</dt><dd>${esc(r[k])}</dd>`).join('')}</dl></article>`).join('')}${report.rows.length ? '' : '<p>No records in this period.</p>'}</body></html>`;
 }
