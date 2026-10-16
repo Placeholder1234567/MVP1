@@ -25,14 +25,15 @@
 	async function download(event: SubmitEvent) {
 		event.preventDefault();
 		if (busy || !app.homeId) return;
-		if (app.pending || app.checkingSync) {
-			message =
-				'Wait for this device’s saved changes to finish syncing before downloading a care report.';
-			return;
-		}
 		busy = true;
 		message = '';
 		try {
+			await app.refreshUploadStatus();
+			if (app.pending || app.checkingSync) {
+				message =
+					'Wait for this device’s saved changes to finish syncing before downloading a care report.';
+				return;
+			}
 			const file = await trpc.report.exportClinical.mutate({
 				type,
 				format,
