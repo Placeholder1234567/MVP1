@@ -259,3 +259,25 @@ describe('home.* and agency.update', () => {
 		});
 	});
 });
+
+describe('staff.resetMfa', () => {
+	it('lets an admin reset someone else’s second factor, audited', async () => {
+		await withService((t) =>
+			t.update(s.profiles).set({ mfa_enabled: true }).where(eq(s.profiles.id, SUP))
+		);
+		await expect((await as(SUP)).staff.resetMfa({ id: CARA })).rejects.toMatchObject({
+			code: 'FORBIDDEN'
+		});
+		const admin = await as(ADMIN);
+		await expect(admin.staff.resetMfa({ id: ADMIN })).rejects.toMatchObject({ code: 'CONFLICT' });
+		expect(await admin.staff.resetMfa({ id: SUP })).toEqual({ id: SUP, mfaEnabled: false });
+		expect((await admin.staff.get({ id: SUP })).mfaEnabled).toBe(false);
+		const audit = await withService((t) =>
+			t.select().from(s.auditLog).where(eq(s.auditLog.record_id, SUP))
+		);
+		expect(audit.find((a) => a.table_name === 'mfa_resets')).toMatchObject({
+			performed_by: ADMIN,
+			action: 'UPDATE'
+		});
+	});
+});

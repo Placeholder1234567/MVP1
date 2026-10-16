@@ -22,6 +22,7 @@ export {
 	InviteInput,
 	listStaff,
 	OwnProfileInput,
+	resetStaffMfa,
 	StaffFilter,
 	StaffUpdateInput,
 	updateOwnProfile,

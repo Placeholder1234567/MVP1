@@ -4,6 +4,7 @@ import {
 	InviteInput,
 	inviteStaff,
 	listStaff,
+	resetStaffMfa,
 	StaffFilter,
 	StaffUpdateInput,
 	updateStaff
@@ -28,5 +29,10 @@ export const staffRouter = router({
 	/** Role, homes, med certification, active. Deactivating ends their sessions. */
 	update: roleProcedure('admin')
 		.input(StaffUpdateInput)
-		.mutation(({ ctx, input }) => updateStaff(ctx.db, ctx.user, input))
+		.mutation(({ ctx, input }) => updateStaff(ctx.db, ctx.user, input)),
+
+	/** Lost authenticator: remove their second factors so they can enroll again. */
+	resetMfa: roleProcedure('admin')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) => resetStaffMfa(ctx.db, ctx.user, input.id, ctx.request))
 });

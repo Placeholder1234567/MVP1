@@ -8,20 +8,22 @@
 // backstop that keeps role, homes and status admin-only.
 import { z } from 'zod';
 import { initialsOf } from '../../../domain/index.ts';
-import { afterCommit, type Tx } from '../../db';
+import { afterCommit, asService, type RequestInfo, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import {
 	createIdentity,
 	deleteIdentity,
 	disableIdentity,
 	enableIdentity,
-	passwordSetupLink
+	passwordSetupLink,
+	resetSecondFactors
 } from '../../identity.ts';
 import { providers } from '../../messaging/index.ts';
 import { listHomes } from '../home/index.ts';
 import type { CurrentUser } from './auth.types';
 import {
 	insertProfile,
+	recordMfaReset,
 	selectStaff,
 	selectStaffMember,
 	staffByEmail,
@@ -159,6 +161,23 @@ export async function updateStaff(
 		afterCommit(() => (data.active ? enableIdentity(uid) : disableIdentity(uid)));
 	}
 	return present(row);
+}
+
+/**
+ * Lost authenticator: an admin removes the person's second factors so they
+ * can enroll again at next sign-in. Audited; never on yourself, so a taken
+ * admin session can't strip its own protection.
+ */
+export async function resetStaffMfa(tx: Tx, admin: CurrentUser, id: string, request: RequestInfo) {
+	if (id === admin.profileId)
+		throw new ServiceError('RULE_VIOLATION', 'Another admin has to reset your two-step sign-in');
+	const before = await selectStaffMember(tx, admin.agencyId, id);
+	if (!before) throw new ServiceError('NOT_FOUND', 'Staff member not found');
+	await updateProfileRow(tx, admin.agencyId, id, { mfa_enabled: false });
+	// audit_log takes no user writes (rls.sql): the trusted server records it.
+	await asService(tx, (t) => recordMfaReset(t, admin.agencyId, admin.profileId, id, request));
+	afterCommit(() => resetSecondFactors(before.authUid));
+	return { id, mfaEnabled: false };
 }
 
 export async function updateOwnProfile(
