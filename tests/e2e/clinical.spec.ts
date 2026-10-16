@@ -227,7 +227,7 @@ test('supervisor downloads bounded payroll and clinical exports with safe format
 	const day = new Date(Date.now() - (phone ? 4 : 5) * 86400000).toISOString().slice(0, 10);
 	await page.getByLabel('From', { exact: true }).fill(`${day}T00:00`);
 	await page.getByLabel('To', { exact: true }).fill(`${day}T23:59`);
-	await page.getByLabel('Staff member', { exact: true }).selectOption({ label: 'Cara Giver' });
+	await page.getByRole('combobox', { name: 'Staff member', exact: true }).selectOption({ label: 'Cara Giver' });
 	await page.getByLabel('Clock-in', { exact: true }).fill(`${day}T09:00`);
 	await page.getByLabel('Clock-out', { exact: true }).fill(`${day}T11:00`);
 	await page
