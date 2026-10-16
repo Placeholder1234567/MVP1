@@ -6,6 +6,7 @@ export interface DraftResult {
 	flags: Array<{ phrase: string; tip: string }>;
 	incident: { detected: boolean; summary: string };
 	fallback: boolean;
+	goalReferences?: Array<{ goalId: string; evidence: string }>;
 }
 const VAGUE = [
 	'was fine',
@@ -20,17 +21,23 @@ const VAGUE = [
 	'was a handful'
 ];
 const INCIDENT =
-	/\b(fell|fall|slipped|tripped|hurt|injur\w*|bleed\w*|bruise\w*|hospital|911|emergency|wrong med\w*|missed (his|her|their) med\w*|ran off|left the house|eloped|seizure)\b/i;
+	/\b(fell|fall|slipped|slip|tripped|hurt|injur\w*|bleed\w*|bruise\w*|hospital|911|emergency|wrong med\w*|missed (his|her|their) med\w*|ran off|left the house|eloped|seizure)\b/i;
+/** Vague or judgmental wording (ai-pipeline.md § Vague Language Detection). The
+ * phrase stays in the note for the caregiver to fix or keep; Lomi never replaces it. */
+export function vagueFlags(text: string): Array<{ phrase: string; tip: string }> {
+	const low = text.toLowerCase();
+	return VAGUE.filter((phrase) => low.includes(phrase)).map((phrase) => ({
+		phrase,
+		tip: `“${phrase}” is too vague for the record. Describe what you saw or heard.`
+	}));
+}
 export function draftLocally(text: string, type: NoteKind): DraftResult {
 	const sentences = text
 		.replace(/\s+/g, ' ')
 		.trim()
 		.split(/(?<=[.!?])\s+/)
 		.filter(Boolean);
-	const flags = VAGUE.filter((phrase) => text.toLowerCase().includes(phrase)).map((phrase) => ({
-		phrase,
-		tip: 'Describe exactly what you saw or heard. Keep the original wording until you can clarify it.'
-	}));
+	const flags = vagueFlags(text);
 	const incident = {
 		detected: INCIDENT.test(text),
 		summary: sentences.find((s) => INCIDENT.test(s)) ?? ''

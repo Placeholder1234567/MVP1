@@ -24,6 +24,8 @@ vi.mock('../../../src/lib/server/db', () => ({
 }));
 import {
 	draftNote,
+	editSection,
+	routeObservations,
 	LomiRateLimitError,
 	transcribeAudio
 } from '../../../src/lib/server/services/lomi';
@@ -89,4 +91,145 @@ it('replaces a transcription provider error with a safe message', async () => {
 	await expect(
 		transcribeAudio(user, { audio: 'dGVzdA==', mimeType: 'audio/webm' })
 	).rejects.toThrow('Could not transcribe this recording.');
+});
+
+it('uses server-loaded goals and accepts only grounded references', async () => {
+	f.person.mockResolvedValue({
+		firstName: 'Synthetic',
+		goals: [{ id: 'active', text: 'Brush teeth', area: 'Daily living' }]
+	});
+	f.request.mockResolvedValue({
+		data: {
+			content: [
+				{
+					type: 'text',
+					text: JSON.stringify({
+						activities: 'Brushed teeth.',
+						meals: '',
+						mood: '',
+						health: '',
+						goalReferences: [
+							{ goalId: 'active', evidence: 'Brushed teeth.', trials: ['Independent'] },
+							{ goalId: 'another-person', evidence: 'Brushed teeth.' }
+						]
+					})
+				}
+			]
+		}
+	});
+	const result = await draftNote({} as Tx, user, {
+		clientId: 'person',
+		type: 'shift',
+		prompt: 'Brushed teeth.'
+	});
+	expect(result.goalReferences).toEqual([{ goalId: 'active', evidence: 'Brushed teeth.' }]);
+	expect(JSON.parse(f.request.mock.calls[0][0].data.messages[0].content).activeGoals).toEqual([
+		{ id: 'active', text: 'Brush teeth', area: 'Daily living' }
+	]);
+});
+it('checks person access before any refinement request', async () => {
+	f.person.mockResolvedValue(null);
+	await expect(
+		editSection({} as Tx, user, {
+			clientId: 'other',
+			section: 'meals',
+			current: '',
+			input: 'Ate lunch.'
+		})
+	).rejects.toThrow('That person is not in your homes');
+	expect(f.request).not.toHaveBeenCalled();
+	expect(f.record).not.toHaveBeenCalled();
+});
+it('returns an explicit proposed revision and applies the edit rate limit', async () => {
+	f.request.mockResolvedValue({
+		data: { content: [{ type: 'text', text: '{"text":"Ate lunch and drank water."}' }] }
+	});
+	const result = await editSection({} as Tx, user, {
+		clientId: 'person',
+		section: 'meals',
+		current: 'Ate lunch.',
+		input: 'Drank water.'
+	});
+	expect(result).toEqual({ text: 'Ate lunch and drank water.', fallback: false });
+	expect(f.record).toHaveBeenCalledWith({}, 'agency', 'profile', 'edit');
+	f.counts.mockResolvedValue(
+		Array.from({ length: 60 }, () => ({ profileId: 'profile', meta: { task: 'edit' } }))
+	);
+	await expect(
+		editSection({} as Tx, user, {
+			clientId: 'person',
+			section: 'meals',
+			current: '',
+			input: 'Test.'
+		})
+	).rejects.toBeInstanceOf(LomiRateLimitError);
+	expect(f.request).toHaveBeenCalledTimes(1);
+});
+it('retains the exact observations in a safe fallback when editing fails', async () => {
+	f.request.mockRejectedValue(new Error('private provider payload'));
+	expect(
+		await editSection({} as Tx, user, {
+			clientId: 'person',
+			section: 'meals',
+			current: 'Ate lunch.',
+			input: 'Drank water.'
+		})
+	).toEqual({ text: 'Ate lunch. Drank water.', fallback: true });
+});
+it('rejects unknown or duplicate routed sections and never alters goal outcomes', async () => {
+	f.request.mockResolvedValue({
+		data: {
+			content: [
+				{
+					type: 'text',
+					text: JSON.stringify({ updates: [{ section: 'goal_scores', text: 'Independent' }] })
+				}
+			]
+		}
+	});
+	const result = await routeObservations({} as Tx, user, {
+		clientId: 'person',
+		message: 'Ate lunch.',
+		current: { activities: 'Walked.', meals: 'Ate breakfast.', mood: '', health: '' }
+	});
+	expect(result).toEqual({
+		updates: [{ section: 'meals', text: 'Ate breakfast. Ate lunch.' }],
+		fallback: true
+	});
+	expect(f.record).toHaveBeenCalledWith({}, 'agency', 'profile', 'route');
+});
+it('uses the fast model for routed suggestions and validates replacements', async () => {
+	vi.stubEnv('LOMI_FAST_MODEL', 'fixture-fast');
+	f.request.mockResolvedValue({
+		data: {
+			content: [
+				{
+					type: 'text',
+					text: '{"updates":[{"section":"meals","text":"Ate breakfast and lunch."}]}'
+				}
+			]
+		}
+	});
+	const result = await routeObservations({} as Tx, user, {
+		clientId: 'person',
+		message: 'Ate lunch.',
+		current: { activities: '', meals: 'Ate breakfast.', mood: '', health: '' }
+	});
+	expect(result.fallback).toBe(false);
+	expect(f.request.mock.calls[0][0].url).toContain('fixture-fast');
+});
+it('uses local suggestions without transmitting or reserving calls when no provider is configured', async () => {
+	vi.stubEnv('LOMI_MODEL', '');
+	expect(
+		(
+			await editSection({} as Tx, user, {
+				clientId: 'person',
+				section: 'meals',
+				current: 'Ate lunch.',
+				input: 'Drank water.'
+			})
+		).fallback
+	).toBe(true);
+	expect(f.request).not.toHaveBeenCalled();
+	expect(f.record).not.toHaveBeenCalled();
 });

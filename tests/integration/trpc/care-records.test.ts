@@ -36,7 +36,12 @@ beforeAll(async () => {
 	await withService(async (t) => {
 		await t
 			.insert(s.agencies)
-			.values({ id: AGENCY, name: 'Care Test Agency', subscription_tier: 'complete', slug: `care-${AGENCY}` });
+			.values({
+				id: AGENCY,
+				name: 'Care Test Agency',
+				subscription_tier: 'complete',
+				slug: `care-${AGENCY}`
+			});
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }
@@ -119,6 +124,67 @@ describe('Lomi access and labels', () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
+	});
+	it('returns section edits and follow-ups as proposals without touching any note', async () => {
+		vi.stubEnv('LOMI_MODEL', '');
+		try {
+			const cara = await as(CARA);
+			expect(
+				await cara.lomi.edit({
+					clientId: PERSON,
+					section: 'meals',
+					current: 'Ate breakfast.',
+					input: 'Drank water at lunch.'
+				})
+			).toEqual({ text: 'Ate breakfast. Drank water at lunch.', fallback: true });
+			const routed = await cara.lomi.route({
+				clientId: PERSON,
+				message: 'Ate lunch. Smiled at staff.',
+				current: { activities: 'Walked.', meals: 'Ate breakfast.', mood: '', health: '' }
+			});
+			expect(routed).toEqual({
+				updates: [
+					{ section: 'meals', text: 'Ate breakfast. Ate lunch.' },
+					{ section: 'mood', text: 'Smiled at staff.' }
+				],
+				fallback: true
+			});
+			await expect(
+				cara.lomi.edit({ clientId: MAPLE_PERSON, section: 'meals', current: '', input: 'Test.' })
+			).rejects.toMatchObject({ code: 'NOT_FOUND' });
+			await expect(
+				cara.lomi.route({
+					clientId: MAPLE_PERSON,
+					message: 'Test.',
+					current: { activities: '', meals: '', mood: '', health: '' }
+				})
+			).rejects.toMatchObject({ code: 'NOT_FOUND' });
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+	it('rejects unknown sections and oversized assisted edits', async () => {
+		const cara = await as(CARA);
+		await expect(
+			cara.lomi.edit({
+				clientId: PERSON,
+				// @ts-expect-error goal scores are never an editable Lomi section
+				section: 'goal_scores',
+				current: '',
+				input: 'Independent'
+			})
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		await expect(
+			cara.lomi.edit({ clientId: PERSON, section: 'meals', current: 'x'.repeat(6001), input: 'y' })
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		const long = 'x'.repeat(2500);
+		await expect(
+			cara.lomi.route({
+				clientId: PERSON,
+				message: 'Ate lunch.',
+				current: { activities: long, meals: long, mood: long, health: long }
+			})
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 	});
 	it('keeps the Lomi label after a manual draft is edited with Lomi online or offline', async () => {
 		const cara = await as(CARA);
@@ -337,6 +403,46 @@ describe('mar.* and medication.list', () => {
 });
 
 describe('health.*', () => {
+	it('keeps the caregiver health form answers through upload and subsequent reads', async () => {
+		const cara = await as(CARA);
+		const entries = [
+			{
+				kind: 'seizure' as const,
+				data: {
+					started: '14:05',
+					observed: 'Observed movement',
+					actions: 'Followed protocol',
+					postIctal: 'Rested'
+				}
+			},
+			{
+				kind: 'illness' as const,
+				data: { symptoms: 'Cough', contagious: 'Not sure', actions: 'Told supervisor' }
+			},
+			{
+				kind: 'appointment' as const,
+				data: { date: TODAY, provider: 'Test provider', outcome: 'Follow-up planned' }
+			}
+		];
+		for (const entry of entries) {
+			const id = randomUUID();
+			const result = await cara.sync.upload({
+				transactionId: 2,
+				ops: [
+					{
+						op: 'PUT',
+						table: 'health_entries',
+						id,
+						data: { client_id: PERSON, kind: entry.kind, data: JSON.stringify(entry.data) }
+					}
+				]
+			});
+			expect(result.rejected).toEqual([]);
+			expect(
+				(await cara.health.list({ clientId: PERSON })).find((row) => row.id === id)?.data
+			).toEqual(entry.data);
+		}
+	});
 	it('flags out-of-range vitals, alerts supervisors, and lists flagged entries first', async () => {
 		const cara = await as(CARA);
 		await cara.health.create({ clientId: PERSON, kind: 'vitals', data: { temp: 98.6, pulse: 70 } });
