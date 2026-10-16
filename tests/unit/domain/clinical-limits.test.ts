@@ -63,6 +63,20 @@ it('requires role, report feature and source feature before querying', async () 
 	expect(scope).not.toHaveBeenCalled();
 });
 
+it('applies the source-row cap to goal history before calculating grouped progress', async () => {
+	rows.mockResolvedValue(Array(1001).fill({ goalId: 'same-goal', trials: ['Independent'] }));
+	await expect(
+		exportClinical(
+			tx,
+			{ ...user, features: [...user.features, 'goals'] },
+			{ ...input, type: 'goals' },
+			{}
+		)
+	).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+	expect(audit).not.toHaveBeenCalled();
+	expect(history).not.toHaveBeenCalled();
+});
+
 it('enforces the escaped HTML size and signature-event caps', async () => {
 	rows.mockResolvedValue([{ text: '<'.repeat(2 * 1024 * 1024) }]);
 	await expect(exportClinical(tx, user, { ...input, format: 'html' }, {})).rejects.toMatchObject({
