@@ -517,6 +517,8 @@ Every tRPC procedure is mapped to a feature flag and minimum role. Procedures ma
 
 ## 7. UI Navigation Gating
 
+**As built:** the app shell gets the agency's effective features from the session (`(app)/+layout.server.ts`) and hides nav items outside the plan. Gated routes have a server `+layout.server.ts` guard (`requireFeature`, `src/lib/server/feature-guard.ts`) that redirects home: `/notes` charting, `/shifts` scheduling, `/messages` messaging, `/dashboard/notes` note_review, `/dashboard/timesheets` timekeeping, `/dashboard/intake` intake, `/dashboard/reports` reports or reports_basic. Routes in the table below that don't exist yet get a guard when they're built.
+
 ### hasFeature Utility
 
 ```typescript
