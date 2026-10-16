@@ -10,12 +10,20 @@ import {
 	verifySession
 } from '#lib/server/identity.ts';
 import { checkMfa, getCurrentUser } from '#lib/server/services/auth/index.ts';
+import { signInsByIp } from '#lib/server/rate-limit.ts';
 import type { RequestHandler } from './$types';
 
 const Body = z.object({ idToken: z.string().min(1).max(4096) });
 
 /** POST { idToken }: exchange a fresh ID token for the session cookie. */
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
+	const wait = signInsByIp.take(getClientAddress());
+	if (wait) {
+		return json(
+			{ message: `Too many sign-in attempts. Try again in ${wait} seconds.` },
+			{ status: 429, headers: { 'retry-after': String(wait) } }
+		);
+	}
 	const parsed = Body.safeParse(await request.json().catch(() => null));
 	if (!parsed.success) error(400, 'Missing sign-in token');
 
