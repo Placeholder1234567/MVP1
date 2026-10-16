@@ -100,7 +100,11 @@
 					class="card pad record-choice"
 					onclick={() => (noteId = note.id)}
 					><b>{app.people.find((p) => p.id === note.client_id)?.name ?? 'Saved record'}</b><span
-						>{note.day} · {note.shift?.toUpperCase()} · {note.status}</span
+						>{note.type === 'behavior' ? app.labels.behavior : app.labels.shift} · {note.day} · {note.shift?.toUpperCase()}
+						· {note.status}</span
+					><span
+						>{app.staff.find((person) => person.id === note.author_id)?.name ??
+							'Saved staff member'}</span
 					></button
 				>{:else}<p class="muted">No saved notes for this home.</p>{/each}
 		{/if}

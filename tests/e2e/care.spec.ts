@@ -129,7 +129,7 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 	await page
 		.getByRole('combobox', { name: 'Home', exact: true })
 		.selectOption({ label: 'Oak House' });
-	await page.getByRole('button', { name: new RegExp(`${person}.*draft`) }).click();
+	await page.getByRole('button', { name: new RegExp(`${person}.*Behavior note.*draft`) }).click();
 	await expect(page.getByLabel('What happened right before', { exact: true })).toHaveValue(content);
 	const response = `Synthetic ${info.project.name} draft saved without a connection.`;
 	await page.getByLabel('How staff responded', { exact: true }).fill(response);
@@ -141,11 +141,12 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 		.getByRole('combobox', { name: 'Home', exact: true })
 		.selectOption({ label: 'Oak House' });
 	await accessible(page);
-	await page.getByRole('button', { name: new RegExp(`${person}.*draft`) }).click();
+	await page.getByRole('button', { name: new RegExp(`${person}.*Behavior note.*draft`) }).click();
 	await expect(page.getByLabel('How staff responded', { exact: true })).toHaveValue(response);
 	await context.setOffline(false);
 	await page.goto('/today');
 	await unlock(page, 'Unlock');
+	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await page.getByRole('link', { name: new RegExp(person) }).click();
 	await page.getByRole('link', { name: /^Behavior note/ }).click();
