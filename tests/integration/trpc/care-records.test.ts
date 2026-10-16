@@ -36,7 +36,12 @@ beforeAll(async () => {
 	await withService(async (t) => {
 		await t
 			.insert(s.agencies)
-			.values({ id: AGENCY, name: 'Care Test Agency', subscription_tier: 'complete', slug: `care-${AGENCY}` });
+			.values({
+				id: AGENCY,
+				name: 'Care Test Agency',
+				subscription_tier: 'complete',
+				slug: `care-${AGENCY}`
+			});
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }
@@ -337,6 +342,46 @@ describe('mar.* and medication.list', () => {
 });
 
 describe('health.*', () => {
+	it('keeps the caregiver health form answers through upload and subsequent reads', async () => {
+		const cara = await as(CARA);
+		const entries = [
+			{
+				kind: 'seizure' as const,
+				data: {
+					started: '14:05',
+					observed: 'Observed movement',
+					actions: 'Followed protocol',
+					postIctal: 'Rested'
+				}
+			},
+			{
+				kind: 'illness' as const,
+				data: { symptoms: 'Cough', contagious: 'Not sure', actions: 'Told supervisor' }
+			},
+			{
+				kind: 'appointment' as const,
+				data: { date: TODAY, provider: 'Test provider', outcome: 'Follow-up planned' }
+			}
+		];
+		for (const entry of entries) {
+			const id = randomUUID();
+			const result = await cara.sync.upload({
+				transactionId: 2,
+				ops: [
+					{
+						op: 'PUT',
+						table: 'health_entries',
+						id,
+						data: { client_id: PERSON, kind: entry.kind, data: JSON.stringify(entry.data) }
+					}
+				]
+			});
+			expect(result.rejected).toEqual([]);
+			expect(
+				(await cara.health.list({ clientId: PERSON })).find((row) => row.id === id)?.data
+			).toEqual(entry.data);
+		}
+	});
 	it('flags out-of-range vitals, alerts supervisors, and lists flagged entries first', async () => {
 		const cara = await as(CARA);
 		await cara.health.create({ clientId: PERSON, kind: 'vitals', data: { temp: 98.6, pulse: 70 } });
