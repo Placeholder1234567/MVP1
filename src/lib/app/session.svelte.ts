@@ -35,6 +35,11 @@ export class CareSession {
 	noteGoals = $state<Database['note_goals'][]>([]);
 	medications = $state<Database['medications'][]>([]);
 	doses = $state<Database['mar_records'][]>([]);
+	health = $state<Database['health_entries'][]>([]);
+	incidents = $state<Database['incidents'][]>([]);
+	attendance = $state<Database['attendance'][]>([]);
+	healthInfo = $state<Database['client_health_info'][]>([]);
+	coverage = $state<Database['coverage_requests'][]>([]);
 	clocks = $state<Database['clock_records'][]>([]);
 	shifts = $state<Database['schedule_slots'][]>([]);
 	staff = $state<Database['profiles'][]>([]);
@@ -86,6 +91,26 @@ export class CareSession {
 		watch<Database['note_goals']>('SELECT * FROM note_goals', (r) => (this.noteGoals = r));
 		watch<Database['medications']>('SELECT * FROM medications', (r) => (this.medications = r));
 		watch<Database['mar_records']>('SELECT * FROM mar_records', (r) => (this.doses = r));
+		watch<Database['health_entries']>(
+			'SELECT * FROM health_entries ORDER BY recorded_at DESC',
+			(r) => (this.health = r)
+		);
+		watch<Database['incidents']>(
+			'SELECT * FROM incidents ORDER BY occurred_at DESC',
+			(r) => (this.incidents = r)
+		);
+		watch<Database['attendance']>(
+			'SELECT * FROM attendance ORDER BY day DESC',
+			(r) => (this.attendance = r)
+		);
+		watch<Database['client_health_info']>(
+			'SELECT * FROM client_health_info',
+			(r) => (this.healthInfo = r)
+		);
+		watch<Database['coverage_requests']>(
+			'SELECT * FROM coverage_requests ORDER BY day',
+			(r) => (this.coverage = r)
+		);
 		watch<Database['clock_records']>('SELECT * FROM clock_records', (r) => (this.clocks = r));
 		watch<Database['schedule_slots']>(
 			'SELECT * FROM schedule_slots ORDER BY day, shift',

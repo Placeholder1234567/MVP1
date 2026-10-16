@@ -2,7 +2,7 @@
 // Vital flags come from the shared domain rules, so the device shows the same
 // warning offline that the server records.
 import { z } from 'zod';
-import { vitalFlags } from '../../../domain/index.ts';
+import { healthFlags } from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -17,6 +17,10 @@ import {
 
 const num = z.coerce.number().finite().nullish();
 const text = z.string().trim().max(1000).nullish();
+const time = z
+	.string()
+	.regex(/^\d{2}:\d{2}$/)
+	.nullish();
 
 const DATA = {
 	vitals: z.object({
@@ -28,9 +32,30 @@ const DATA = {
 		oxygen: num,
 		weight: num
 	}),
-	seizure: z.object({ duration: text, type: text, triggers: text, postIctal: text }),
-	illness: z.object({ symptoms: text, onset: text, actions: text }),
-	appointment: z.object({ provider: text, reason: text, outcome: text, nextVisit: text })
+	// Keys match the device form (domain HEALTH_FIELDS). `type` and `triggers`
+	// are kept for entries written before the form asked "What you saw".
+	seizure: z.object({
+		started: time,
+		duration: text,
+		observed: text,
+		type: text,
+		triggers: text,
+		postIctal: text,
+		actions: text
+	}),
+	illness: z.object({
+		symptoms: text,
+		onset: text,
+		contagious: z.enum(['Not sure', 'Yes', 'No']).nullish(),
+		actions: text
+	}),
+	appointment: z.object({
+		date: z.iso.date().nullish(),
+		provider: text,
+		reason: text,
+		outcome: text,
+		nextVisit: text
+	})
 };
 
 const Json = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v);
@@ -45,9 +70,7 @@ export const NewHealthEntry = z.object({
 
 /** Metric names outside the limits, as stored in health_entries.flags. */
 export function flagsFor(kind: string, data: Record<string, unknown>): string[] {
-	if (kind !== 'vitals') return [];
-	const d = data as { temp?: number; pulse?: number; systolic?: number; diastolic?: number };
-	return vitalFlags({ temp: d.temp, pulse: d.pulse, sys: d.systolic, dia: d.diastolic });
+	return healthFlags(kind, data);
 }
 
 /**
