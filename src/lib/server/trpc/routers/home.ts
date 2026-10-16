@@ -1,7 +1,14 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { getHome, listHomes } from '../../services/home/index.ts';
-import { router, userProcedure } from '../middleware.ts';
+import {
+	createHome,
+	getHome,
+	HomeChanges,
+	listHomes,
+	NewHome,
+	updateHome
+} from '../../services/home/index.ts';
+import { roleProcedure, router, userProcedure } from '../middleware.ts';
 
 export const homeRouter = router({
 	/** Homes the caller can access: caregivers their own, supervisors all (RLS). */
@@ -11,5 +18,13 @@ export const homeRouter = router({
 		const home = await getHome(ctx.db, ctx.user.agencyId, input.id);
 		if (!home) throw new TRPCError({ code: 'NOT_FOUND', message: 'Home not found' });
 		return home;
-	})
+	}),
+
+	create: roleProcedure('admin')
+		.input(NewHome)
+		.mutation(({ ctx, input }) => createHome(ctx.db, ctx.user.agencyId, input)),
+
+	update: roleProcedure('admin')
+		.input(HomeChanges)
+		.mutation(({ ctx, input }) => updateHome(ctx.db, ctx.user.agencyId, input))
 });

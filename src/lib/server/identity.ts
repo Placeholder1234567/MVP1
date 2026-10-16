@@ -147,6 +147,11 @@ export async function passwordSetupLink(email: string, continueUrl: string): Pro
 	return auth().generatePasswordResetLink(email, { url: continueUrl });
 }
 
+/** Reactivation: the account can sign in again (old sessions stay revoked). */
+export async function enableIdentity(uid: string): Promise<void> {
+	await auth().updateUser(uid, { disabled: false });
+}
+
 /** Deactivation: the account can't sign in and existing sessions end. */
 export async function disableIdentity(uid: string): Promise<void> {
 	await auth().updateUser(uid, { disabled: true });

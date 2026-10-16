@@ -13,3 +13,4 @@ export * from './clinical';
 export * from './sms-replies';
 export * from './mfa';
 export * from './escalation';
+export * from './people';
