@@ -5,12 +5,19 @@ import * as env from '$app/env/public';
 import { initializeApp, getApps } from 'firebase/app';
 import {
 	connectAuthEmulator,
+	getMultiFactorResolver,
 	inMemoryPersistence,
 	initializeAuth,
+	multiFactor,
 	signInWithCustomToken,
 	signInWithEmailAndPassword,
 	signOut,
-	type Auth
+	TotpMultiFactorGenerator,
+	type Auth,
+	type MultiFactorError,
+	type MultiFactorResolver,
+	type TotpSecret,
+	type User
 } from 'firebase/auth';
 
 let auth: Auth | undefined;
@@ -43,15 +50,94 @@ async function postJson(url: string, body?: unknown): Promise<Response> {
 	});
 }
 
-/** Email + password sign-in, then trade the ID token for the session cookie. */
-export async function signIn(email: string, password: string): Promise<{ role: string }> {
-	const cred = await signInWithEmailAndPassword(firebaseAuth(), email, password);
-	const res = await postJson('/auth/session', { idToken: await cred.user.getIdToken() });
+export interface SessionResult {
+	role: string;
+	/** Days a supervisor can still sign in without two-step sign-in */
+	mfaGraceDaysLeft?: number;
+}
+
+/** The account has TOTP: sign-in waits for the 6-digit code (completeMfaSignIn). */
+export class MfaChallenge extends Error {
+	constructor(readonly resolver: MultiFactorResolver) {
+		super('Enter the code from your authenticator app.');
+	}
+}
+
+/** The role needs TOTP and none is set up: enroll before a session is issued. */
+export class MfaEnrollmentNeeded extends Error {}
+
+/** Trades the signed-in user's ID token for the session cookie. */
+async function startSession(user: User): Promise<SessionResult> {
+	const res = await postJson('/auth/session', { idToken: await user.getIdToken(true) });
+	const body = await res.json().catch(() => null);
+	if (res.status === 403 && body?.code === 'mfa_enrollment_required') {
+		// Keep the Firebase user signed in (memory only) so they can enroll now.
+		throw new MfaEnrollmentNeeded(body.message);
+	}
 	if (!res.ok) {
 		await signOut(firebaseAuth());
-		throw new Error((await res.json().catch(() => null))?.message ?? 'Sign-in failed');
+		throw new Error(body?.message ?? 'Sign-in failed');
 	}
-	return res.json();
+	return body;
+}
+
+/** Email + password sign-in, then trade the ID token for the session cookie. */
+export async function signIn(email: string, password: string): Promise<SessionResult> {
+	let user: User;
+	try {
+		user = (await signInWithEmailAndPassword(firebaseAuth(), email, password)).user;
+	} catch (e) {
+		if ((e as { code?: string }).code === 'auth/multi-factor-auth-required') {
+			throw new MfaChallenge(getMultiFactorResolver(firebaseAuth(), e as MultiFactorError));
+		}
+		throw e;
+	}
+	return startSession(user);
+}
+
+/** Second step: the TOTP code for the challenge from signIn(). */
+export async function completeMfaSignIn(
+	resolver: MultiFactorResolver,
+	code: string
+): Promise<SessionResult> {
+	const hint = resolver.hints.find((h) => h.factorId === TotpMultiFactorGenerator.FACTOR_ID);
+	if (!hint) throw new Error('No authenticator app is set up for this account.');
+	const cred = await resolver.resolveSignIn(
+		TotpMultiFactorGenerator.assertionForSignIn(hint.uid, code)
+	);
+	return startSession(cred.user);
+}
+
+/** Enrollment, step 1: a new TOTP secret for the signed-in user. */
+export async function startTotpEnrollment(): Promise<{
+	secret: TotpSecret;
+	key: string;
+	otpauthUrl: string;
+}> {
+	const user = firebaseAuth().currentUser;
+	if (!user) throw new Error('Sign in again to set up two-step sign-in.');
+	const secret = await TotpMultiFactorGenerator.generateSecret(
+		await multiFactor(user).getSession()
+	);
+	return {
+		secret,
+		key: secret.secretKey,
+		otpauthUrl: secret.generateQrCodeUrl(user.email ?? 'Guad account', 'Guad')
+	};
+}
+
+/**
+ * Enrollment, step 2: confirm with a code from the app. The user then signs
+ * in again, so the new session comes from a sign-in that used the factor.
+ */
+export async function finishTotpEnrollment(secret: TotpSecret, code: string): Promise<void> {
+	const user = firebaseAuth().currentUser;
+	if (!user) throw new Error('Sign in again to set up two-step sign-in.');
+	await multiFactor(user).enroll(
+		TotpMultiFactorGenerator.assertionForEnrollment(secret, code),
+		'Authenticator app'
+	);
+	await signOut(firebaseAuth());
 }
 
 /**

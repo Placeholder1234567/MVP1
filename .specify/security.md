@@ -58,6 +58,8 @@ Changing a user's role, homes or active status takes effect on their next reques
 | Supervisor | Required after go-live. 30-day grace period on account creation. |
 | Admin | Required immediately. Cannot access admin functions without MFA enrolled. |
 
+**As built:** `domain/mfa.ts` holds the policy, and `/auth/session` refuses a session cookie when the role needs MFA but the sign-in didn't use a second factor (Identity Platform's `sign_in_second_factor` claim). The login page answers TOTP challenges and walks the user through enrollment when it's required. Enforcement is off with the Auth emulator, which has no TOTP, and when `MFA_ENFORCE=off`.
+
 MFA is implemented with Identity Platform's TOTP multi-factor. SMS codes are not offered (cost and SIM-swap risk). Identity Platform has no backup codes, so a user who loses their authenticator is reset by an admin: the admin unenrolls the factor (Admin SDK), the action is audited, and the user must enroll again at next sign-in.
 
 ### Password Requirements

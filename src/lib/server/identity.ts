@@ -43,7 +43,7 @@ export class SignInError extends Error {
 export async function createSession(
 	idToken: string,
 	maxMs: number = SESSION_MAX_MS
-): Promise<{ cookie: string; uid: string; expiresIn: number }> {
+): Promise<{ cookie: string; uid: string; expiresIn: number; secondFactor: boolean }> {
 	let decoded: DecodedIdToken;
 	try {
 		decoded = await auth().verifyIdToken(idToken, true);
@@ -55,7 +55,9 @@ export async function createSession(
 	}
 	const expiresIn = Math.min(maxMs, SESSION_MAX_MS);
 	const cookie = await auth().createSessionCookie(idToken, { expiresIn });
-	return { cookie, uid: decoded.uid, expiresIn };
+	// Set by Identity Platform when this sign-in passed a TOTP challenge.
+	const secondFactor = Boolean(decoded.firebase?.sign_in_second_factor);
+	return { cookie, uid: decoded.uid, expiresIn, secondFactor };
 }
 
 /**
@@ -70,6 +72,15 @@ export async function verifySession(cookie: string | undefined): Promise<{ uid: 
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Whether sign-in enforces the MFA policy. Off with the Auth emulator, which
+ * can't do TOTP, or when MFA_ENFORCE=off (e.g. a staging project before
+ * Identity Platform's TOTP is switched on).
+ */
+export function mfaEnforced(): boolean {
+	return !process.env.FIREBASE_AUTH_EMULATOR_HOST && process.env.MFA_ENFORCE !== 'off';
 }
 
 /** Signs the user out everywhere: existing session cookies stop verifying. */

@@ -2,19 +2,21 @@
 //
 // notify() writes one in-app row per recipient (delivered by sync) plus one
 // pending row per delivery channel chosen by channelsFor() (role defaults,
-// saved preferences, mandatory types). After the transaction commits, a
-// notifications-dispatch job sends the pending rows; a sweeper job retries
-// any that are left (jobs/handlers/notifications.ts).
+// saved preferences, mandatory types). After the transaction commits, each
+// channel's job (notifications-push / -sms / -email) sends its rows, a sweeper
+// retries any that are left, and types with an escalation chain queue their
+// first escalation step (escalation.ts).
 //
 // Writes run as app_service inside the caller's transaction: notifying other
 // users is a cross-user write clients can't make (rls.sql), and it must roll
 // back with the change that caused it.
 import { channelsFor, type StaffRole } from '../../../domain/index.ts';
 import { afterCommit, asService, type Tx } from '../../db';
-import { enqueue } from '../../jobs/queue.ts';
+import { queueDeliveries } from './dispatch';
+import { queueEscalation } from './escalation';
 import { activeStaffByRole, insertNotifications, preferencesFor } from './notification.queries';
 
-export { dispatchNotifications, sweepNotifications } from './dispatch';
+export { dispatchNotifications, sweepNotifications, RetryLater } from './dispatch';
 export {
 	quietHours,
 	saveQuietHours,
@@ -24,6 +26,8 @@ export {
 	removePushDevice,
 	PushDeviceInput
 } from './settings';
+export { escalate, type EscalationPayload } from './escalation';
+export { sweepDigests, sendDigest } from './digest';
 export { handleEmailEvent, handleSmsEvent, type EventOutcome } from './events';
 export {
 	getNotification,
@@ -92,9 +96,20 @@ export function notify(
 			}))
 		]);
 		const inserted = await insertNotifications(tx, rows);
-		const ids = inserted.filter((r) => r.channel !== 'in_app').map((r) => r.id);
-		if (ids.length) afterCommit(() => enqueue('notifications-dispatch', { ids }));
-		return ids.length;
+		const deliveries = inserted.filter((r) => r.channel !== 'in_app');
+		const first = inserted.find((r) => r.channel === 'in_app');
+		afterCommit(async () => {
+			await queueDeliveries(deliveries);
+			if (first)
+				await queueEscalation({
+					agencyId,
+					type: n.type,
+					referenceId: n.referenceId ?? null,
+					notificationId: first.id,
+					step: 1
+				});
+		});
+		return deliveries.length;
 	});
 }
 

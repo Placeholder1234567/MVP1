@@ -99,7 +99,8 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 	context
 }, info) => {
 	await signIn(page, info.project.name === 'phone' ? 'dev@guad.test' : 'cara@guad.test');
-	await page.getByRole('link', { name: /Marcus Demo/ }).click();
+	const person = info.project.name === 'phone' ? 'Rosa Demo' : 'Marcus Demo';
+	await page.getByRole('link', { name: new RegExp(person) }).click();
 	await page.getByRole('link', { name: /^Behavior note/ }).click();
 	const content = `Synthetic ${info.project.name} privacy check: unsaved observations.`;
 	await page.getByLabel('What happened right before', { exact: true }).fill(content);
@@ -128,7 +129,7 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 	await page
 		.getByRole('combobox', { name: 'Home', exact: true })
 		.selectOption({ label: 'Oak House' });
-	await page.getByRole('button', { name: /Marcus Demo.*draft/ }).click();
+	await page.getByRole('button', { name: new RegExp(`${person}.*draft`) }).click();
 	await expect(page.getByLabel('What happened right before', { exact: true })).toHaveValue(content);
 	const response = `Synthetic ${info.project.name} draft saved without a connection.`;
 	await page.getByLabel('How staff responded', { exact: true }).fill(response);
@@ -140,13 +141,13 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 		.getByRole('combobox', { name: 'Home', exact: true })
 		.selectOption({ label: 'Oak House' });
 	await accessible(page);
-	await page.getByRole('button', { name: /Marcus Demo.*draft/ }).click();
+	await page.getByRole('button', { name: new RegExp(`${person}.*draft`) }).click();
 	await expect(page.getByLabel('How staff responded', { exact: true })).toHaveValue(response);
 	await context.setOffline(false);
 	await page.goto('/today');
 	await unlock(page, 'Unlock');
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
-	await page.getByRole('link', { name: /Marcus Demo/ }).click();
+	await page.getByRole('link', { name: new RegExp(person) }).click();
 	await page.getByRole('link', { name: /^Behavior note/ }).click();
 	await expect(page.getByLabel('How staff responded', { exact: true })).toHaveValue(response);
 });
