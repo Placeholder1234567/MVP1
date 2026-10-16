@@ -1,0 +1,56 @@
+[
+  {
+    "url": "http://127.0.0.1:4176/login",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_login-2026_10_16_03_31_44.report.html",
+    "jsonPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_login-2026_10_16_03_31_44.report.json",
+    "summary": {
+      "performance": 0.98
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4176/login",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_login-2026_10_16_03_32_13.report.html",
+    "jsonPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_login-2026_10_16_03_32_13.report.json",
+    "summary": {
+      "performance": 0.99
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4176/offline",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_offline-2026_10_16_03_32_26.report.html",
+    "jsonPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_offline-2026_10_16_03_32_26.report.json",
+    "summary": {
+      "performance": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4176/offline",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_offline-2026_10_16_03_32_50.report.html",
+    "jsonPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_offline-2026_10_16_03_32_50.report.json",
+    "summary": {
+      "performance": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4176/login",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_login-2026_10_16_03_32_00.report.html",
+    "jsonPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_login-2026_10_16_03_32_00.report.json",
+    "summary": {
+      "performance": 0.98
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4176/offline",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_offline-2026_10_16_03_32_38.report.html",
+    "jsonPath": "C:\\Users\\ameko\\MVP1\\.lighthouseci\\127_0_0_1-_offline-2026_10_16_03_32_38.report.json",
+    "summary": {
+      "performance": 1
+    }
+  }
+]
