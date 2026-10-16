@@ -15,6 +15,7 @@ import { providers } from '../../messaging/index.ts';
 import { render } from '../../messaging/templates.ts';
 import { deleteDeviceTokens, isSuppressed } from './events.queries';
 import { markDelivery, pendingDeliveries, pushTokens, stalePending } from './notification.queries';
+import { queueSmsPushFallback } from './sms-fallback';
 
 /** A delivery that will never succeed, so retrying is pointless. */
 class Undeliverable extends Error {
@@ -103,7 +104,10 @@ export async function dispatchNotifications(
 				continue;
 			}
 			console.error(`notification.dead ${row.id} ${channel}: ${(e as Error).name}`);
-			await withService((tx) => markDelivery(tx, row.id, { status: 'failed' }));
+			await withService(async (tx) => {
+				await markDelivery(tx, row.id, { status: 'failed' });
+				if (channel === 'sms') await queueSmsPushFallback(tx, row.agencyId, row.id);
+			});
 			stats.failed++;
 		}
 	}

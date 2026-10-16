@@ -107,6 +107,23 @@ export function channelsFor(type: string, role: StaffRole, pref?: Preference | n
 
 export const DEFAULT_QUIET_HOURS = { start: '23:00', end: '06:00' } as const;
 
+/** Only terminal urgent SMS failures need this immediate delivery assurance. */
+export function needsSmsPushFallback(input: {
+	priority: number;
+	status: string;
+	active: boolean;
+	acknowledged: boolean;
+	pushAllowed: boolean;
+}): boolean {
+	return (
+		input.priority === 1 &&
+		input.status === 'failed' &&
+		input.active &&
+		!input.acknowledged &&
+		input.pushAllowed
+	);
+}
+
 /** Whether a local time (HH:MM) falls in quiet hours; the window may cross midnight. */
 export function inQuietHours(
 	time: string,

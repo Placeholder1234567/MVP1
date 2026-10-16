@@ -28,6 +28,12 @@
 		busy = true;
 		message = '';
 		try {
+			await app.refreshUploadStatus();
+			if (app.pending || app.checkingSync) {
+				message =
+					'Wait for this device’s saved changes to finish syncing before downloading a care report.';
+				return;
+			}
 			const file = await trpc.report.exportClinical.mutate({
 				type,
 				format,
@@ -121,7 +127,11 @@
 			Maximum 93 calendar days, 1,000 records and 8 MB. No partial report is downloaded when a limit
 			is exceeded. Exported files contain confidential care information.
 		</p>
-		<button class="btn" disabled={busy || !app.homeId}
+		{#if app.pending || app.checkingSync}<p role="status" class="muted">
+				Reports use records received by the server. Wait for this device’s saved changes to finish
+				syncing.
+			</p>{/if}
+		<button class="btn" disabled={busy || !app.homeId || !!app.pending || app.checkingSync}
 			>{busy ? 'Preparing report…' : 'Download care report'}</button
 		>
 	</form>

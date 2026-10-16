@@ -4,6 +4,7 @@
 // time, which also gives the agency. Events for messages Guad didn't send
 // through the notifications table are ignored. Logs carry IDs only.
 import { withService } from '../../db';
+import { queueSmsPushFallback } from './sms-fallback';
 import {
 	deliveryByProviderId,
 	disableEmailFor,
@@ -70,6 +71,7 @@ export function handleSmsEvent(event: SmsEvent): Promise<EventOutcome> {
 		// Read receipts and escalations are further along; leave them alone.
 		if (!delivery || !['pending', 'sent'].includes(delivery.status)) return 'ignored';
 		await setDeliveryStatus(tx, delivery.id, status);
+		if (status === 'failed') await queueSmsPushFallback(tx, delivery.agencyId, delivery.id);
 		if (status === 'failed') console.log(`sms ${eventType} for notification ${delivery.id}`);
 		return status;
 	});

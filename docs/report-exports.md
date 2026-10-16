@@ -10,6 +10,8 @@ This is a bounded synchronous local/test implementation. The broader specificati
 
 ## Care records
 
+The care-report screen waits for this device's upload queue to be checked and drained before enabling downloads. A saved local health, attendance, MAR or incident entry refreshes that queue state before reporting success. This prevents an old "All changes synced" label from allowing a server report before the new record has uploaded. Queue-check failures do not claim completion. The server remains the report source of truth; this guard does not create a local-cache report or guarantee that another device has finished syncing.
+
 `/dashboard/reports` provides a separate bounded clinical export via the POST-only `report.exportClinical` mutation. It requires a supervisor/admin, the `reports` entitlement and the relevant care feature (`charting`, `mar`, `health` or `incidents`). Reports require an authorized home and can narrow to a person currently assigned to that home. Supervisors have the agency-wide home access defined by the existing RLS policies. A foreign home, foreign person or mismatched person/home returns the same scope-unavailable error. All reads and joins remain explicitly tenant-scoped under the caller's RLS transaction; only the append-only export audit insert elevates permissions.
 
 Supported sources:

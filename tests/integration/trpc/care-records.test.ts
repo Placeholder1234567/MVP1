@@ -400,6 +400,190 @@ describe('mar.* and medication.list', () => {
 		]);
 		expect(await cara.medication.list({ clientId: PERSON, includeStopped: true })).toHaveLength(3);
 	});
+
+	it('requires a correction reason online and in queued writes, preserving valid append-only corrections', async () => {
+		const cara = await as(CARA);
+		const medicationId = randomUUID();
+		await withService((tx) =>
+			tx
+				.insert(s.medications)
+				.values({
+					id: medicationId,
+					agency_id: AGENCY,
+					client_id: PERSON,
+					name: 'Synthetic scheduled medication',
+					scheduled_times: ['12:00']
+				})
+		);
+		const original = await cara.mar.record({
+			clientId: PERSON,
+			medicationId,
+			day: TODAY,
+			scheduledTime: '12:00',
+			status: 'given'
+		});
+		for (const reason of [undefined, '', '   ']) {
+			await expect(
+				cara.mar.record({
+					clientId: PERSON,
+					medicationId,
+					day: TODAY,
+					scheduledTime: '12:00',
+					status: 'given',
+					amendsId: original.id,
+					reason
+				})
+			).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'Explain the correction' });
+		}
+		const rejectedIds = [randomUUID(), randomUUID(), randomUUID()];
+		const rejected = await cara.sync.upload({
+			transactionId: 20,
+			ops: rejectedIds.map((id, i) => ({
+				op: 'PUT' as const,
+				table: 'mar_records',
+				id,
+				data: {
+					client_id: PERSON,
+					medication_id: medicationId,
+					day: TODAY,
+					scheduled_time: '12:00',
+					status: 'given',
+					amends_id: original.id,
+					reason: [null, '', '   '][i]
+				}
+			}))
+		});
+		expect(rejected.applied).toEqual([]);
+		expect(rejected.rejected).toEqual(
+			rejectedIds.map((id) => ({
+				id,
+				table: 'mar_records',
+				code: 'VALIDATION_FAILED',
+				message: 'Explain the correction'
+			}))
+		);
+		const correction = await cara.mar.record({
+			clientId: PERSON.toUpperCase(),
+			medicationId,
+			day: TODAY,
+			scheduledTime: '12:00',
+			status: 'held',
+			amendsId: original.id,
+			reason: 'Earlier status entered incorrectly'
+		});
+		const queuedId = randomUUID();
+		const upload = {
+			transactionId: 21,
+			ops: [
+				{
+					op: 'PUT' as const,
+					table: 'mar_records',
+					id: queuedId,
+					data: {
+						client_id: PERSON,
+						medication_id: medicationId,
+						day: TODAY,
+						scheduled_time: '12:00',
+						status: 'given',
+						amends_id: original.id,
+						reason: 'Additional correction after checking record'
+					}
+				}
+			]
+		};
+		for (let i = 0; i < 2; i++) {
+			const result = await cara.sync.upload(upload);
+			expect(result.applied).toEqual([queuedId]);
+			expect(result.rejected).toEqual([]);
+		}
+		const records = (await cara.mar.list({ clientId: PERSON })).filter(
+			(row) => row.medicationId === medicationId
+		);
+		expect(records).toHaveLength(3);
+		expect(records.find((row) => row.id === original.id)).toMatchObject({
+			status: 'given',
+			reason: null,
+			amendsId: null
+		});
+		expect(records.find((row) => row.id === correction.id)).toMatchObject({
+			status: 'held',
+			amendsId: original.id,
+			reason: 'Earlier status entered incorrectly'
+		});
+		expect(records.find((row) => row.id === queuedId)).toMatchObject({
+			status: 'given',
+			amendsId: original.id,
+			reason: 'Additional correction after checking record'
+		});
+	});
+
+	it('rejects another person’s amendment target even when visible, and hides targets outside the caller’s homes', async () => {
+		const sam = await as(SAM);
+		const medicationId = randomUUID();
+		await withService((tx) =>
+			tx
+				.insert(s.medications)
+				.values({
+					id: medicationId,
+					agency_id: AGENCY,
+					client_id: MAPLE_PERSON,
+					name: 'Synthetic as-needed medication'
+				})
+		);
+		const original = await sam.mar.record({
+			clientId: MAPLE_PERSON,
+			medicationId,
+			day: TODAY,
+			status: 'given',
+			reason: 'Observed symptom'
+		});
+		for (const [caller, code, message] of [
+			[sam, 'BAD_REQUEST', 'A correction must refer to this person’s record'],
+			[await as(CARA), 'NOT_FOUND', 'The record being corrected was not found']
+		] as const) {
+			await expect(
+				caller.mar.record({
+					clientId: PERSON,
+					medicationId: PRN,
+					day: TODAY,
+					status: 'given',
+					reason: 'Correction',
+					amendsId: original.id
+				})
+			).rejects.toMatchObject({ code, message });
+			const id = randomUUID();
+			const result = await caller.sync.upload({
+				transactionId: 22,
+				ops: [
+					{
+						op: 'PUT',
+						table: 'mar_records',
+						id,
+						data: {
+							client_id: PERSON,
+							medication_id: PRN,
+							day: TODAY,
+							status: 'given',
+							reason: 'Correction',
+							amends_id: original.id
+						}
+					}
+				]
+			});
+			expect(result.applied).toEqual([]);
+			expect(result.rejected).toEqual([
+				{
+					id,
+					table: 'mar_records',
+					code: code === 'BAD_REQUEST' ? 'VALIDATION_FAILED' : 'NOT_FOUND',
+					message
+				}
+			]);
+			expect((await caller.mar.list({ clientId: PERSON })).some((row) => row.id === id)).toBe(
+				false
+			);
+		}
+	});
 });
 
 describe('health.*', () => {
