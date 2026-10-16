@@ -41,6 +41,8 @@ export const NewClient = z.object({
 	firstName: text(50).optional(),
 	homeId: z.uuid(),
 	info: text(4000).optional(),
+	/** Behaviors named in the support plan (frontend-spec-3.md §4.7) */
+	behaviors: z.array(text(100).min(1)).max(30).optional(),
 	healthInfo: HealthFields.optional()
 });
 
@@ -50,6 +52,7 @@ export const ClientChanges = z.object({
 	firstName: text(50).nullable().optional(),
 	homeId: z.uuid().optional(),
 	info: text(4000).nullable().optional(),
+	behaviors: z.array(text(100).min(1)).max(30).nullable().optional(),
 	active: z.boolean().optional()
 });
 
@@ -94,7 +97,8 @@ export async function createClient(tx: Tx, agencyId: string, input: z.infer<type
 		name: data.name,
 		first_name: data.firstName ?? data.name.split(/\s+/)[0],
 		initials: initialsOf(data.name),
-		info: data.info
+		info: data.info,
+		behaviors: data.behaviors
 	});
 	// Always create the health row, so updateHealth never has to guess.
 	await upsertHealthInfo(tx, {
@@ -115,6 +119,7 @@ export async function updateClient(tx: Tx, agencyId: string, input: z.infer<type
 		first_name: data.firstName,
 		home_id: data.homeId,
 		info: data.info,
+		behaviors: data.behaviors,
 		active: data.active
 	});
 	if (!row) throw new ServiceError('NOT_FOUND', 'Person not found');
