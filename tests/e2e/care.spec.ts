@@ -55,7 +55,6 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 }, info) => {
 	const email = info.project.name === 'phone' ? 'dev@guad.test' : 'cara@guad.test';
 	await signIn(page, email);
-	await page.goto('/today');
 	await expect(page.getByRole('link', { name: /Marcus Demo/ })).toBeVisible();
 	await accessible(page);
 	await page.getByRole('link', { name: /Marcus Demo/ }).click();
@@ -74,7 +73,7 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 	try {
 		const review = await supervisor.newPage();
 		await signIn(review, 'supervisor@guad.test');
-		await review.goto('/dashboard/notes');
+		await review.getByRole('link', { name: 'Review notes', exact: true }).click();
 		await review
 			.getByRole('button', { name: /Marcus Demo/ })
 			.filter({ hasText: info.project.name === 'phone' ? 'Dev Okafor' : 'Cara Giver' })
@@ -98,7 +97,6 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 	context
 }, info) => {
 	await signIn(page, info.project.name === 'phone' ? 'dev@guad.test' : 'cara@guad.test');
-	await page.goto('/today');
 	await page.getByRole('link', { name: /Marcus Demo/ }).click();
 	await page.getByRole('link', { name: /Behavior note.*Before, what happened/ }).click();
 	const content = `Synthetic ${info.project.name} privacy check: unsaved observations.`;
