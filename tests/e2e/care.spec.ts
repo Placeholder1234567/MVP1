@@ -146,6 +146,7 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 	await context.setOffline(false);
 	await page.goto('/today');
 	await unlock(page, 'Unlock');
+	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await page.getByRole('link', { name: new RegExp(person) }).click();
 	await page.getByRole('link', { name: /^Behavior note/ }).click();
