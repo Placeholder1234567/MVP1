@@ -31,3 +31,22 @@ export async function selectHome(tx: Tx, agencyId: string, id: string) {
 		.limit(1);
 	return row ?? null;
 }
+
+export async function insertHome(tx: Tx, row: typeof homes.$inferInsert) {
+	const [created] = await tx.insert(homes).values(row).returning(columns);
+	return created;
+}
+
+export async function updateHomeRow(
+	tx: Tx,
+	agencyId: string,
+	id: string,
+	set: Partial<typeof homes.$inferInsert>
+) {
+	const [row] = await tx
+		.update(homes)
+		.set({ ...set, updated_at: new Date() })
+		.where(and(eq(homes.agency_id, agencyId), eq(homes.id, id)))
+		.returning(columns);
+	return row ?? null;
+}
