@@ -42,7 +42,7 @@ This enables the APIs and creates the following, skipping anything that already 
 
 Then in the console:
 
-1. **Identity Platform:** enable it, turn on Email/Password, and copy the web API key from _Application setup details_. That key is a public identifier, not a secret.
+1. **Identity Platform:** enable it, turn on Email/Password, and copy the web API key from _Application setup details_. That key is a public identifier, not a secret. Under _MFA_, turn on **TOTP** (authenticator apps) and leave SMS off. Admins must set up TOTP at their first sign-in, and supervisors within 30 days (security.md "MFA Policy"). Until TOTP is on, `MFA_ENFORCE=off` in `deploy/app.env.yaml` lets admins in without it; don't leave that set for real data. Also set the password policy to "enforce" (10+ characters, upper and lower case, a digit).
 2. **Users:** create the first admin's sign-in account. There's no sign-up page, so each profile row is linked to its account by `auth_uid`.
 
 ## 3. First-deploy checks (not yet verified on a real project)

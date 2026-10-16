@@ -46,3 +46,25 @@ export async function findProfile(tx: Tx, agencyId: string, profileId: string) {
 		.limit(1);
 	return row ?? null;
 }
+
+/** What the MFA policy needs about a profile (security.md "MFA Policy"). */
+export async function findMfaFacts(tx: Tx, profileId: string) {
+	const [row] = await tx
+		.select({
+			createdAt: profiles.created_at,
+			mfaEnabled: profiles.mfa_enabled,
+			agencySettings: agencies.settings
+		})
+		.from(profiles)
+		.innerJoin(agencies, eq(agencies.id, profiles.agency_id))
+		.where(eq(profiles.id, profileId))
+		.limit(1);
+	return row ?? null;
+}
+
+export async function setMfaEnabled(tx: Tx, agencyId: string, profileId: string) {
+	await tx
+		.update(profiles)
+		.set({ mfa_enabled: true, updated_at: new Date() })
+		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId)));
+}
