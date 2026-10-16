@@ -26,6 +26,7 @@ const signed = randomUUID(),
 const original = randomUUID(),
 	amendment = randomUUID(),
 	conflict = randomUUID();
+const goalA = randomUUID(), goalB = randomUUID();
 const uid = (id: string) => `report-${id}`;
 const createCaller = createCallerFactory(appRouter);
 const as = async (id: string) =>
@@ -333,4 +334,210 @@ it('enforces caregiver, feature, client/home and tenant boundaries before produc
 			type: 'notes'
 		})
 	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+});
+
+beforeAll(async () => {
+	await withService(async (tx) => {
+		const outside = randomUUID(),
+			otherNote = randomUUID(),
+			foreignNote = randomUUID();
+		const otherGoal = randomUUID(),
+			foreignGoal = randomUUID();
+		await tx.insert(s.goals).values([
+			{
+				id: goalA,
+				agency_id: agency,
+				client_id: person,
+				area: 'Daily activity',
+				text: '=Current goal definition ሰላም',
+				stopped_at: new Date('2026-03-10')
+			},
+			{
+				id: goalB,
+				agency_id: agency,
+				client_id: person,
+				area: 'Choice',
+				text: 'Choose an activity'
+			},
+			{
+				id: otherGoal,
+				agency_id: agency,
+				client_id: otherPerson,
+				area: 'Other',
+				text: 'Other home goal'
+			},
+			{
+				id: foreignGoal,
+				agency_id: otherAgency,
+				client_id: foreignPerson,
+				area: 'Foreign',
+				text: 'Foreign agency goal'
+			}
+		]);
+		await tx.insert(s.notes).values([
+			{
+				id: outside,
+				agency_id: agency,
+				client_id: person,
+				home_id: home,
+				day: '2026-03-09',
+				shift: 'am',
+				type: 'shift',
+				status: 'submitted'
+			},
+			{
+				id: otherNote,
+				agency_id: agency,
+				client_id: otherPerson,
+				home_id: otherHome,
+				day: '2026-03-08',
+				shift: 'am',
+				type: 'shift',
+				status: 'approved'
+			},
+			{
+				id: foreignNote,
+				agency_id: otherAgency,
+				client_id: foreignPerson,
+				home_id: foreignHome,
+				day: '2026-03-08',
+				shift: 'am',
+				type: 'shift',
+				status: 'approved'
+			}
+		]);
+		await tx.insert(s.noteGoals).values([
+			{
+				agency_id: agency,
+				note_id: signed,
+				goal_id: goalA,
+				trials: ['Independent', 'Verbal prompt', 'Refused']
+			},
+			{ agency_id: agency, note_id: approved, goal_id: goalA, trials: ['Independent'] },
+			{
+				agency_id: agency,
+				note_id: approved,
+				goal_id: goalB,
+				trials: [],
+				not_attempted: true,
+				reason: 'Person chose another activity'
+			},
+			{ agency_id: agency, note_id: draft, goal_id: goalA, trials: ['Independent'] },
+			{ agency_id: agency, note_id: returned, goal_id: goalA, trials: ['Independent'] },
+			{ agency_id: agency, note_id: outside, goal_id: goalA, trials: ['Independent'] },
+			{ agency_id: agency, note_id: otherNote, goal_id: otherGoal, trials: ['Independent'] },
+			{
+				agency_id: otherAgency,
+				note_id: foreignNote,
+				goal_id: foreignGoal,
+				trials: ['Independent']
+			}
+		]);
+	});
+});
+
+it('exports authentic signed goal history, stopped goals and weighted progress without unsigned data', async () => {
+	const caller = await as(supervisor);
+	const file = await caller.report.exportClinical({ ...input, type: 'goals' });
+	const report = JSON.parse(file.content);
+	expect(report.rows).toHaveLength(3);
+	expect(report.goalSummary.find((g: { goalId: string }) => g.goalId === goalA)).toMatchObject({
+		records: 2,
+		recordedTrials: 4,
+		independentTrials: 2,
+		refusedTrials: 1,
+		independentPercent: 50,
+		currentGoalText: '=Current goal definition ሰላም'
+	});
+	expect(report.goalSummary.find((g: { goalId: string }) => g.goalId === goalB)).toMatchObject({
+		recordedTrials: 0,
+		notAttemptedRecords: 1,
+		independentPercent: null
+	});
+	expect(
+		report.rows.find((r: { noteId: string }) => r.noteId === signed).signatureEvents
+	).toContainEqual({
+		action: 'signed',
+		byName: 'Record author',
+		occurredAt: '2026-03-09T03:00:00.000Z'
+	});
+	expect(report.rows.find((r: { goalId: string }) => r.goalId === goalB).reason).toBe(
+		'Person chose another activity'
+	);
+	expect(
+		report.rows.every(
+			(r: { day: string; noteStatus: string }) =>
+				r.day === '2026-03-08' && ['approved', 'submitted'].includes(r.noteStatus)
+		)
+	).toBe(true);
+	expect(file.content).not.toContain('Foreign agency goal');
+	expect(file.content).not.toContain('Other home goal');
+	expect(file.content).not.toContain('narrative');
+	const approvedReport = JSON.parse(
+		(await caller.report.exportClinical({ ...input, type: 'goals', approvedOnly: true })).content
+	);
+	expect(approvedReport.rows).toHaveLength(2);
+	expect(
+		approvedReport.goalSummary.find((g: { goalId: string }) => g.goalId === goalA)
+			.independentPercent
+	).toBe(100);
+	const empty = JSON.parse(
+		(
+			await caller.report.exportClinical({
+				...input,
+				type: 'goals',
+				fromDay: '2026-03-01',
+				toDay: '2026-03-01'
+			})
+		).content
+	);
+	expect(empty.rows).toEqual([]);
+	expect(empty.goalSummary).toEqual([]);
+	const csv = await caller.report.exportClinical({ ...input, type: 'goals', format: 'csv' });
+	expect(csv.content).toContain('Goal progress summary');
+	expect(csv.content).toContain('Source trial history');
+	expect(csv.content).toContain('"\'=Current goal definition');
+	const audits = await withService((tx) =>
+		tx
+			.select()
+			.from(s.auditLog)
+			.where(and(eq(s.auditLog.agency_id, agency), eq(s.auditLog.table_name, 'report_exports')))
+	);
+	expect(
+		audits.some(
+			(a) =>
+				(a.new_values as { type?: string }).type === 'goals' &&
+				(a.new_values as { rows?: number }).rows === 3 &&
+				a.performed_by === supervisor
+		)
+	).toBe(true);
+});
+
+it('requires goals plus charting/report entitlements and applies person/home/agency boundaries', async () => {
+	const user = (await getCurrentUser(uid(supervisor)))!;
+	for (const features of [
+		['reports', 'goals'],
+		['reports', 'charting'],
+		['charting', 'goals']
+	] as const) {
+		const denied = createCaller({ user: { ...user, features: [...features] }, request: {} });
+		await expect(denied.report.exportClinical({ ...input, type: 'goals' })).rejects.toMatchObject({
+			code: 'FORBIDDEN'
+		});
+	}
+	await expect(
+		(await as(caregiver)).report.exportClinical({ ...input, type: 'goals' })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	const caller = await as(supervisor);
+	for (const scope of [
+		{ homeId: foreignHome, clientId: foreignPerson },
+		{ homeId: home, clientId: otherPerson }
+	])
+		await expect(
+			caller.report.exportClinical({ ...input, ...scope, type: 'goals' })
+		).rejects.toMatchObject({ code: 'NOT_FOUND' });
+	const homeReport = JSON.parse(
+		(await caller.report.exportClinical({ ...input, clientId: undefined, type: 'goals' })).content
+	);
+	expect(homeReport.rows.every((r: { clientId: string }) => r.clientId === person)).toBe(true);
 });

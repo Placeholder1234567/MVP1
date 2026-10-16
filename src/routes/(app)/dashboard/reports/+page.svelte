@@ -19,7 +19,8 @@
 		mar: 'Medication administration',
 		health: 'Health entries',
 		incidents: 'Incident log',
-		attendance: 'Attendance'
+		attendance: 'Attendance',
+		goals: 'Goal progress and trial history'
 	};
 	async function download(event: SubmitEvent) {
 		event.preventDefault();
@@ -92,9 +93,15 @@
 				><option value="html">Print-ready HTML / save as PDF</option></select
 			></label
 		>
-		{#if type === 'notes'}<label
+		{#if type === 'notes' || type === 'goals'}<label
 				><input type="checkbox" bind:checked={approvedOnly} /> Approved notes only</label
 			>
+			{#if type === 'goals'}<p class="muted">
+					Uses recorded goal trials from signed/approved notes, including stopped goals. Independent
+					rates include refused trials in the denominator. Not-attempted records and empty trials
+					are reported separately. Goal text is the current definition; missing days and target
+					achievement are not inferred.
+				</p>{/if}
 			<p class="muted">
 				Includes submitted and approved notes; drafts and returned notes are excluded. Dates use the
 				shift start day, including overnight shifts. Available signing and approval history is

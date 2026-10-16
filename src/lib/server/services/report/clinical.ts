@@ -12,6 +12,7 @@ import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { clinicalScope, clinicalRows, clinicalNoteHistory } from './clinical.queries';
 import { recordExport } from './report.queries';
+import { goalProgress } from '../../../domain/goal-progress';
 
 export const ClinicalExport = z.object({
 	type: z.enum(CLINICAL_TYPES),
@@ -27,7 +28,8 @@ const REQUIRED_FEATURE = {
 	mar: 'mar',
 	health: 'health',
 	incidents: 'incidents',
-	attendance: 'charting'
+	attendance: 'charting',
+	goals: 'goals'
 } as const;
 const DATE_BASIS = {
 	notes:
@@ -37,7 +39,9 @@ const DATE_BASIS = {
 		'Recorded timestamp from agency start midnight through exclusive midnight after the end date',
 	incidents:
 		'Occurrence timestamp from agency start midnight through exclusive midnight after the end date; undated incidents excluded',
-	attendance: 'Service calendar day in agency time zone'
+	attendance: 'Service calendar day in agency time zone',
+	goals:
+		'Signed note shift start calendar day in agency time zone; definitions are current, not historical snapshots; refusal and unknown trial codes remain in the recorded-trial denominator'
 };
 export async function exportClinical(
 	tx: Tx,
@@ -49,7 +53,8 @@ export async function exportClinical(
 	if (
 		user.role === 'caregiver' ||
 		!user.features.includes('reports') ||
-		!user.features.includes(REQUIRED_FEATURE[p.type])
+		!user.features.includes(REQUIRED_FEATURE[p.type]) ||
+		(p.type === 'goals' && !user.features.includes('charting'))
 	)
 		throw new ServiceError(
 			'FORBIDDEN',
@@ -76,12 +81,10 @@ export async function exportClinical(
 			'VALIDATION_FAILED',
 			'Report exceeds 1,000 records. Choose a shorter period or one person.'
 		);
-	if (p.type === 'notes' && rows.length) {
-		const events = await clinicalNoteHistory(
-			tx,
-			user.agencyId,
-			rows.map((r) => String(r.id))
-		);
+	if ((p.type === 'notes' || p.type === 'goals') && rows.length) {
+		const events = await clinicalNoteHistory(tx, user.agencyId, [
+			...new Set(rows.map((r) => String(p.type === 'goals' ? r.noteId : r.id)))
+		]);
 		if (events.length > 5000)
 			throw new ServiceError(
 				'VALIDATION_FAILED',
@@ -89,7 +92,7 @@ export async function exportClinical(
 			);
 		for (const row of rows)
 			row.signatureEvents = events
-				.filter((e) => e.noteId === row.id)
+				.filter((e) => e.noteId === (p.type === 'goals' ? row.noteId : row.id))
 				.map(({ action, byName, occurredAt }) => ({ action, byName, occurredAt }));
 	}
 	const report: ClinicalReport = {
@@ -102,7 +105,8 @@ export async function exportClinical(
 		toUtcExclusive: period.to.toISOString(),
 		generatedAt: new Date().toISOString(),
 		dateBasis: DATE_BASIS[p.type],
-		rows
+		rows,
+		...(p.type === 'goals' ? { goalSummary: goalProgress(rows) } : {})
 	};
 	const json = JSON.stringify(report, null, 2);
 	if (Buffer.byteLength(json, 'utf8') > 8 * 1024 * 1024)
