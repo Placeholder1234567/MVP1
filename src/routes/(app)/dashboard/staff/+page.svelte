@@ -4,6 +4,7 @@
 	// Changes need a connection: they go straight to staff.* (tRPC).
 	import { onMount } from 'svelte';
 	import { useSession } from '#lib/app/session.svelte.ts';
+	import { initialsOf } from '#lib/domain/people.ts';
 	import { trpc } from '#lib/trpc.ts';
 
 	type Staff = Awaited<ReturnType<typeof trpc.staff.list.query>>[number];
@@ -27,6 +28,14 @@
 	let active = $state(true);
 
 	const homeName = (id: string) => app.homes.find((h) => h.id === id)?.name ?? 'Home';
+	const describe = (p: Staff) =>
+		[
+			p.role[0].toUpperCase() + p.role.slice(1),
+			p.medCertified ? 'med-certified' : '',
+			(p.homeIds ?? []).map(homeName).join(', ')
+		]
+			.filter(Boolean)
+			.join(' · ');
 	const visible = $derived(staff.filter((p) => showInactive || p.active));
 
 	async function load() {
@@ -63,7 +72,13 @@
 		try {
 			if (editing) {
 				const wasActive = staff.find((p) => p.id === editing)?.active;
-				if (wasActive && !active && !confirm('Deactivate this person? They are signed out everywhere and can no longer sign in. Their records are kept.'))
+				if (
+					wasActive &&
+					!active &&
+					!confirm(
+						'Deactivate this person? They are signed out everywhere and can no longer sign in. Their records are kept.'
+					)
+				)
 					return;
 				await trpc.staff.update.mutate({ id: editing, role, medCertified, homeIds, active });
 				message = 'Saved.';
@@ -87,9 +102,12 @@
 <section class="stack" aria-label="Staff">
 	<div class="spread">
 		<h1>Staff</h1>
-		{#if isAdmin}<button class="btn" disabled={saving} onclick={() => open()}>Add staff</button>{/if}
+		{#if isAdmin}<button class="btn" disabled={saving} onclick={() => open()}>Add staff</button
+			>{/if}
 	</div>
-	<label class="check"><input type="checkbox" bind:checked={showInactive} /> Show deactivated staff</label>
+	<label class="check"
+		><input type="checkbox" bind:checked={showInactive} /> Show deactivated staff</label
+	>
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
 
 	{#if editing !== null}
@@ -139,7 +157,9 @@
 					{/each}
 				</fieldset>
 				{#if editing}
-					<label class="check"><input type="checkbox" bind:checked={active} /> Active (can sign in)</label>
+					<label class="check"
+						><input type="checkbox" bind:checked={active} /> Active (can sign in)</label
+					>
 				{:else}
 					<p class="muted">They'll get an email with a link to set their password.</p>
 				{/if}
@@ -155,19 +175,15 @@
 		<div class="list card" role="list">
 			{#each visible as person (person.id)}
 				<div class="row" role="listitem">
-					<span class="avatar" aria-hidden="true">{person.initials ?? '?'}</span>
+					<span class="avatar" aria-hidden="true">{person.initials || initialsOf(person.name)}</span
+					>
 					<span class="grow">
 						<b
 							>{person.name}{person.id === app.user.profileId ? ' (you)' : ''}{person.active
 								? ''
 								: ' · deactivated'}</b
 						>
-						<span class="muted"
-							>{person.role[0].toUpperCase() + person.role.slice(1)}{person.medCertified
-								? ' · med-certified'
-								: ''}{#if person.homeIds?.length}
-								· {person.homeIds.map(homeName).join(', ')}{/if}</span
-						>
+						<span class="muted">{describe(person)}</span>
 					</span>
 					{#if isAdmin}<button
 							class="btn sec"

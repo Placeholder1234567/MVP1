@@ -47,7 +47,10 @@
 					{ href: '/shifts', label: 'Schedule', feature: 'scheduling' },
 					{ href: '/dashboard/timesheets', label: 'Timesheets', feature: 'timekeeping' },
 					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake' },
+					{ href: '/dashboard/people', label: 'People' },
+					{ href: '/dashboard/staff', label: 'Staff' },
 					{ href: '/messages', label: 'Messages', feature: 'messaging' },
+					...(data.user.role === 'admin' ? [{ href: '/dashboard/setup', label: 'Setup' }] : []),
 					{ href: '/me', label: 'Me' }
 				]
 		).filter(

@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
+	import { initialsOf } from '#lib/domain/people.ts';
 	import { trpc } from '#lib/trpc.ts';
 
 	type Person = Awaited<ReturnType<typeof trpc.client.list.query>>[number];
@@ -35,7 +36,8 @@
 		};
 	}
 
-	const homeName = (id: string) => app.homes.find((h) => h.id === id)?.name ?? 'Home';
+	const homeName = (id: string | null) =>
+		id ? (app.homes.find((h) => h.id === id)?.name ?? 'Home') : 'No home yet';
 	const visible = $derived(people.filter((p) => showArchived || p.active));
 
 	async function load() {
@@ -62,7 +64,7 @@
 			const h = full.healthInfo;
 			form = {
 				name: full.name,
-				homeId: full.homeId,
+				homeId: full.homeId ?? '',
 				info: full.info ?? '',
 				behaviors: (full.behaviors ?? []).join(', '),
 				dob: h?.dob ?? '',
@@ -134,7 +136,10 @@
 	}
 
 	async function archive() {
-		if (!editing || !confirm('Archive this person? Their records are kept; they leave the active lists.'))
+		if (
+			!editing ||
+			!confirm('Archive this person? Their records are kept; they leave the active lists.')
+		)
 			return;
 		saving = true;
 		try {
@@ -154,7 +159,9 @@
 <section class="stack" aria-label="People">
 	<div class="spread">
 		<h1>People</h1>
-		<button class="btn" disabled={saving || !app.homes.length} onclick={() => open()}>Add a person</button>
+		<button class="btn" disabled={saving || !app.homes.length} onclick={() => open()}
+			>Add a person</button
+		>
 	</div>
 	<label class="check"><input type="checkbox" bind:checked={showArchived} /> Show archived</label>
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
@@ -163,26 +170,40 @@
 		<form class="card pad stack personForm" onsubmit={save}>
 			<h2>{editing ? 'Edit details' : 'Add a person'}</h2>
 			<fieldset class="stack" disabled={saving}>
-				<label>Full name<input class="input" required maxlength="100" bind:value={form.name} /></label>
+				<label
+					>Full name<input class="input" required maxlength="100" bind:value={form.name} /></label
+				>
 				<label
 					>Home<select class="input" required bind:value={form.homeId}
-						>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option>{/each}</select
+						>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
+							>{/each}</select
 					></label
 				>
 				<label
-					>What staff should know<textarea class="input" maxlength="4000" rows="3" bind:value={form.info}
-					></textarea></label
+					>What staff should know<textarea
+						class="input"
+						maxlength="4000"
+						rows="3"
+						bind:value={form.info}></textarea></label
 				>
 				<div class="grid2">
 					<label>Date of birth<input class="input" type="date" bind:value={form.dob} /></label>
-					<label>Allergies<input class="input" maxlength="2000" bind:value={form.allergies} /></label>
+					<label
+						>Allergies<input class="input" maxlength="2000" bind:value={form.allergies} /></label
+					>
 				</div>
-				<label>Conditions<input class="input" maxlength="2000" bind:value={form.conditions} /></label>
+				<label
+					>Conditions<input class="input" maxlength="2000" bind:value={form.conditions} /></label
+				>
 				<label>Diet<input class="input" maxlength="2000" bind:value={form.diet} /></label>
 				<div class="grid2">
 					<label>Doctor<input class="input" maxlength="500" bind:value={form.doctor} /></label>
 					<label
-						>Guardian or contact<input class="input" maxlength="500" bind:value={form.guardian} /></label
+						>Guardian or contact<input
+							class="input"
+							maxlength="500"
+							bind:value={form.guardian}
+						/></label
 					>
 				</div>
 				<label
@@ -207,17 +228,23 @@
 		<div class="list card" role="list">
 			{#each visible as person (person.id)}
 				<div class="row" role="listitem">
-					<span class="avatar" aria-hidden="true">{person.initials ?? '?'}</span>
+					<span class="avatar" aria-hidden="true">{person.initials || initialsOf(person.name)}</span
+					>
 					<span class="grow">
 						<a href={resolve('/(app)/people/[id]', { id: person.id })}><b>{person.name}</b></a>
 						<span>{homeName(person.homeId)}{person.active ? '' : ' · archived'}</span>
 					</span>
-					<button class="btn sec" disabled={saving} aria-label="Edit {person.name}" onclick={() => open(person)}
-						>Edit</button
+					<button
+						class="btn sec"
+						disabled={saving}
+						aria-label="Edit {person.name}"
+						onclick={() => open(person)}>Edit</button
 					>
 				</div>
 			{:else}
-				<div class="row muted" role="listitem">No one yet. Add the people your agency supports.</div>
+				<div class="row muted" role="listitem">
+					No one yet. Add the people your agency supports.
+				</div>
 			{/each}
 		</div>
 	{/if}
