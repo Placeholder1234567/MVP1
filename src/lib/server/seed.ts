@@ -72,8 +72,6 @@ async function main() {
 	await withService(async (tx) => {
 		await tx.insert(agencies).values({
 			id: agencyId,
-			// Dedicated browser fixtures exercise paid-feature gates without billing/providers.
-			subscription_tier: process.env.GUAD_E2E === '1' ? 'professional' : undefined,
 			name: 'Sunrise Demo Agency',
 			subscription_tier: 'complete',
 			slug: `sunrise-${agencyId.slice(0, 8)}`
