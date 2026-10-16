@@ -2,6 +2,7 @@ import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig, loadEnv } from 'vite';
 import { readdir } from 'node:fs/promises';
+import { configuredConnectSources, FIREBASE_CONNECT_SOURCES } from './src/lib/config/csp.ts';
 
 export default defineConfig(({ mode }) => ({
 	// PowerSync ships web workers and WASM (wa-sqlite); Vite must not pre-bundle it.
@@ -47,8 +48,8 @@ export default defineConfig(({ mode }) => ({
 			// (text/plain, no Origin header), so it's turned off here.
 			csrf: { trustedOrigins: ['*'] },
 			// Strict CSP (security.md): SvelteKit nonces its own inline scripts.
-			// Runtime origins (PowerSync, the local Auth emulator) are added to
-			// connect-src in hooks.server.ts. 'wasm-unsafe-eval' is for the
+			// Public endpoint origins must also be present at build time: prerendered
+			// offline HTML bypasses runtime hooks. 'wasm-unsafe-eval' is for the
 			// encrypted wa-sqlite database; inline styles are Svelte style bindings.
 			csp: {
 				mode: 'auto',
@@ -60,8 +61,11 @@ export default defineConfig(({ mode }) => ({
 					'font-src': ['self'],
 					'connect-src': [
 						'self',
-						'https://identitytoolkit.googleapis.com',
-						'https://securetoken.googleapis.com'
+						...FIREBASE_CONNECT_SOURCES,
+						...configuredConnectSources(
+							{ ...loadEnv(mode, process.cwd(), 'PUBLIC_'), ...process.env },
+							true
+						)
 					],
 					'worker-src': ['self', 'blob:'],
 					'manifest-src': ['self'],

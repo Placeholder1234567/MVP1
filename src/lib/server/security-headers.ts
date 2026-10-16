@@ -3,30 +3,23 @@
 // readable by JavaScript). The Content-Security-Policy itself comes from
 // SvelteKit (vite.config.ts `csp`), which nonces its own inline scripts;
 // here we add the origins only known at runtime and the fixed headers.
+import { configuredConnectSources, connectionOrigin } from '../config/csp.ts';
 
 /** Origins the browser connects to that depend on the environment. */
 export function runtimeConnectSources(env: Record<string, string | undefined>): string[] {
-	const sources: string[] = [];
-	for (const raw of [env.PUBLIC_POWERSYNC_URL, env.PUBLIC_AUTH_EMULATOR_URL]) {
-		if (!raw) continue;
-		try {
-			const url = new URL(raw);
-			sources.push(url.origin);
-			// PowerSync streams over WebSocket on the same host.
-			sources.push(`${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}`);
-		} catch {
-			// A malformed URL simply isn't allowed.
-		}
-	}
-	return [...new Set(sources)];
+	return configuredConnectSources(env);
 }
 
 /** Adds runtime origins to the CSP's connect-src. */
 export function withConnectSources(csp: string, sources: string[]): string {
-	if (!sources.length) return csp;
+	const origins = sources
+		.map((source) => connectionOrigin(source, true))
+		.filter((source) => !!source);
+	if (!origins.length) return csp;
 	return csp.replace(
-		/connect-src ([^;]*)/,
-		(_, list: string) => `connect-src ${list} ${sources.join(' ')}`
+		/(^|;\s*)connect-src\s+([^;]*)/,
+		(_, prefix: string, list: string) =>
+			`${prefix}connect-src ${[...new Set([...list.trim().split(/\s+/), ...origins])].join(' ')}`
 	);
 }
 
