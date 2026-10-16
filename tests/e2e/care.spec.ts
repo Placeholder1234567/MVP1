@@ -33,7 +33,8 @@ async function signIn(page: Page, email: string) {
 async function unlock(page: Page, button = 'Unlock workspace') {
 	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
 	await page.getByRole('button', { name: button, exact: true }).click();
-	await expect(page.getByRole('button', { name: button, exact: true })).toBeHidden();
+	// The submit label changes to Opening… before unlock completes.
+	await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
 }
 
 test('sign-in and the public offline gate are accessible with a keyboard', async ({ page }) => {
@@ -59,7 +60,7 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 	await expect(page.getByRole('link', { name: /Marcus Demo/ })).toBeVisible();
 	await accessible(page);
 	await page.getByRole('link', { name: /Marcus Demo/ }).click();
-	await page.getByRole('link', { name: /Shift note.*Record activities/ }).click();
+	await page.getByRole('link', { name: /^Shift note/ }).click();
 	const content = `Synthetic ${info.project.name} care workflow: supported a chosen activity.`;
 	await page.getByLabel('Activities', { exact: true }).fill(content);
 	await expect(page.getByRole('button', { name: 'Sign and submit', exact: true })).toBeDisabled();
@@ -99,7 +100,7 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 }, info) => {
 	await signIn(page, info.project.name === 'phone' ? 'dev@guad.test' : 'cara@guad.test');
 	await page.getByRole('link', { name: /Marcus Demo/ }).click();
-	await page.getByRole('link', { name: /Behavior note.*Before, what happened/ }).click();
+	await page.getByRole('link', { name: /^Behavior note/ }).click();
 	const content = `Synthetic ${info.project.name} privacy check: unsaved observations.`;
 	await page.getByLabel('What happened right before', { exact: true }).fill(content);
 	// Date-only emulation leaves real timers and database workers running normally.
@@ -146,6 +147,6 @@ test('PIN and idle locks preserve text; offline restart retains an encrypted dra
 	await unlock(page, 'Unlock');
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await page.getByRole('link', { name: /Marcus Demo/ }).click();
-	await page.getByRole('link', { name: /Behavior note.*Before, what happened/ }).click();
+	await page.getByRole('link', { name: /^Behavior note/ }).click();
 	await expect(page.getByLabel('How staff responded', { exact: true })).toHaveValue(response);
 });
