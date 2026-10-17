@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { addDays, localTime } from '#lib/domain/index.ts';
@@ -69,6 +70,7 @@
 		permissions.
 	</p>
 	<a class="textbtn" href={resolve('/(app)/dashboard/timesheets')}>Payroll and timesheets →</a>
+	{#if page.data.user?.features?.includes('goals')}<a class="textbtn" href={resolve('/(app)/dashboard/goals')}>Manage goals and templates →</a>{/if}
 	<form class="card pad stack" onsubmit={download}>
 		<label
 			>Report<select class="input" bind:value={type}
