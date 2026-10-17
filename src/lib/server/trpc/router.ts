@@ -3,6 +3,7 @@ import { agencyRouter } from './routers/agency.ts';
 import { analyticsRouter } from './routers/analytics.ts';
 import { auditRouter } from './routers/audit.ts';
 import { authRouter } from './routers/auth.ts';
+import { caseNoteRouter } from './routers/case-note.ts';
 import { clientRouter } from './routers/client.ts';
 import { attendanceRouter, healthRouter, incidentRouter } from './routers/care.ts';
 import { deviceRouter } from './routers/device.ts';
@@ -25,6 +26,7 @@ export const appRouter = router({
 	analytics: analyticsRouter,
 	audit: auditRouter,
 	attendance: attendanceRouter,
+	caseNote: caseNoteRouter,
 	client: clientRouter,
 	clock: clockRouter,
 	coverage: coverageRouter,

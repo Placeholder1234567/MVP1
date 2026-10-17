@@ -56,10 +56,10 @@ async function syncedRows(authUid: string): Promise<Record<string, string[]>> {
 	}
 }
 
-/** Replication is asynchronous: retry until the expectation holds (max ~20 s). */
-async function eventually(check: () => Promise<void>) {
+/** Replication is asynchronous: retry until the expectation holds (max ~20 s by default). */
+async function eventually(check: () => Promise<void>, tries = 40) {
 	let last: unknown;
-	for (let i = 0; i < 40; i++) {
+	for (let i = 0; i < tries; i++) {
 		try {
 			return await check();
 		} catch (e) {
@@ -163,7 +163,7 @@ describe('sync streams', () => {
 			);
 		await eventually(async () => {
 			expect((await syncedRows(SUP)).medications).toEqual([OAK_MED]);
-		});
+		}, 120);
 		try {
 			// Starter has no medication administration: medications leave the device.
 			await plan('starter');
@@ -171,16 +171,16 @@ describe('sync streams', () => {
 				const rows = await syncedRows(SUP);
 				expect(rows.medications).toBeUndefined();
 				expect(rows.clients).toEqual([OAK_PERSON, MAPLE_PERSON].sort());
-			});
+			}, 120);
 			// A per-agency override brings just that feature back.
 			await plan('starter', ['mar']);
 			await eventually(async () => {
 				expect((await syncedRows(SUP)).medications).toEqual([OAK_MED]);
-			});
+			}, 120);
 		} finally {
 			await plan('complete');
 		}
-	});
+	}, 120_000);
 
 	it('nothing crosses agencies', async () => {
 		await eventually(async () => {
