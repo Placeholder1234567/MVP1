@@ -7,6 +7,7 @@ import {
 	escalate,
 	sendDigest,
 	sweepDigests,
+	sweepMedReminders,
 	sweepNotifications
 } from '../services/notification/index.ts';
 import { applySyncWindows } from '../services/sync/index.ts';
@@ -113,6 +114,12 @@ const JOBS = {
 		maxAttempts: 1,
 		run: (p) => sendDigest(p)
 	}),
+	'med-reminder-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => sweepMedReminders()
+	}),
 	'notifications-sweep': job({
 		queue: 'maintenance',
 		payload: z.object({}).passthrough(),
@@ -169,5 +176,7 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	{ job: 'notifications-sweep', cron: '*/5 * * * *' },
 	// Each agency's digest goes out at 06:00 its local time (digest.ts).
 	{ job: 'daily-digest-sweep', cron: '*/15 * * * *' },
+	// Doses due in 30 minutes, and doses 30 minutes late (med-reminders.ts).
+	{ job: 'med-reminder-sweep', cron: '*/5 * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' }
 ];

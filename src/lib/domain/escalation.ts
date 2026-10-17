@@ -5,7 +5,8 @@
 //
 // Not here, by design:
 //   coverage_offer    the Schedule Service's reminder and timeout jobs own it
-//   med_due_reminder  needs the dose-reminder job, which doesn't exist yet
+//   med_due_reminder  the med-reminder sweep sends med_overdue itself, once the
+//                     dose is 30 minutes late with no MAR record (med-reminders.ts)
 
 export interface EscalationStep {
 	afterMinutes: number;

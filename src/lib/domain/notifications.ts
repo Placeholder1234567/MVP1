@@ -23,6 +23,8 @@ export const DEFAULT_CHANNELS = {
 	med_refusal: r([], ['push'], ['push']),
 	med_possible_double_dose: r([], ['push', 'sms'], ['push', 'sms']),
 	med_due_reminder: r(['push'], [], []),
+	// A scheduled dose still unrecorded 30 minutes after its time (§2.8 escalation).
+	med_overdue: r([], ['push'], ['push']),
 	health_alert: r([], ['push'], ['push']),
 	incident_reported: r([], ['push'], ['push']),
 	incident_high_severity: r([], ['push', 'sms'], ['push', 'sms']),
@@ -53,6 +55,7 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	med_refusal: 'Medication refusals',
 	med_possible_double_dose: 'Possible duplicate doses',
 	med_due_reminder: 'Medication reminders',
+	med_overdue: 'Overdue medications',
 	health_alert: 'Health alerts',
 	incident_reported: 'New incidents',
 	incident_high_severity: 'Urgent incidents',

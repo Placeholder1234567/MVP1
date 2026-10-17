@@ -605,7 +605,7 @@ Each queue below is a Cloud Tasks queue; jobs marked *cron* are Cloud Scheduler 
 | `DigestJob` | `notifications-digest` | Notification | *cron* daily at 06:00 per agency timezone | 1 retry, 60s backoff. Non-critical — can be manually triggered. |
 | `GenerateReportJob` | `reports` | Report | User requests large export | 2 retries, 30s backoff. On final failure, notify user report generation failed. |
 | `ShiftReminderJob` | `scheduling` | Schedule | Fires 1 hour before shift start | No retry (one-shot timer). Triggers `shift_reminder` notification. |
-| `MedDueReminderJob` | `notifications-push` | Notification | Fires 30 min before scheduled medication time | No retry (one-shot timer). Triggers `med_due_reminder` notification. |
+| `MedDueReminderJob` | `notifications-push` | Notification | Fires 30 min before scheduled medication time | No retry (one-shot timer). Triggers `med_due_reminder` notification. As built: `med-reminder-sweep` on `maintenance` every 5 minutes, which also sends `med_overdue` 30 minutes after an unrecorded dose (notifications.md §2.8). |
 | `IncidentReviewCheckJob` | `notifications-escalation` | Notification | Daily cron or delayed job at incident creation + 24hr | 1 retry, 60s backoff. Triggers `incident_review_needed` notification if incident still open. |
 
 **Queue configuration:**
