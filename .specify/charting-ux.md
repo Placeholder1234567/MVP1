@@ -65,12 +65,7 @@ export function getLabels(preset: ChartingPreset) {
 }
 ```
 
-**As built (October 2026):** `tests/integration/trpc/charting-preset.test.ts` checks that a therap agency and a default agency store and return identical records for the same note, goal, MAR, incident and attendance actions. `tests/unit/config/charting-preset.test.ts` checks that no server code reads the preset except `agency.get`. The UI labels in `src/lib/config/charting-preset.ts` still differ from the map above, and those screens need deciding:
-- The therap behavior note label is "Behavior T-Log"; the map above says "GER".
-- The therap incident label is "GER"; the map says "GER (Incident)".
-- Default labels are sentence case ("Shift note"); the map uses title case.
-- There are no approve/return labels.
-- Section ordering by preset (below) is not implemented: both presets use one order.
+**As built (October 2026):** `tests/integration/trpc/charting-preset.test.ts` checks that a therap agency and a default agency store and return identical records for the same note, goal, MAR, incident and attendance actions. `tests/unit/config/charting-preset.test.ts` checks that no server code reads the preset except `agency.get`. Labels follow the map above (`src/lib/config/charting-preset.ts`), written in the MVP's sentence case for the default preset ("Shift note", "Approve note", "Send back"), since the MVP is the reference for wording. The note editor renders shift sections in the preset's order below.
 
 ### Section ordering
 

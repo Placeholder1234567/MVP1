@@ -58,6 +58,15 @@
 				]
 	);
 	const goals = $derived(app.goals.filter((g) => g.client_id === person?.id && !g.stopped_at));
+	// Shift note sections follow the charting preset's order (charting-ux.md
+	// §2 "Section ordering"); the goal block sits where the preset puts it.
+	const ordered = $derived.by(() => {
+		if (kind === 'behavior') return { before: fields, after: [] as typeof fields };
+		const order: string[] = app.labels.shiftOrder;
+		const at = order.indexOf('goals');
+		const pick = (keys: string[]) => keys.flatMap((k) => fields.filter(([key]) => key === k));
+		return { before: pick(order.slice(0, at)), after: pick(order.slice(at + 1)) };
+	});
 	const editable = $derived(
 		!note ||
 			(note.author_id === app.user.profileId && isEditableByAuthor(note.status as NoteStatus))
@@ -299,17 +308,19 @@
 				void save(false);
 			}}
 		>
-			<div class="card pad stack">
-				{#each fields as [key, label] (key)}<label
-						>{label}<textarea
-							class="input"
-							bind:value={content[key]}
-							oninput={() => (dirty = true)}
-							disabled={!editable || busy}
-							maxlength="10000"
-							placeholder="Describe what you observed and the support provided."></textarea></label
-					>{/each}
-			</div>
+			{#snippet sections(list: typeof fields)}<div class="card pad stack">
+					{#each list as [key, label] (key)}<label
+							>{label}<textarea
+								class="input"
+								bind:value={content[key]}
+								oninput={() => (dirty = true)}
+								disabled={!editable || busy}
+								maxlength="10000"
+								placeholder="Describe what you observed and the support provided."
+							></textarea></label
+						>{/each}
+				</div>{/snippet}
+			{@render sections(ordered.before)}
 			{#if kind === 'shift' && goals.length}<h2>{app.labels.goals}</h2>
 				{#each goals as goal (goal.id)}<section class="card pad stack">
 						<div>
@@ -365,6 +376,7 @@
 								/></label
 							>{/if}
 					</section>{/each}{/if}
+			{#if ordered.after.length}{@render sections(ordered.after)}{/if}
 			{#if editable}<label class="checkline"
 					><input type="checkbox" bind:checked={signature} disabled={busy} />I reviewed this note
 					and confirm it accurately describes the care I provided.</label
