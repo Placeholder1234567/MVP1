@@ -71,11 +71,13 @@ test('supervisor uses an agency template, edits/stops a goal and keeps offline d
 		.getByRole('article', { name: 'Active goal', exact: true })
 		.filter({ hasText: changed });
 	await expect(active).toBeVisible();
-	page.once('dialog', (d) => d.dismiss());
+	const cancelStop = page.waitForEvent('dialog').then((d) => d.dismiss());
 	await active.getByRole('button', { name: 'Stop goal', exact: true }).click();
+	await cancelStop;
 	await expect(active).toBeVisible();
-	page.once('dialog', (d) => d.accept());
+	const confirmStop = page.waitForEvent('dialog').then((d) => d.accept());
 	await active.getByRole('button', { name: 'Stop goal', exact: true }).click();
+	await confirmStop;
 	await expect(
 		page.getByText('Goal stopped. Its history is preserved.', { exact: true })
 	).toBeVisible();
@@ -103,16 +105,19 @@ test('supervisor uses an agency template, edits/stops a goal and keeps offline d
 		'Synthetic unsaved observations remain here.'
 	);
 	await context.setOffline(false);
-	page.once('dialog', (d) => d.dismiss());
+	const stayOnPage = page.waitForEvent('dialog').then((d) => d.dismiss());
 	await page.getByRole('link', { name: 'Overview', exact: true }).first().click();
+	await stayOnPage;
 	await expect(
 		page.getByRole('heading', { name: 'Goals that guide support.', exact: true })
 	).toBeVisible();
 	await expect(editor.getByLabel('Goal wording', { exact: true })).toHaveValue(
 		'Synthetic unsaved observations remain here.'
 	);
-	page.once('dialog', (d) => d.accept());
+	const discardDraft = page.waitForEvent('dialog').then((d) => d.accept());
 	await editor.getByRole('button', { name: 'Cancel goal changes', exact: true }).click();
+	await discardDraft;
+	await expect(editor.getByLabel('Goal wording', { exact: true })).toHaveValue('');
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
 		true
 	);
