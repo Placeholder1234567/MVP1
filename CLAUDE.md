@@ -18,6 +18,7 @@ npm run dev                 # SvelteKit dev server at http://localhost:5173
 
 | Command | Purpose |
 |---------|---------|
+| `npm run demo` | Everything for a local look-around: Docker stack, migrations, Auth emulator with the demo accounts, and the dev server (sign-in page lists the accounts) |
 | `npm run dev` | SvelteKit dev server |
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build locally |
