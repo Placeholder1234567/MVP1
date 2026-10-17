@@ -28,6 +28,7 @@ export {
 } from './settings';
 export { escalate, type EscalationPayload } from './escalation';
 export { sweepDigests, sendDigest } from './digest';
+export { sweepMedReminders } from './med-reminders';
 export { handleEmailEvent, handleSmsEvent, type EventOutcome } from './events';
 export {
 	getNotification,
