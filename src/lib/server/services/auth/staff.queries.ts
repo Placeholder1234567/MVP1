@@ -1,6 +1,7 @@
 import { and, arrayOverlaps, asc, eq } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { profiles } from '../../db/schema';
+import type { RequestInfo } from '../../db';
+import { auditLog, profiles } from '../../db/schema';
 
 const columns = {
 	id: profiles.id,
@@ -50,6 +51,26 @@ export async function staffByEmail(tx: Tx, agencyId: string, email: string) {
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.email, email)))
 		.limit(1);
 	return row ?? null;
+}
+
+/** An admin action that the row trigger can't describe (security.md "Audit Trail"). */
+export async function recordMfaReset(
+	tx: Tx,
+	agencyId: string,
+	adminId: string,
+	profileId: string,
+	request: RequestInfo
+) {
+	await tx.insert(auditLog).values({
+		agency_id: agencyId,
+		table_name: 'mfa_resets',
+		record_id: profileId,
+		action: 'UPDATE',
+		performed_by: adminId,
+		ip_address: request.ip,
+		user_agent: request.user_agent,
+		new_values: { second_factors: 'removed' }
+	});
 }
 
 export async function insertProfile(tx: Tx, row: typeof profiles.$inferInsert) {

@@ -135,7 +135,13 @@ async function runAs(preset: 'therap' | 'default') {
 		attendance: await caregiver.attendance.list({ clientId: person })
 	};
 	const db = await withService(async (t) => ({
-		notes: await t.select().from(s.notes).where(eq(s.notes.agency_id, agency)),
+		// Ordered: an updated row (signed, approved) can move on disk, so the
+		// natural order differs between runs when other tests write at the same time.
+		notes: await t
+			.select()
+			.from(s.notes)
+			.where(eq(s.notes.agency_id, agency))
+			.orderBy(s.notes.type),
 		noteGoals: await t.select().from(s.noteGoals).where(eq(s.noteGoals.agency_id, agency)),
 		mar: await t.select().from(s.marRecords).where(eq(s.marRecords.agency_id, agency)),
 		incidents: await t.select().from(s.incidents).where(eq(s.incidents.agency_id, agency)),

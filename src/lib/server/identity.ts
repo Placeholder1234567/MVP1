@@ -152,6 +152,15 @@ export async function enableIdentity(uid: string): Promise<void> {
 	await auth().updateUser(uid, { disabled: false });
 }
 
+/**
+ * Lost authenticator (security.md "MFA Policy"): removes every enrolled
+ * second factor and ends the user's sessions; they enroll again at next sign-in.
+ */
+export async function resetSecondFactors(uid: string): Promise<void> {
+	await auth().updateUser(uid, { multiFactor: { enrolledFactors: null } });
+	await auth().revokeRefreshTokens(uid);
+}
+
 /** Deactivation: the account can't sign in and existing sessions end. */
 export async function disableIdentity(uid: string): Promise<void> {
 	await auth().updateUser(uid, { disabled: true });

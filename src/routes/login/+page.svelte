@@ -1,4 +1,5 @@
 <script lang="ts">
+	let { data } = $props();
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
@@ -165,6 +166,28 @@
 				<button class="btn" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button
 				>
 			</form>
+			{#if data.demo}
+				<section class="callout stack" aria-label="Local demo accounts">
+					<b>Local demo accounts</b>
+					<span class="muted"
+						>Synthetic accounts in the local sign-in emulator. If sign-in fails, run
+						<code>npm run db:seed</code> (the emulator forgets accounts when it restarts). Password
+						for all: <code>{data.demo.password}</code></span
+					>
+					<div class="actions">
+						{#each data.demo.accounts as account (account.email)}
+							<button
+								type="button"
+								class="btn sec"
+								onclick={() => {
+									email = account.email;
+									password = data.demo!.password;
+								}}>{account.name} · {account.role}</button
+							>
+						{/each}
+					</div>
+				</section>
+			{/if}
 		{/if}
 		{#if message}<p role="alert">{message}</p>{/if}
 	</div>

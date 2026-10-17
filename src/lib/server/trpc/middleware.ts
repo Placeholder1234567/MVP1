@@ -3,6 +3,7 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import { ZodError } from 'zod';
 import { ServiceError } from '../errors.ts';
+import { userRequests } from '../rate-limit.ts';
 import { withUser, type Tx } from '../db/index.ts';
 import { hasRole, type Role } from '../services/auth/index.ts';
 import type { FeatureFlag } from '../../entitlements/tier-features.ts';
@@ -41,6 +42,13 @@ class Rollback extends Error {}
 const authed = t.middleware(async ({ ctx, next }) => {
 	const user = ctx.user;
 	if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in to continue' });
+	// security.md T4: per-user throttle, checked before a transaction opens.
+	const wait = userRequests.take(user.profileId);
+	if (wait)
+		throw new TRPCError({
+			code: 'TOO_MANY_REQUESTS',
+			message: `Too many requests. Try again in ${wait} seconds.`
+		});
 	// next() reports a failed procedure as a result, not a throw. Throw so the
 	// transaction rolls back instead of committing a half-done change.
 	const run = (db: Tx) => next({ ctx: { user, db } });
