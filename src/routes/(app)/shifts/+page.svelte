@@ -3,11 +3,19 @@
 	import { addDays, localTime, SHIFTS, weekStart, shiftIsPast } from '#lib/domain/index.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import ClockPanel from '#lib/app/ClockPanel.svelte';
+	import { onMount } from 'svelte';
+	import CoverageActivity from '#lib/app/CoverageActivity.svelte';
 	import CoverageOffers from '#lib/app/CoverageOffers.svelte';
 	const app = useSession();
 	let start = $state(weekStart(localTime(new Date(), app.user.timeZone).day));
 	let busy = $state(false);
 	let message = $state('');
+	let online = $state(true);
+	let messageScope = $state('');
+	const context = $derived(`${app.homeId}:${start}`);
+	onMount(() => {
+		online = navigator.onLine;
+	});
 	const days = $derived(Array.from({ length: 7 }, (_, i) => addDays(start, i)));
 	const manager = $derived(app.user.role !== 'caregiver');
 	const staff = $derived(
@@ -19,37 +27,48 @@
 		)
 	);
 	async function assign(day: string, shift: 'am' | 'pm' | 'on', profileId: string) {
+		if (!online || !app.homeId || busy) return false;
+		const homeId = app.homeId;
+		const operationScope = context;
+		messageScope = operationScope;
 		busy = true;
 		message = '';
 		try {
-			if (profileId)
-				await trpc.schedule.setSlot.mutate({ homeId: app.homeId, day, shift, profileId });
-			else await trpc.schedule.clearSlot.mutate({ homeId: app.homeId, day, shift });
-			message = 'Schedule saved. Updates will appear after sync.';
+			if (profileId) await trpc.schedule.setSlot.mutate({ homeId, day, shift, profileId });
+			else await trpc.schedule.clearSlot.mutate({ homeId, day, shift });
+			if (context === operationScope) message = 'Schedule saved. Updates will appear after sync.';
 			return true;
 		} catch {
-			message =
-				'Could not save this assignment. Check that the staff member is trained for this home and not already assigned elsewhere.';
+			if (context === operationScope)
+				message =
+					'Could not save this assignment. Check that the staff member is trained for this home and not already assigned elsewhere.';
 			return false;
 		} finally {
 			busy = false;
 		}
 	}
 	async function cover(day: string, shift: 'am' | 'pm' | 'on') {
+		if (!online || !app.homeId || busy) return false;
+		const homeId = app.homeId;
+		const operationScope = context;
+		messageScope = operationScope;
 		busy = true;
 		message = '';
 		try {
-			if (manager) await trpc.schedule.postOpen.mutate({ homeId: app.homeId, day, shift });
-			else await trpc.coverage.callout.mutate({ homeId: app.homeId, day, shift });
-			message = 'Coverage requested. Eligible staff will receive an offer.';
+			if (manager) await trpc.schedule.postOpen.mutate({ homeId, day, shift });
+			else await trpc.coverage.callout.mutate({ homeId, day, shift });
+			if (context === operationScope)
+				message = 'Coverage requested. Eligible staff will receive an offer.';
 		} catch {
-			message = 'Could not request coverage. Reconnect and check the current assignment.';
+			if (context === operationScope)
+				message = 'Could not request coverage. Reconnect and check the current assignment.';
 		} finally {
 			busy = false;
 		}
 	}
 </script>
 
+<svelte:window ononline={() => (online = true)} onoffline={() => (online = false)} />
 <svelte:head><title>Schedule · Guad</title></svelte:head>
 <div class="stack">
 	<p class="eyebrow">Plan your week</p>
@@ -57,14 +76,22 @@
 	<ClockPanel />
 	<CoverageOffers />
 	<div class="spread">
-		<button class="btn sec" onclick={() => (start = addDays(start, -7))}>← Previous week</button><b
-			>Week of {start}</b
-		><button class="btn sec" onclick={() => (start = addDays(start, 7))}>Next week →</button>
+		<button class="btn sec" disabled={busy} onclick={() => (start = addDays(start, -7))}
+			>← Previous week</button
+		><b>Week of {start}</b><button
+			class="btn sec"
+			disabled={busy}
+			onclick={() => (start = addDays(start, 7))}>Next week →</button
+		>
 	</div>
 	{#if manager}<p class="muted">
 			Assignments require a connection. Your saved schedule stays available offline.
 		</p>{/if}
-	{#if message}<p class="callout" role="status">{message}</p>{/if}
+	{#if !online}<p class="callout" role="status">
+			You’re offline. Read saved recent activity; reconnect to change assignments or request
+			coverage.
+		</p>{/if}
+	{#if message && messageScope === context}<p class="callout" role="status">{message}</p>{/if}
 	{#each days as day (day)}<section class="card pad stack">
 			<h2>
 				{new Date(day + 'T12:00:00').toLocaleDateString(undefined, {
@@ -86,11 +113,13 @@
 								><span class="sr">{day} {shift.label} assignment</span><select
 									class="input"
 									value={slot?.assigned_to ?? ''}
-									disabled={busy || !app.homeId}
+									disabled={busy || !online || !app.homeId}
 									onchange={async (e) => {
 										const control = e.currentTarget;
 										const before = slot?.assigned_to ?? '';
-										if (!(await assign(day, shift.key, control.value))) control.value = before;
+										const originalScope = context;
+										if (!(await assign(day, shift.key, control.value)) && context === originalScope)
+											control.value = before;
 									}}
 									><option value="">Open shift</option>{#each staff as person (person.id)}<option
 											value={person.id}>{person.name}</option
@@ -105,7 +134,7 @@
 							</p>{/if}{#if slot?.via_lomi}<span class="pill">Covered with Lomi</span>{/if}
 						{#if !shiftIsPast(day, shift.key, new Date(), app.user.timeZone) && ((manager && !slot?.assigned_to) || (!manager && slot?.assigned_to === app.user.profileId))}<button
 								class="textbtn"
-								disabled={busy || slot?.status === 'filling'}
+								disabled={busy || !online || !app.homeId || slot?.status === 'filling'}
 								onclick={() => cover(day, shift.key)}
 								>{slot?.status === 'filling'
 									? 'Finding cover…'
@@ -116,6 +145,7 @@
 					</div>{/each}
 			</div>
 		</section>{/each}
+	{#if manager}<CoverageActivity />{/if}
 </div>
 
 <style>
