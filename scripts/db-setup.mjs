@@ -42,6 +42,16 @@ try {
 		console.log('rls.sql: applied');
 	}
 
+	// Every table has RLS (rls.sql), including ones added by later migrations
+	// after rls.sql was applied: a table without policies then denies app_user.
+	const { rows: open } = await pool.query(
+		"SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND NOT rowsecurity"
+	);
+	for (const { tablename } of open) {
+		await pool.query(`ALTER TABLE public.${JSON.stringify(tablename)} ENABLE ROW LEVEL SECURITY`);
+	}
+	if (open.length) console.log(`rls: enabled on ${open.length} new table(s)`);
+
 	// Grants run every time so tables added by later migrations are covered.
 	await pool.query(`
 		GRANT USAGE ON SCHEMA public, app TO app_user, app_service;

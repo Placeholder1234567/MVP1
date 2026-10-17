@@ -32,7 +32,9 @@ export const DEFAULT_CHANNELS = {
 	clock_missed: r(['push'], ['push'], []),
 	daily_summary: r([], ['push', 'email'], ['push', 'email']),
 	referral_status_change: r([], [], ['push']),
-	system_maintenance: r(['push'], ['push', 'email'], ['push', 'email'])
+	system_maintenance: r(['push'], ['push', 'email'], ['push', 'email']),
+	// A staff address bounced for good or reported Guad as spam (notifications.md §7).
+	email_delivery_problem: r([], [], ['push'])
 } satisfies Record<string, Row>;
 
 export type NotificationType = keyof typeof DEFAULT_CHANNELS;
@@ -60,7 +62,8 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	clock_missed: 'Missed clock punches',
 	daily_summary: 'Daily summaries',
 	referral_status_change: 'Referral updates',
-	system_maintenance: 'System maintenance'
+	system_maintenance: 'System maintenance',
+	email_delivery_problem: 'Email delivery problems'
 };
 
 /** Always sent, whatever the user's preferences say (clinical safety, compliance). */

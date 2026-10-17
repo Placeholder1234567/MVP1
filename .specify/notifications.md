@@ -312,6 +312,17 @@ Update `notifications.sent_at`
 | **Deep Link** | None |
 | **Escalation** | None |
 
+### 2.19 email_delivery_problem
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | A staff address is suppressed: a hard bounce, three soft bounces in 24 hours, or a spam complaint (§7) |
+| **Recipients** | The agency's admins |
+| **Channels** | In-app + push |
+| **Priority** | Normal |
+| **Template** | `"Email to a staff member keeps bouncing"` or `"A staff member marked Guad email as spam"`. Links to the staff record; names no one. |
+| **Escalation** | None |
+
 ### Notification Type Summary Table
 
 | Type | Priority | Push | SMS | Email | Mandatory | Escalation |
@@ -659,7 +670,7 @@ All SMS messages must be under 160 characters to avoid multi-segment billing. Te
 
 ### Incoming Replies (two-way SMS)
 
-**As built:** `src/lib/server/services/sms/` handles `/api/webhooks/aws/sms-inbound` (topic `SMS_INBOUND_TOPIC_ARN`). The 4-digit offer code is derived from the coverage request ID (`offerCode()` in `domain/sms-replies.ts`), so no column stores it. A reply runs `respondCoverage()` as the sender, with the same eligibility and first-acceptance rules as the app. STOP saves SMS-off preferences for every type, mandatory ones included, and dispatch skips SMS while that preference is off; START restores the role defaults. Texts from unknown numbers get no answer.
+**As built:** `src/lib/server/services/sms/` handles `/api/webhooks/aws/sms-inbound` (topic `SMS_INBOUND_TOPIC_ARN`). The 4-digit offer code is derived from the coverage request ID (`offerCode()` in `domain/sms-replies.ts`), so no column stores it. A reply runs `respondCoverage()` as the sender, with the same eligibility and first-acceptance rules as the app. STOP saves SMS-off preferences for every type, mandatory ones included, and dispatch skips SMS while that preference is off; START restores the role defaults. Texts from unknown numbers get no answer. SNS delivers at least once, so each inbound message ID is recorded in `sms_inbound_messages` before it is handled; a re-delivery is ignored (and the claim is released if handling fails, so the retry still works).
 
 The `coverage_offer` SMS template (Section 2.1) instructs candidates to "Reply YES or NO." Two-way SMS is enabled on the origination number, with inbound messages published to an SNS topic subscribed to the worker:
 
@@ -721,8 +732,8 @@ SES templates are stored in AWS and referenced by `templateId` in the `EmailJob`
 
 - SES publishes bounce and complaint notifications to an SNS topic subscribed to `/api/webhooks/aws/ses-events` (signature verified as above).
 - **Hard bounce** (permanent failure): add email to suppression list, set `notification_preferences.email_enabled = false` for the profile, log the event.
-- **Soft bounce** (temporary failure): retry via the queue retry policy. After 3 soft bounces in 24 hours, treat as hard bounce.
-- **Complaint** (user marks as spam): immediately suppress, set `email_enabled = false`, alert agency admin.
+- **Soft bounce** (temporary failure): retry via the queue retry policy. After 3 soft bounces in 24 hours, treat as hard bounce. (As built: each soft bounce is a row in `email_bounces`; the third within 24 hours suppresses the address with reason `soft_bounce_limit`.)
+- **Complaint** (user marks as spam): immediately suppress, set `email_enabled = false`, alert agency admin. (As built: every suppression, from a hard bounce, the soft-bounce limit or a complaint, sends the `email_delivery_problem` alert to admins.)
 
 ### Suppression List
 

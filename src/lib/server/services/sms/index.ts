@@ -14,7 +14,7 @@ import { providers } from '../../messaging/index.ts';
 import { getCurrentUser, type CurrentUser } from '../auth/index.ts';
 import { setSmsOptOut } from '../notification/index.ts';
 import { coverageOffers, coverageStatus, respondCoverage } from '../schedule/index.ts';
-import { activeProfilesByPhone } from './sms.queries';
+import { activeProfilesByPhone, claimInbound, releaseInbound } from './sms.queries';
 
 export interface InboundSms {
 	originationNumber?: string;
@@ -24,6 +24,7 @@ export interface InboundSms {
 
 export type InboundOutcome =
 	| 'ignored'
+	| 'duplicate'
 	| 'opted_out'
 	| 'opted_in'
 	| 'accepted'
@@ -44,8 +45,26 @@ export async function handleInboundSms(event: InboundSms): Promise<InboundOutcom
 	// Unknown numbers get no answer, so the number can't be probed.
 	if (!staff.length) return 'ignored';
 
-	const parsed = parseSmsReply(event.messageBody);
-	const replyId = `sms-reply-${event.inboundMessageId ?? Date.now()}`;
+	// SNS delivers at least once: a re-delivered text must not answer twice.
+	const messageId = event.inboundMessageId;
+	if (messageId && !(await withService((tx) => claimInbound(tx, staff[0].agencyId, messageId))))
+		return 'duplicate';
+	try {
+		return await respond(event.messageBody, phone, staff, messageId);
+	} catch (e) {
+		if (messageId) await withService((tx) => releaseInbound(tx, messageId));
+		throw e;
+	}
+}
+
+async function respond(
+	body: string,
+	phone: string,
+	staff: Awaited<ReturnType<typeof activeProfilesByPhone>>,
+	messageId: string | undefined
+): Promise<InboundOutcome> {
+	const parsed = parseSmsReply(body);
+	const replyId = `sms-reply-${messageId ?? Date.now()}`;
 	const reply = (body: string) =>
 		providers().sms(phone, { notificationId: replyId, title: 'Guad', body, link: '/' });
 
@@ -68,7 +87,10 @@ export async function handleInboundSms(event: InboundSms): Promise<InboundOutcom
 }
 
 type Answer = Extract<SmsReply, { kind: 'answer' }>;
-type AnswerOutcome = Exclude<InboundOutcome, 'ignored' | 'opted_out' | 'opted_in' | 'unknown'>;
+type AnswerOutcome = Exclude<
+	InboundOutcome,
+	'ignored' | 'duplicate' | 'opted_out' | 'opted_in' | 'unknown'
+>;
 
 const TEXT: Record<AnswerOutcome, (n: number) => string> = {
 	accepted: () => SMS_REPLY_TEXT.accepted,
