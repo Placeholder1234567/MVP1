@@ -8,6 +8,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
+		"demo": "docker compose up -d --wait && node scripts/db-setup.mjs && firebase emulators:exec --only auth --project demo-guad \"npm run db:seed && vite dev\"",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
