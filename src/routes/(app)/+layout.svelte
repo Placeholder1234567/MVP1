@@ -52,7 +52,12 @@
 					{ href: '/dashboard/reports', label: 'Reports', feature: ['reports', 'reports_basic'] },
 					{ href: '/dashboard/staff', label: 'Staff' },
 					{ href: '/messages', label: 'Messages', feature: 'messaging' },
-					...(data.user.role === 'admin' ? [{ href: '/dashboard/setup', label: 'Setup' }] : []),
+					...(data.user.role === 'admin'
+						? [
+								{ href: '/dashboard/audit', label: 'Audit log', feature: 'audit_log' },
+								{ href: '/dashboard/setup', label: 'Setup' }
+							]
+						: []),
 					{ href: '/me', label: 'Me' }
 				]
 		).filter((item: { feature?: string | string[] }) => {
