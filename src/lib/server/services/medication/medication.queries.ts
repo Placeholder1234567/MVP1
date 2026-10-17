@@ -164,5 +164,6 @@ export function selectMedications(
 		})
 		.from(medications)
 		.where(and(...where))
-		.orderBy(asc(medications.name));
+		.orderBy(asc(medications.name), asc(medications.id))
+		.limit(501);
 }
