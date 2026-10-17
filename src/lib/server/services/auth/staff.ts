@@ -97,6 +97,27 @@ export async function inviteStaff(tx: Tx, admin: CurrentUser, input: z.infer<typ
 	if (await staffByEmail(tx, admin.agencyId, email))
 		throw new ServiceError('RULE_VIOLATION', 'Someone with this email is already on your staff');
 
+	const created = await createStaffAccount(tx, admin.agencyId, { ...data, email });
+	return { id: created.id, email, name: data.name, role: data.role };
+}
+
+/**
+ * Creates the sign-in (no password) and the profile, and emails the
+ * password-setup link once the profile is committed. Callers check who may
+ * do this; agency provisioning uses it for the first admin.
+ */
+export async function createStaffAccount(
+	tx: Tx,
+	agencyId: string,
+	data: {
+		email: string;
+		name: string;
+		role: 'caregiver' | 'supervisor' | 'admin';
+		homeIds: string[];
+		medCertified?: boolean;
+	}
+) {
+	const email = data.email.trim().toLowerCase();
 	let uid: string;
 	try {
 		uid = await createIdentity({ email, displayName: data.name });
@@ -108,7 +129,7 @@ export async function inviteStaff(tx: Tx, admin: CurrentUser, input: z.infer<typ
 	let created;
 	try {
 		created = await insertProfile(tx, {
-			agency_id: admin.agencyId,
+			agency_id: agencyId,
 			auth_uid: uid,
 			email,
 			name: data.name,
@@ -131,7 +152,7 @@ export async function inviteStaff(tx: Tx, admin: CurrentUser, input: z.infer<typ
 			link: '/login'
 		});
 	});
-	return { id: created.id, email, name: data.name, role: data.role };
+	return created;
 }
 
 export async function updateStaff(

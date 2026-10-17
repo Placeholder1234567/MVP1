@@ -69,6 +69,16 @@ It runs these steps in order:
 
 Extra settings (Lomi models, messaging drivers, a custom domain) go in `deploy/app.env.yaml`; see `deploy/app.env.example.yaml`. Rollback: `gcloud run services update-traffic guad-web --to-revisions=<previous>=100` (and the same for `guad-worker`). Migrations only go forward, so a rollback has to work with the newer schema.
 
+## New agencies
+
+There is no in-app role above an agency's admin, so the operator creates agencies from a machine that can reach the database (Cloud SQL Auth Proxy, with `DATABASE_URL` pointing at it) and has Identity Platform credentials (`gcloud auth application-default login`, `GOOGLE_CLOUD_PROJECT` set):
+
+```bash
+npm run agency:provision -- --name "Sunrise Care" --slug sunrise-care --tier professional \n  --admin-email admin@sunrise.example --admin-name "Ada Admin" --timezone America/Chicago
+```
+
+It creates the agency with the default goal templates and emails the first admin a password-setup link. Add `--print-setup-link` to also print the link, for example before SES is set up.
+
 ## 5. Messaging (when ready)
 
 Push (FCM) needs nothing beyond `PUSH_DRIVER=fcm`. Email and SMS need an AWS account with the AWS BAA accepted:

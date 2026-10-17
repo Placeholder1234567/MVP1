@@ -26,6 +26,7 @@ export {
 	StaffFilter,
 	StaffUpdateInput,
 	updateOwnProfile,
+	createStaffAccount,
 	updateStaff
 } from './staff';
 

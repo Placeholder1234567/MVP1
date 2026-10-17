@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_GOAL_TEMPLATES } from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -147,4 +148,16 @@ export async function createGoalTemplate(
 		steps: p.steps ?? [],
 		is_default: false
 	});
+}
+
+/** A new agency's starting templates (services.md §2 provisionAgency). */
+export async function seedDefaultTemplates(tx: Tx, agencyId: string) {
+	let count = 0;
+	for (const [area, texts] of Object.entries(DEFAULT_GOAL_TEMPLATES)) {
+		for (const text of texts) {
+			await insertTemplate(tx, { agency_id: agencyId, area, text, steps: [], is_default: true });
+			count++;
+		}
+	}
+	return count;
 }
