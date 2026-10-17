@@ -205,7 +205,8 @@ it('creates, edits and stops goals while preserving signed source trials and exp
 				)
 			)
 	);
-	expect(audit.map((a) => a.action)).toEqual(['INSERT', 'UPDATE', 'UPDATE']);
+	// No ORDER BY: rows can come back in any order, so compare as a set.
+	expect(audit.map((a) => a.action).sort()).toEqual(['INSERT', 'UPDATE', 'UPDATE']);
 	expect(audit.every((a) => a.performed_by === supervisor)).toBe(true);
 });
 

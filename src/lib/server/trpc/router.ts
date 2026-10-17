@@ -1,7 +1,9 @@
 import { router } from './middleware.ts';
 import { agencyRouter } from './routers/agency.ts';
+import { analyticsRouter } from './routers/analytics.ts';
 import { auditRouter } from './routers/audit.ts';
 import { authRouter } from './routers/auth.ts';
+import { caseNoteRouter } from './routers/case-note.ts';
 import { clientRouter } from './routers/client.ts';
 import { attendanceRouter, healthRouter, incidentRouter } from './routers/care.ts';
 import { deviceRouter } from './routers/device.ts';
@@ -21,8 +23,10 @@ import { clockRouter, scheduleRouter, coverageRouter } from './routers/workforce
 export const appRouter = router({
 	auth: authRouter,
 	agency: agencyRouter,
+	analytics: analyticsRouter,
 	audit: auditRouter,
 	attendance: attendanceRouter,
+	caseNote: caseNoteRouter,
 	client: clientRouter,
 	clock: clockRouter,
 	coverage: coverageRouter,
