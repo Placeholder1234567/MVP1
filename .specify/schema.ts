@@ -182,6 +182,10 @@ export const profiles = pgTable(
     role: userRoleEnum('role').notNull().default('caregiver'),
     home_ids: uuid('home_ids').array(),
     med_certified: boolean('med_certified').notNull().default(false),
+    // The agency's effective plan features, copied here by a trigger so the
+    // offline sync streams can gate data per user (entitlements.md §8).
+    // Never set by the app; never synced.
+    plan_features: text('plan_features').array().notNull().default([]),
     mfa_enabled: boolean('mfa_enabled').notNull().default(false),
     avatar_url: text('avatar_url'),
     active: boolean('active').notNull().default(true),

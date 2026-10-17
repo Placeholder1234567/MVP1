@@ -18,6 +18,9 @@
 -- ─── Roles and session claims ───────────────────────────────────────────────
 -- app_user:    RLS applies. The server switches to it for every request made
 --              on behalf of a signed-in user.
+-- After a database exists, changes to this file do not reach it: ship them as
+-- numbered patches in .specify/sql-patches/ (applied once each by db-setup).
+--
 -- app_service: bypasses RLS. Used only by job handlers and the specific
 --              cross-user writes listed at the end of this file.
 -- The server's login role is granted both and owns no PHI privileges itself.

@@ -11,7 +11,8 @@ process.env.PS_DEV_JWT_KEY ??= 'gi3XNOLkX6khPVxN4PpCoi7zVjDi9lljHRkgCTItfss'; //
 const POWERSYNC = process.env.PUBLIC_POWERSYNC_URL ?? 'http://localhost:8080';
 
 const { closeDb, withService } = await import('../../../src/lib/server/db');
-const { agencies, clients, homes, profiles } = await import('../../../src/lib/server/db/schema');
+const { agencies, clients, homes, medications, profiles } =
+	await import('../../../src/lib/server/db/schema');
 const { createSyncCredential } = await import('../../../src/lib/server/identity');
 
 /** Unique row IDs per table that PowerSync streams to this user's device. */
@@ -77,6 +78,7 @@ const PINE = randomUUID();
 const OAK_PERSON = randomUUID();
 const MAPLE_PERSON = randomUUID();
 const PINE_PERSON = randomUUID();
+const OAK_MED = randomUUID();
 const CG = `sync-cg-${randomUUID()}`;
 const SUP = `sync-sup-${randomUUID()}`;
 const OTHER_CG = `sync-other-${randomUUID()}`;
@@ -85,7 +87,12 @@ beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx.insert(agencies).values([
 			{ id: A, name: 'Sync Test Agency', subscription_tier: 'complete', slug: `sync-${A}` },
-			{ id: OTHER, name: 'Other Sync Agency', subscription_tier: 'complete', slug: `sync-other-${OTHER}` }
+			{
+				id: OTHER,
+				name: 'Other Sync Agency',
+				subscription_tier: 'complete',
+				slug: `sync-other-${OTHER}`
+			}
 		]);
 		await tx.insert(homes).values([
 			{ id: OAK, agency_id: A, name: 'Oak', lat: 40, lng: -75, radius: 150 },
@@ -117,6 +124,13 @@ beforeAll(async () => {
 			{ id: MAPLE_PERSON, agency_id: A, home_id: MAPLE, name: 'Person Maple' },
 			{ id: PINE_PERSON, agency_id: OTHER, home_id: PINE, name: 'Person Pine' }
 		]);
+		await tx.insert(medications).values({
+			id: OAK_MED,
+			agency_id: A,
+			client_id: OAK_PERSON,
+			home_id: OAK,
+			name: 'Synthetic med'
+		});
 	});
 });
 
@@ -137,6 +151,35 @@ describe('sync streams', () => {
 			expect(rows.clients).toEqual([OAK_PERSON, MAPLE_PERSON].sort());
 			expect(rows.homes).toEqual([OAK, MAPLE].sort());
 		});
+	});
+
+	it('data for features outside the plan never reaches the device (entitlements.md §8)', async () => {
+		const plan = (tier: string, enabled: string[] = []) =>
+			withService((tx) =>
+				tx
+					.update(agencies)
+					.set({ subscription_tier: tier, enabled_features: enabled })
+					.where(eq(agencies.id, A))
+			);
+		await eventually(async () => {
+			expect((await syncedRows(SUP)).medications).toEqual([OAK_MED]);
+		});
+		try {
+			// Starter has no medication administration: medications leave the device.
+			await plan('starter');
+			await eventually(async () => {
+				const rows = await syncedRows(SUP);
+				expect(rows.medications).toBeUndefined();
+				expect(rows.clients).toEqual([OAK_PERSON, MAPLE_PERSON].sort());
+			});
+			// A per-agency override brings just that feature back.
+			await plan('starter', ['mar']);
+			await eventually(async () => {
+				expect((await syncedRows(SUP)).medications).toEqual([OAK_MED]);
+			});
+		} finally {
+			await plan('complete');
+		}
 	});
 
 	it('nothing crosses agencies', async () => {
