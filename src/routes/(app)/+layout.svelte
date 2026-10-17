@@ -48,14 +48,18 @@
 					{ href: '/dashboard/timesheets', label: 'Timesheets', feature: 'timekeeping' },
 					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake' },
 					{ href: '/dashboard/people', label: 'People' },
+					{ href: '/dashboard/goals', label: app.labels.goalsNav, feature: 'goals' },
+					{ href: '/dashboard/reports', label: 'Reports', feature: ['reports', 'reports_basic'] },
 					{ href: '/dashboard/staff', label: 'Staff' },
 					{ href: '/messages', label: 'Messages', feature: 'messaging' },
 					...(data.user.role === 'admin' ? [{ href: '/dashboard/setup', label: 'Setup' }] : []),
 					{ href: '/me', label: 'Me' }
 				]
-		).filter(
-			(item) => !item.feature || (data.user.features as readonly string[]).includes(item.feature)
-		)
+		).filter((item: { feature?: string | string[] }) => {
+			if (!item.feature) return true;
+			const has = data.user.features as readonly string[];
+			return [item.feature].flat().some((f) => has.includes(f));
+		})
 	);
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
