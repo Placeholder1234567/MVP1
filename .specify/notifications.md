@@ -171,6 +171,8 @@ Update `notifications.sent_at`
 | **Deep Link** | `/mar?home={homeId}&day={today}` |
 | **Escalation** | If medication remains unadministered 30 min past scheduled time, push alert to supervisor with elevated priority. |
 
+**As built:** a `med-reminder-sweep` runs every 5 minutes. Doses are grouped by home and dose time, so one reminder covers every dose due at that home then. The reminder goes to the caregivers in `schedule_slots` for the current shift and for the dose's shift (they differ at shift change). The escalation is its own type, `med_overdue` (high priority, push to the home's supervisors, or the admins if it has none): `"Medication administration overdue at {homeName}."`, body `"A dose due at {time} has not been recorded."`. It is sent once, 30 to 120 minutes after the dose time, so a missed sweep never sends a stale alert. Each alert's `reference_id` is a stable ID made from its type, home, day and dose time (`reference_type = 'dose_time'`), so the sweep sends it once however often it runs.
+
 ### 2.9 health_alert
 
 | Field | Value |
@@ -336,6 +338,7 @@ Update `notifications.sent_at`
 | `med_refusal` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
 | `med_possible_double_dose` | Urgent | Y | Y | N | Y | 15 min admin SMS |
 | `med_due_reminder` | Normal | Y | N | N | N | 30 min overdue alert |
+| `med_overdue` | High | Y | N | N | N | None |
 | `health_alert` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
 | `incident_reported` | High | Y | Y** | N | Y | Severity-based |
 | `incident_high_severity` | Urgent | Y | Y | N | Y | 15 min, 30 min SMS |
@@ -524,6 +527,7 @@ type NotificationType =
   | 'med_refusal'
   | 'med_possible_double_dose'
   | 'med_due_reminder'
+  | 'med_overdue'
   | 'health_alert'
   | 'incident_reported'
   | 'incident_high_severity'
@@ -857,6 +861,7 @@ When a profile is created, default notification preferences are seeded based on 
 | `med_refusal` | N | N | N | Y | N | N | Y | N | N |
 | `med_possible_double_dose` | N | N | N | Y | Y | N | Y | Y | N |
 | `med_due_reminder` | Y | N | N | N | N | N | N | N | N |
+| `med_overdue` | N | N | N | Y | N | N | Y | N | N |
 | `health_alert` | N | N | N | Y | N | N | Y | N | N |
 | `incident_reported` | N | N | N | Y | N | N | Y | N | N |
 | `incident_high_severity` | N | N | N | Y | Y | N | Y | Y | N |

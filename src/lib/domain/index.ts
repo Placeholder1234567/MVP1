@@ -16,3 +16,4 @@ export * from './escalation';
 export * from './people';
 export * from './goal-templates';
 export * from './analytics';
+export * from './med-reminders';
