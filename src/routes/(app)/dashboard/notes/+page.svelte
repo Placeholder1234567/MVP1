@@ -77,7 +77,7 @@
 				{#each app.noteGoals.filter((g) => g.note_id === note?.id) as goal (goal.id)}<section
 						class="record-section"
 					>
-						<h3>{app.goals.find((g) => g.id === goal.goal_id)?.text ?? app.labels.goals}</h3>
+						<h3>{app.goals.find((g) => g.id === goal.goal_id)?.text ?? app.labels.goalsNav}</h3>
 						<p>
 							{goal.not_attempted
 								? `Not attempted: ${goal.reason}`
@@ -90,7 +90,7 @@
 				><button
 					class="btn"
 					disabled={busy || !signature || note.author_id === app.user.profileId}
-					onclick={() => review('approve')}>Approve note</button
+					onclick={() => review('approve')}>{app.labels.approve}</button
 				><label
 					>Feedback for the author<textarea
 						class="input"
@@ -101,7 +101,7 @@
 				><button
 					class="btn sec"
 					disabled={busy || !comment.trim() || note.author_id === app.user.profileId}
-					onclick={() => review('return')}>Return with feedback</button
+					onclick={() => review('return')}>{app.labels.sendBack}</button
 				>
 			</article>{/if}
 	</div>
