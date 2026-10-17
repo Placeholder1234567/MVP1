@@ -1299,6 +1299,11 @@ CREATE POLICY email_suppressions_delete ON public.email_suppressions
     AND public.current_user_role() = 'admin'
   );
 
+-- email_bounces, sms_inbound_messages: no policies at all. Only the
+-- Notification Service and the SMS webhook (app_service) read and write them.
+ALTER TABLE public.email_bounces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sms_inbound_messages ENABLE ROW LEVEL SECURITY;
+
 -- user_settings: own row only.
 ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 

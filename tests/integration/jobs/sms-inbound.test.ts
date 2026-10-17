@@ -167,3 +167,17 @@ it('STOP turns SMS off, even for mandatory alerts; START turns it back on', asyn
 	);
 	expect(row.status).toBe('failed');
 });
+
+it('answers a re-delivered text only once', async () => {
+	const id = randomUUID();
+	const send = () =>
+		handleInboundSms({
+			originationNumber: phones[cara],
+			messageBody: 'maybe',
+			inboundMessageId: id
+		});
+	const before = sms.mock.calls.length;
+	expect(await send()).toBe('unknown');
+	expect(await send()).toBe('duplicate');
+	expect(sms.mock.calls.length).toBe(before + 1);
+});

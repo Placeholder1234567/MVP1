@@ -1516,3 +1516,55 @@ export const deviceKeys = pgTable(
     index('device_keys_agency_id_idx').on(t.agency_id),
   ],
 );
+
+// ─── 39. email_bounces ───────────────────────────────────────────────────────
+// Soft (transient) bounces per address (notifications.md §7 "Bounce Handling"):
+// three within 24 hours count as a hard bounce. Written by the Notification
+// Service (app_service) from SES events; no PHI, never synced.
+
+export const emailBounces = pgTable(
+  'email_bounces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('email_bounces_agency_id_idx').on(t.agency_id),
+    index('email_bounces_lookup_idx').on(t.agency_id, t.email, t.created_at),
+  ],
+);
+
+// ─── 40. sms_inbound_messages ────────────────────────────────────────────────
+// Inbound SMS already handled (notifications.md §6 "Incoming Replies"). SNS
+// delivers at least once; the unique message ID makes a re-delivered "YES"
+// a no-op. Message IDs only, never the text or the number.
+
+export const smsInboundMessages = pgTable(
+  'sms_inbound_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    message_id: text('message_id').notNull(),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('sms_inbound_messages_agency_id_idx').on(t.agency_id),
+    uniqueIndex('sms_inbound_messages_message_id_idx').on(t.message_id),
+  ],
+);

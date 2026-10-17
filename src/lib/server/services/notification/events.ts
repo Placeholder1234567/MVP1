@@ -3,14 +3,19 @@
 // Events are matched to a delivery by the provider message ID stored at send
 // time, which also gives the agency. Events for messages Guad didn't send
 // through the notifications table are ignored. Logs carry IDs only.
-import { withService } from '../../db';
+import { withService, type Tx } from '../../db';
+import { notify, type Recipient } from './index';
 import { queueSmsPushFallback } from './sms-fallback';
 import {
 	deliveryByProviderId,
 	disableEmailFor,
+	recordSoftBounce,
 	setDeliveryStatus,
+	softBouncesSince,
+	staffWithEmail,
 	suppress
 } from './events.queries';
+import { activeStaffByRole } from './notification.queries';
 
 interface SesEvent {
 	eventType?: string;
@@ -23,32 +28,76 @@ interface SesEvent {
 
 export type EventOutcome = 'ignored' | 'suppressed' | 'sent' | 'failed';
 
+/** notifications.md §7: this many soft bounces in 24 hours count as a hard bounce. */
+export const SOFT_BOUNCE_LIMIT = 3;
+
 export function handleEmailEvent(event: SesEvent): Promise<EventOutcome> {
 	const type = event.eventType ?? event.notificationType;
 	const messageId = event.mail?.messageId;
 	if (!messageId) return Promise.resolve('ignored');
+	const bounceType = event.bounce?.bounceType;
 	const recipients =
-		type === 'Bounce' && event.bounce?.bounceType === 'Permanent'
-			? event.bounce.bouncedRecipients
+		type === 'Bounce'
+			? event.bounce?.bouncedRecipients
 			: type === 'Complaint'
 				? event.complaint?.complainedRecipients
 				: undefined;
-	// Transient bounces and delivery receipts change nothing: the row is
-	// already 'sent', and SES retries soft bounces itself.
+	// Delivery receipts change nothing: the row is already 'sent'.
 	if (!recipients?.length) return Promise.resolve('ignored');
-	const reason = type === 'Complaint' ? 'complaint' : 'hard_bounce';
 	return withService(async (tx) => {
 		const delivery = await deliveryByProviderId(tx, messageId, 'email');
 		if (!delivery) return 'ignored';
+		let suppressed = false;
 		for (const r of recipients) {
 			const email = r.emailAddress?.trim().toLowerCase();
 			if (!email) continue;
+			let reason: 'complaint' | 'hard_bounce' | 'soft_bounce_limit';
+			if (type === 'Complaint') reason = 'complaint';
+			else if (bounceType === 'Permanent') reason = 'hard_bounce';
+			else {
+				// Soft bounce: SES retries it; repeated ones mean the address is dead.
+				await recordSoftBounce(tx, delivery.agencyId, email);
+				const since = new Date(Date.now() - 24 * 3600_000);
+				if ((await softBouncesSince(tx, delivery.agencyId, email, since)) < SOFT_BOUNCE_LIMIT)
+					continue;
+				reason = 'soft_bounce_limit';
+			}
 			await suppress(tx, delivery.agencyId, email, reason);
 			await disableEmailFor(tx, delivery.agencyId, email);
+			await alertAdmins(tx, delivery.agencyId, email, reason);
+			suppressed = true;
 		}
-		if (reason === 'hard_bounce') await setDeliveryStatus(tx, delivery.id, 'failed');
-		console.log(`email ${reason} for notification ${delivery.id}`);
+		if (!suppressed) return 'ignored';
+		if (type === 'Bounce') await setDeliveryStatus(tx, delivery.id, 'failed');
+		console.log(`email suppression for notification ${delivery.id}`);
 		return 'suppressed';
+	});
+}
+
+/**
+ * notifications.md §7: tell the agency's admins a staff address no longer
+ * gets Guad email, so they can fix it and lift the suppression. The text
+ * names no one; the alert links to the staff member's record.
+ */
+async function alertAdmins(
+	tx: Tx,
+	agencyId: string,
+	email: string,
+	reason: 'complaint' | 'hard_bounce' | 'soft_bounce_limit'
+) {
+	const admins = await activeStaffByRole(tx, agencyId, 'admin');
+	if (!admins.length) return;
+	const staff = await staffWithEmail(tx, agencyId, email);
+	await notify(tx, agencyId, admins as Recipient[], {
+		type: 'email_delivery_problem',
+		priority: 3,
+		title:
+			reason === 'complaint'
+				? 'A staff member marked Guad email as spam'
+				: 'Email to a staff member keeps bouncing',
+		body: 'Guad has stopped emailing this address. Check it in Staff, then ask support to lift the block.',
+		referenceId: staff?.id,
+		referenceType: staff ? 'profiles' : undefined
 	});
 }
 

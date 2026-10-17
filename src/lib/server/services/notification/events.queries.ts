@@ -1,7 +1,8 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	deviceTokens,
+	emailBounces,
 	emailSuppressions,
 	notificationPreferences,
 	notifications,
@@ -78,4 +79,32 @@ export async function deleteDeviceTokens(tx: Tx, profileId: string, tokens: stri
 	await tx
 		.delete(deviceTokens)
 		.where(and(eq(deviceTokens.profile_id, profileId), inArray(deviceTokens.token, tokens)));
+}
+
+export async function recordSoftBounce(tx: Tx, agencyId: string, email: string) {
+	await tx.insert(emailBounces).values({ agency_id: agencyId, email });
+}
+
+export async function softBouncesSince(tx: Tx, agencyId: string, email: string, since: Date) {
+	const [row] = await tx
+		.select({ n: count() })
+		.from(emailBounces)
+		.where(
+			and(
+				eq(emailBounces.agency_id, agencyId),
+				eq(emailBounces.email, email),
+				gte(emailBounces.created_at, since)
+			)
+		);
+	return Number(row?.n ?? 0);
+}
+
+/** The agency's staff with this address (for the admin alert's reference). */
+export async function staffWithEmail(tx: Tx, agencyId: string, email: string) {
+	const [row] = await tx
+		.select({ id: profiles.id })
+		.from(profiles)
+		.where(and(eq(profiles.agency_id, agencyId), sql`lower(${profiles.email}) = ${email}`))
+		.limit(1);
+	return row ?? null;
 }
