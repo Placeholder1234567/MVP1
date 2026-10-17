@@ -4,13 +4,11 @@ import { and, eq } from 'drizzle-orm';
 import { closeDb, withService } from '../../../src/lib/server/db';
 import * as s from '../../../src/lib/server/db/schema';
 import { getCurrentUser } from '../../../src/lib/server/services/auth';
-import { createCallerFactory, router } from '../../../src/lib/server/trpc/middleware';
-import { goalRouter } from '../../../src/lib/server/trpc/routers/goal';
-import { reportRouter } from '../../../src/lib/server/trpc/routers/report';
+import { createCallerFactory } from '../../../src/lib/server/trpc/middleware';
+import { appRouter } from '../../../src/lib/server/trpc/router';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
-// Standalone composition deliberately avoids editing the shared root router.
-const caller = createCallerFactory(router({ goal: goalRouter, report: reportRouter }));
+const caller = createCallerFactory(appRouter);
 const agency = randomUUID(),
 	foreignAgency = randomUUID(),
 	home = randomUUID(),

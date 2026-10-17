@@ -14,7 +14,7 @@ import {
 } from '../../services/goal/index.ts';
 import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
 
-/** trpc-router.md goal.*; register in the app root after concurrent router work lands. */
+/** Goal procedures specified in trpc-router.md, protected by role/feature middleware. */
 export const goalRouter = router({
 	create: featureRoleProcedure('goals', 'supervisor')
 		.input(NewGoal)
