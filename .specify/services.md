@@ -59,7 +59,7 @@ src/lib/server/services/
 - `updateAgency(agencyId, data): Agency` — update name, settings, subscription tier.
 - `updatePreset(agencyId, preset): Agency` — switch charting preset (`"therap"` | `"default"`).
 - `getChartingLabels(agencyId): LabelMap` — return UI label overrides based on active preset (e.g., "T-Log" vs. "Shift Note").
-- `provisionAgency(name, slug, adminEmail): Agency` — create agency, seed default goal templates, create admin profile.
+- `provisionAgency(name, slug, adminEmail): Agency` — create agency, seed default goal templates, create admin profile. (As built: `provisionAgency(tx, { name, slug, tier, timezone, chartingPreset, adminEmail, adminName })`, run by the operator through `npm run agency:provision`, never from the app. The defaults are the MVP's 13 templates in `domain/goal-templates.ts`, and the admin is invited like any staff member.)
 
 **Depends on:** Auth (admin role enforcement), Goal (seed default templates on provision), Notification (system_maintenance notifications).
 

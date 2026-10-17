@@ -19,3 +19,17 @@ export async function updateAgencyRow(
 		.returning();
 	return row ?? null;
 }
+
+export async function agencyBySlug(tx: Tx, slug: string) {
+	const [row] = await tx
+		.select({ id: agencies.id })
+		.from(agencies)
+		.where(eq(agencies.slug, slug))
+		.limit(1);
+	return row ?? null;
+}
+
+export async function insertAgency(tx: Tx, row: typeof agencies.$inferInsert) {
+	const [created] = await tx.insert(agencies).values(row).returning({ id: agencies.id });
+	return created;
+}

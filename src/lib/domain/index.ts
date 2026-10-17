@@ -14,3 +14,4 @@ export * from './sms-replies';
 export * from './mfa';
 export * from './escalation';
 export * from './people';
+export * from './goal-templates';

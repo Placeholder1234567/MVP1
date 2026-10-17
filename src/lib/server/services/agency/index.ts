@@ -2,7 +2,9 @@
 import { z } from 'zod';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
-import { findAgency, updateAgencyRow } from './agency.queries';
+import { createStaffAccount } from '../auth/index.ts';
+import { seedDefaultTemplates } from '../goal/index.ts';
+import { agencyBySlug, findAgency, insertAgency, updateAgencyRow } from './agency.queries';
 
 export async function getAgency(tx: Tx, agencyId: string) {
 	const a = await findAgency(tx, agencyId);
@@ -64,4 +66,46 @@ export async function updateAgency(tx: Tx, agencyId: string, input: z.infer<type
 	});
 	if (!row) throw new ServiceError('NOT_FOUND', 'Agency not found');
 	return getAgency(tx, agencyId);
+}
+
+// ─── Provisioning (services.md §2 provisionAgency) ──────────────────────────
+// Run by the Guad operator (scripts/provision-agency.ts), never from the app:
+// there is no in-app role above an agency's admin.
+
+export const NewAgency = z.object({
+	name: z.string().trim().min(1).max(100),
+	slug: z
+		.string()
+		.trim()
+		.regex(/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/, 'Use 3-50 lowercase letters, digits and dashes'),
+	tier: z.enum(['starter', 'professional', 'complete']),
+	timezone: AgencyChanges.shape.timezone.unwrap().default('America/New_York'),
+	chartingPreset: z.enum(['therap', 'default']).default('default'),
+	adminEmail: z.email().max(254),
+	adminName: z.string().trim().min(1).max(100)
+});
+
+/**
+ * Creates an agency with its default goal templates and invites its first
+ * admin (sign-in with no password; the setup link is emailed after commit).
+ */
+export async function provisionAgency(tx: Tx, input: z.input<typeof NewAgency>) {
+	const data = NewAgency.parse(input);
+	if (await agencyBySlug(tx, data.slug))
+		throw new ServiceError('RULE_VIOLATION', 'That slug is already taken');
+	const agency = await insertAgency(tx, {
+		name: data.name,
+		slug: data.slug,
+		subscription_tier: data.tier,
+		timezone: data.timezone,
+		charting_preset: data.chartingPreset
+	});
+	const templates = await seedDefaultTemplates(tx, agency.id);
+	const admin = await createStaffAccount(tx, agency.id, {
+		email: data.adminEmail,
+		name: data.adminName,
+		role: 'admin',
+		homeIds: []
+	});
+	return { agencyId: agency.id, adminProfileId: admin.id, templates };
 }
