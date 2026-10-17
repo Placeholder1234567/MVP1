@@ -82,7 +82,7 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 
 | Metric | Target | Measurement Method |
 |---|---|---|
-| Time to interactive | < 2s on 3G (Slow 3G throttle in Lighthouse) | Lighthouse CI in deployment pipeline |
+| Time to interactive | < 2s on a throttled mobile connection (Lighthouse's standard mobile profile: 150 ms RTT, 1.6 Mbps, 4x CPU slowdown) | Lighthouse CI on every pull request (`performance.yml`) |
 | Offline note creation | < 200ms from tap-submit to local persistence | Performance.mark() instrumentation |
 | Sync on reconnect | < 5s for a typical day's data (~50 mutations) | PowerSync sync duration telemetry |
 | AI note draft | < 8s end-to-end (request to rendered draft) | Server-side latency logging |
@@ -90,7 +90,7 @@ The admissions and referral pipeline. Client Intake tracks inquiries from referr
 | Service worker activation | < 3s on first install | Registration timing in SW lifecycle |
 | Search (clients, staff) | < 300ms for in-memory filter of agency data | UI responsiveness measurement |
 
-**As built:** `.github/workflows/performance.yml` runs Lighthouse CI on the public pages (`/login`, `/offline`) with Lighthouse's standard mobile throttling (150 ms RTT, 1.6 Mbps, 4x CPU slowdown) and fails above 2 s to interactive (`lighthouserc.json`). In October 2026 `/login` measured 1.8 s and `/offline` 1.7 s. Under Chrome DevTools' harsher "Slow 3G" profile (400 ms RTT, 400 kbps), `/login` takes about 4.9 s, almost all of it network latency. Lighthouse has no preset called "Slow 3G", so which profile the 2 s target means still needs deciding.
+**As built:** `.github/workflows/performance.yml` runs Lighthouse CI on the public pages (`/login`, `/offline`) with Lighthouse's standard mobile throttling (150 ms RTT, 1.6 Mbps, 4x CPU slowdown) and fails above 2 s to interactive (`lighthouserc.json`). In October 2026 `/login` measured 1.8 s and `/offline` 1.7 s. Under Chrome DevTools' harsher "Slow 3G" profile (400 ms RTT, 400 kbps), `/login` takes about 4.9 s, almost all of it network latency. Decision (October 2026): the target uses Lighthouse's standard mobile profile, since DevTools' "Slow 3G" round trips alone exceed 2 s for any page with a stylesheet.
 
 ## Security Envelope
 
