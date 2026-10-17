@@ -22,6 +22,19 @@
 	let message = $state('');
 	let resolver: MultiFactorResolver | undefined;
 	let enrollment = $state<{ secret: TotpSecret; key: string; otpauthUrl: string }>();
+	// QR code for the authenticator app, drawn in the browser (the secret never
+	// leaves this page). The library loads only when enrollment starts.
+	let qr = $state('');
+	$effect(() => {
+		const url = enrollment?.otpauthUrl;
+		qr = '';
+		if (!url) return;
+		void import('qrcode').then((QR) =>
+			QR.toDataURL(url, { margin: 1, width: 220 }).then((data) => {
+				if (enrollment?.otpauthUrl === url) qr = data;
+			})
+		);
+	});
 
 	function explain(e: unknown): string {
 		// Firebase error codes, not user data; safe to show.
@@ -125,10 +138,16 @@
 			<h1>Set up two-step sign-in</h1>
 			<p class="muted">
 				Add Guad to an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password
-				or similar). On this phone, <!-- otpauth: hands off to the authenticator app; not an in-app route -->
+				or similar): scan this code with the app. On this phone, <!-- otpauth: hands off to the authenticator app; not an in-app route -->
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 				<a href={enrollment.otpauthUrl}>open it in your app</a>, or enter this key by hand:
 			</p>
+			{#if qr}<img
+					src={qr}
+					width="220"
+					height="220"
+					alt="QR code to add Guad to an authenticator app"
+				/>{/if}
 			<p><code>{enrollment.key}</code></p>
 			<form class="stack" onsubmit={submitEnrollment}>
 				<label>
