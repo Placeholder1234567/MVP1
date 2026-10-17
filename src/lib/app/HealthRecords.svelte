@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { useSession, parseJson } from './session.svelte';
 	import {
 		HEALTH_FIELDS,
@@ -12,7 +13,18 @@
 		type HealthKind
 	} from '#lib/domain/index.ts';
 	import { dayTimeOf, insertClinical } from './clinical-write';
-	let { clientId, onSaved }: { clientId: string; onSaved?: () => void } = $props();
+	let {
+		clientId,
+		onSaved,
+		onDirty,
+		onBusyChange
+	}: {
+		clientId: string;
+		onSaved?: () => void;
+		onDirty?: () => void;
+		onBusyChange?: (busy: boolean) => void;
+	} = $props();
+	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
 	const person = $derived(app.people.find((p) => p.id === clientId));
 	let kind = $state<HealthKind>('vitals');
@@ -34,6 +46,8 @@
 	const recent = $derived(app.health.filter((r) => r.client_id === clientId).slice(0, 3));
 	function switchKind(next: HealthKind) {
 		// charting-ux.md §4.6: switching clears the form, no confirmation.
+		if (busy) return;
+		onDirty?.();
 		kind = next;
 		fields = {};
 		touched = {};
@@ -49,6 +63,7 @@
 		}
 		error = '';
 		busy = true;
+		onBusyChange?.(true);
 		try {
 			const flags = healthFlags(kind, payload.data);
 			await insertClinical(app, 'health_entries', clientId, {
@@ -69,6 +84,7 @@
 			error = 'Could not save. Your entries are still here; try again.';
 		} finally {
 			busy = false;
+			onBusyChange?.(false);
 		}
 	}
 </script>
@@ -117,7 +133,7 @@
 	</div>
 {/snippet}
 
-<div class="stack">
+<fieldset class="stack care-fields" disabled={busy} aria-label="Care record editor">
 	<div class="seg" role="group" aria-label="What are you recording?">
 		{#each HEALTH_KINDS as k (k.key)}<button
 				type="button"
@@ -159,4 +175,13 @@
 		Alerts use placeholder limits (temperature 95–100.4°F, pulse 50–100, blood pressure 90–140 /
 		60–90). Follow the person’s care plan and your agency’s procedures.
 	</p>
-</div>
+</fieldset>
+
+<style>
+	.care-fields {
+		border: 0;
+		padding: 0;
+		margin: 0;
+		min-width: 0;
+	}
+</style>

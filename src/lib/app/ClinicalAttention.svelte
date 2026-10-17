@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { beforeNavigate } from '$app/navigation';
 	import { useSession, parseJson } from './session.svelte';
 	import {
 		attentionItems,
@@ -15,8 +16,11 @@
 	let busy = $state(false);
 	let message = $state('');
 	let selected = $state('');
+	let selectedHome = $state('');
+	let messageHome = $state('');
 	let followup = $state('');
 	let contacted = $state('');
+	const dirty = $derived(!!followup.trim() || !!contacted.trim());
 	const inHome = (r: { home_id: string | null }) => r.home_id === app.homeId;
 	const items = $derived(
 		attentionItems({
@@ -35,7 +39,19 @@
 			notes: app.notes.filter(inHome)
 		})
 	);
-	const incident = $derived(app.incidents.find((r) => r.id === selected));
+	const incident = $derived(
+		app.incidents.find(
+			(r) => r.id === selected && r.home_id === selectedHome && selectedHome === app.homeId
+		)
+	);
+	function discard() {
+		return !busy && (!dirty || confirm('Discard your unsaved follow-up and contact entries?'));
+	}
+	beforeNavigate(({ type, cancel }) => {
+		if (type === 'leave') {
+			if (busy || dirty) cancel();
+		} else if (!discard()) cancel();
+	});
 	const person = (id: string | null) => app.people.find((p) => p.id === id);
 	const PILL: Record<AttentionItem['pill'], string> = {
 		Incident: 'bad',
@@ -46,7 +62,8 @@
 		Review: ''
 	};
 	function offline() {
-		if (canReachServer(app)) return false;
+		messageHome = app.homeId;
+		if (!app.privacyLocked && canReachServer(app)) return false;
 		message = 'Reconnect and let changes finish syncing first.';
 		return true;
 	}
@@ -67,14 +84,20 @@
 	}
 	async function review() {
 		if (!incident || busy || offline()) return;
+		if (contacted.trim()) {
+			message = 'Record the contact or clear its entry before closing this report.';
+			return;
+		}
 		if (!followup.trim()) {
 			message = 'Add your follow-up notes.';
 			return;
 		}
 		busy = true;
+		const id = incident.id;
 		try {
-			await trpc.incident.review.mutate({ id: incident.id, followupNotes: followup });
+			await trpc.incident.review.mutate({ id, followupNotes: followup });
 			selected = '';
+			selectedHome = '';
 			followup = '';
 			message = 'Review saved. The list updates after sync.';
 		} catch {
@@ -97,14 +120,25 @@
 		}
 	}
 	function openReview(id: string) {
-		if (followup.trim() && !confirm('Discard your unsaved follow-up notes?')) return;
+		if (!discard()) return;
 		selected = id;
+		selectedHome = app.homeId;
+		messageHome = app.homeId;
 		followup = '';
 		contacted = '';
 		message = '';
 	}
 	const when = (item: AttentionItem) => (item.kind === 'coverage' ? '' : dayTimeOf(item.at, tz));
 </script>
+
+<svelte:window
+	onbeforeunload={(event) => {
+		if (busy || dirty) {
+			event.preventDefault();
+			event.returnValue = '';
+		}
+	}}
+/>
 
 {#snippet row(item: AttentionItem)}
 	{@const p = person(item.clientId)}
@@ -155,7 +189,10 @@
 		<h2 id="attention-h">Needs your attention</h2>
 		<span class="muted s14">{items.length ? `${items.length} items` : ''}</span>
 	</div>
-	{#if message}<p class="callout" role="status">{message}</p>{/if}
+	{#if selected && selectedHome !== app.homeId}<p class="callout" role="status">
+			An unfinished review is kept for another home. Return to that home to continue.
+		</p>{/if}
+	{#if message && messageHome === app.homeId}<p class="callout" role="status">{message}</p>{/if}
 	{#if incident}<article class="card pad stack" aria-label="Incident review">
 			<h3>Review {app.labels.incident.toLowerCase()}</h3>
 			<p>
@@ -181,6 +218,7 @@
 						maxlength="100"
 						placeholder="Family or guardian"
 						bind:value={contacted}
+						disabled={busy}
 					/></label
 				><button
 					type="button"
@@ -190,8 +228,11 @@
 				>
 			</div>
 			<label
-				>Your follow-up<textarea class="input" maxlength="8000" bind:value={followup}
-				></textarea></label
+				>Your follow-up<textarea
+					class="input"
+					maxlength="8000"
+					bind:value={followup}
+					disabled={busy}></textarea></label
 			>
 			<div class="actions">
 				<button type="button" class="btn" disabled={busy} onclick={review}
@@ -199,8 +240,14 @@
 				><button
 					type="button"
 					class="btn sec"
+					disabled={busy}
 					onclick={() => {
-						if (!followup.trim() || confirm('Discard your unsaved follow-up notes?')) selected = '';
+						if (discard()) {
+							selected = '';
+							selectedHome = '';
+							followup = '';
+							contacted = '';
+						}
 					}}>Cancel</button
 				>
 			</div>
