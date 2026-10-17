@@ -4,6 +4,7 @@ import { authRouter } from './routers/auth.ts';
 import { clientRouter } from './routers/client.ts';
 import { attendanceRouter, healthRouter, incidentRouter } from './routers/care.ts';
 import { deviceRouter } from './routers/device.ts';
+import { goalRouter } from './routers/goal.ts';
 import { homeRouter } from './routers/home.ts';
 import { lomiRouter } from './routers/lomi.ts';
 import { intakeRouter } from './routers/intake.ts';
@@ -24,6 +25,7 @@ export const appRouter = router({
 	clock: clockRouter,
 	coverage: coverageRouter,
 	device: deviceRouter,
+	goal: goalRouter,
 	health: healthRouter,
 	home: homeRouter,
 	lomi: lomiRouter,
