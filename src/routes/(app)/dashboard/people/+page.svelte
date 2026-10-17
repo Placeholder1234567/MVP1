@@ -231,7 +231,9 @@
 					<span class="avatar" aria-hidden="true">{person.initials || initialsOf(person.name)}</span
 					>
 					<span class="grow">
-						<a href={resolve('/(app)/people/[id]', { id: person.id })}><b>{person.name}</b></a>
+						<a href={resolve('/(app)/dashboard/people/[id]', { id: person.id })}
+							><b>{person.name}</b></a
+						>
 						<span>{homeName(person.homeId)}{person.active ? '' : ' · archived'}</span>
 					</span>
 					<button

@@ -11,9 +11,11 @@ import { ServiceError } from '../../errors';
 import { getHome } from '../home/index.ts';
 import { listMedications } from '../medication/index.ts';
 import {
+	insertCaseNote,
 	insertClient,
 	selectActiveGoals,
 	selectClient,
+	selectCaseNotes,
 	selectClients,
 	selectHealthInfo,
 	updateClientRow,
@@ -149,4 +151,49 @@ export async function archiveClient(tx: Tx, agencyId: string, id: string) {
 	const row = await updateClientRow(tx, agencyId, id, { active: false });
 	if (!row) throw new ServiceError('NOT_FOUND', 'Person not found');
 	return { id: row.id, active: row.active, updatedAt: row.updatedAt };
+}
+
+// ─── Case notes (services.md §12: addCaseNote, getCaseNotes) ───────────────
+// Care coordination, ISP meetings, family calls: distinct from shift and
+// behavior notes. Append-only through the API; corrections are new notes.
+
+export const NewCaseNote = z.object({
+	clientId: z.uuid(),
+	body: z.string().trim().min(1).max(10_000)
+});
+
+export const CaseNoteFilter = z.object({
+	clientId: z.uuid(),
+	limit: z.number().int().min(1).max(100).default(50),
+	offset: z.number().int().min(0).max(100_000).default(0)
+});
+
+export async function addCaseNote(
+	tx: Tx,
+	agencyId: string,
+	author: { profileId: string; name: string },
+	input: z.infer<typeof NewCaseNote>
+) {
+	const data = NewCaseNote.parse(input);
+	if (!(await selectClient(tx, agencyId, data.clientId)))
+		throw new ServiceError('NOT_FOUND', 'Person not found');
+	return insertCaseNote(tx, {
+		agency_id: agencyId,
+		client_id: data.clientId,
+		author_id: author.profileId,
+		author_name: author.name,
+		created_by: author.profileId,
+		body: data.body
+	});
+}
+
+export async function listCaseNotes(
+	tx: Tx,
+	agencyId: string,
+	input: z.input<typeof CaseNoteFilter>
+) {
+	const f = CaseNoteFilter.parse(input);
+	if (!(await selectClient(tx, agencyId, f.clientId)))
+		throw new ServiceError('NOT_FOUND', 'Person not found');
+	return selectCaseNotes(tx, agencyId, f.clientId, f.limit, f.offset);
 }

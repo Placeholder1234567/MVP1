@@ -1,6 +1,6 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { clientHealthInfo, clients, goals } from '../../db/schema';
+import { caseNotes, clientHealthInfo, clients, goals } from '../../db/schema';
 
 const columns = {
 	id: clients.id,
@@ -113,4 +113,36 @@ export async function updateClientRow(
 		.where(and(eq(clients.agency_id, agencyId), eq(clients.id, id)))
 		.returning(columns);
 	return row ?? null;
+}
+
+export function selectCaseNotes(
+	tx: Tx,
+	agencyId: string,
+	clientId: string,
+	limit: number,
+	offset: number
+) {
+	return tx
+		.select({
+			id: caseNotes.id,
+			authorName: caseNotes.author_name,
+			body: caseNotes.body,
+			createdAt: caseNotes.created_at
+		})
+		.from(caseNotes)
+		.where(and(eq(caseNotes.agency_id, agencyId), eq(caseNotes.client_id, clientId)))
+		.orderBy(desc(caseNotes.created_at))
+		.limit(limit)
+		.offset(offset);
+}
+
+export async function insertCaseNote(tx: Tx, row: typeof caseNotes.$inferInsert) {
+	const [created] = await tx.insert(caseNotes).values(row).returning({
+		id: caseNotes.id,
+		clientId: caseNotes.client_id,
+		authorName: caseNotes.author_name,
+		body: caseNotes.body,
+		createdAt: caseNotes.created_at
+	});
+	return created;
 }
