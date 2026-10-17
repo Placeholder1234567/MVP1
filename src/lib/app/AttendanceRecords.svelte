@@ -1,8 +1,20 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { useSession, parseJson } from './session.svelte';
 	import { ATTENDANCE_SERVICES, localTime } from '#lib/domain/index.ts';
 	import { insertClinical, timeOf } from './clinical-write';
-	let { clientId, onSaved }: { clientId: string; onSaved?: () => void } = $props();
+	let {
+		clientId,
+		onSaved,
+		onDirty,
+		onBusyChange
+	}: {
+		clientId: string;
+		onSaved?: () => void;
+		onDirty?: () => void;
+		onBusyChange?: (busy: boolean) => void;
+	} = $props();
+	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
 	const person = $derived(app.people.find((p) => p.id === clientId));
 	const day = localTime(new Date(), app.user.timeZone).day;
@@ -19,18 +31,20 @@
 			return;
 		}
 		busy = true;
+		onBusyChange?.(true);
 		error = '';
 		try {
 			// The server merges services into the day's record and never removes one.
 			const union = [...new Set([...recorded, ...services])];
 			const now = new Date().toISOString();
-			if (saved && app.db)
+			if (saved && app.db) {
 				await app.db.execute('UPDATE attendance SET services = ?, updated_at = ? WHERE id = ?', [
 					JSON.stringify(union),
 					now,
 					saved.id
 				]);
-			else
+				await app.refreshUploadStatus();
+			} else
 				await insertClinical(app, 'attendance', clientId, {
 					day,
 					services: JSON.stringify(union),
@@ -45,11 +59,12 @@
 			error = 'Could not save. Your selections are still here.';
 		} finally {
 			busy = false;
+			onBusyChange?.(false);
 		}
 	}
 </script>
 
-<div class="stack">
+<fieldset class="stack care-fields" disabled={busy} aria-label="Care record editor">
 	<p>
 		Which services did {person?.first_name || person?.name || 'this person'} get today?
 		{#if saved}<span class="muted s14"
@@ -72,8 +87,12 @@
 						>Saved</span
 					></label
 				>{:else}<label class="check"
-					><input type="checkbox" bind:group={services} value={service} /><span>{service}</span
-					></label
+					><input
+						type="checkbox"
+						onchange={() => onDirty?.()}
+						bind:group={services}
+						value={service}
+					/><span>{service}</span></label
 				>{/if}{/each}
 		<p class="muted s13">
 			Saved services can’t be removed here. Ask your supervisor to correct them.
@@ -82,9 +101,16 @@
 		{#if message}<p class="callout" role="status">{message}</p>{/if}
 		<button class="btn full" disabled={busy || !app.db}>Save attendance</button>
 	</form>
-</div>
+</fieldset>
 
 <style>
+	.care-fields {
+		border: 0;
+		padding: 0;
+		margin: 0;
+		min-width: 0;
+	}
+
 	.tight {
 		gap: 10px;
 	}

@@ -25,6 +25,9 @@
 	let tab = $state<CareSection>('medications');
 	const current = $derived(section ?? tab);
 	let dirty = $state(false);
+	let busy = $state(false);
+	const changed = () => (dirty = true);
+	const busyChanged = (value: boolean) => (busy = value);
 	const labels = $derived({
 		medications: app.labels.medications,
 		health: 'Health',
@@ -32,18 +35,19 @@
 		attendance: 'Attendance'
 	} satisfies Record<CareSection, string>);
 	function leave() {
-		return !dirty || confirm('Discard the unsaved changes in this form?');
+		return !busy && (!dirty || confirm('Discard the unsaved changes in this form?'));
 	}
 	const saved = () => (dirty = false);
-	beforeNavigate(({ cancel }) => {
-		if (!leave()) cancel();
-		else dirty = false;
+	beforeNavigate(({ cancel, type }) => {
+		if (type === 'leave') {
+			if (dirty || busy) cancel();
+		} else if (!leave()) cancel();
 	});
 </script>
 
 <svelte:window
 	onbeforeunload={(event) => {
-		if (dirty) {
+		if (dirty || busy) {
 			event.preventDefault();
 			event.returnValue = '';
 		}
@@ -52,6 +56,7 @@
 <div class="stack care-screen">
 	{#if onBack}<button
 			class="textbtn"
+			disabled={busy}
 			onclick={() => {
 				if (leave()) onBack();
 			}}>← Saved records</button
@@ -64,7 +69,9 @@
 				{#each Object.entries(labels) as [key, label] (key)}<button
 						type="button"
 						aria-pressed={tab === key}
+						disabled={busy}
 						onclick={() => {
+							if (tab === key) return;
 							if (leave()) {
 								tab = key as CareSection;
 								dirty = false;
@@ -75,6 +82,7 @@
 		<p class="muted s13" role="status">
 			{app.status}{app.pending ? ` · ${app.pending} changes waiting to sync` : ''}
 		</p>
+		{#if busy}<p role="status">Saving this record. Please wait before leaving.</p>{/if}
 		<div
 			class="stack"
 			oninput={() => (dirty = true)}
@@ -84,13 +92,24 @@
 			{#key `${clientId}:${current}`}{#if current === 'medications'}<MedicationRecords
 						{clientId}
 						onSaved={saved}
+						onDirty={changed}
+						onBusyChange={busyChanged}
 					/>{:else if current === 'health'}<HealthRecords
 						{clientId}
 						onSaved={saved}
+						onDirty={changed}
+						onBusyChange={busyChanged}
 					/>{:else if current === 'incident'}<IncidentRecords
 						{clientId}
 						onSaved={saved}
-					/>{:else}<AttendanceRecords {clientId} onSaved={saved} />{/if}{/key}
+						onDirty={changed}
+						onBusyChange={busyChanged}
+					/>{:else}<AttendanceRecords
+						{clientId}
+						onSaved={saved}
+						onDirty={changed}
+						onBusyChange={busyChanged}
+					/>{/if}{/key}
 		</div>
 	{:else}<p class="card empty">
 			This person’s record is not available on your device. Check your selected home or wait for

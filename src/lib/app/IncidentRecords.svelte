@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { useSession } from './session.svelte';
 	import {
 		INCIDENT_LOCATIONS,
@@ -13,7 +14,18 @@
 		type IncidentType
 	} from '#lib/domain/index.ts';
 	import { dayTimeOf, insertClinical } from './clinical-write';
-	let { clientId, onSaved }: { clientId: string; onSaved?: () => void } = $props();
+	let {
+		clientId,
+		onSaved,
+		onDirty,
+		onBusyChange
+	}: {
+		clientId: string;
+		onSaved?: () => void;
+		onDirty?: () => void;
+		onBusyChange?: (busy: boolean) => void;
+	} = $props();
+	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
 	const tz = app.user.timeZone;
 	const blank = () => ({
@@ -50,6 +62,7 @@
 			return;
 		}
 		error = '';
+		onDirty?.();
 		step += 1;
 	}
 	async function submit() {
@@ -64,6 +77,7 @@
 			return;
 		}
 		busy = true;
+		onBusyChange?.(true);
 		error = '';
 		try {
 			const told = form.told.filter((who) => rules.some((r) => r.who === who));
@@ -90,6 +104,7 @@
 			error = 'Could not save. Your report is still here; try again.';
 		} finally {
 			busy = false;
+			onBusyChange?.(false);
 		}
 	}
 </script>
@@ -106,13 +121,17 @@
 			{#each options as o (o)}<button
 					type="button"
 					aria-pressed={value === o}
-					onclick={() => set(o)}>{o}</button
+					onclick={() => {
+						signed = false;
+						onDirty?.();
+						set(o);
+					}}>{o}</button
 				>{/each}
 		</div>
 	</div>
 {/snippet}
 
-<div class="stack">
+<fieldset class="stack care-fields" disabled={busy} aria-label="Care record editor">
 	{#if done}<div class="card pad stack" role="status">
 			<h2>✓ {app.labels.incident} submitted</h2>
 			<p>Your supervisor will be notified after this report syncs successfully.</p>
@@ -142,6 +161,10 @@
 		<form
 			class="card pad stack"
 			novalidate
+			oninput={(event) => {
+				if (!(event.target instanceof HTMLInputElement && event.target.dataset.signature))
+					signed = false;
+			}}
 			onsubmit={(e) => {
 				e.preventDefault();
 				if (step < 3) next();
@@ -207,7 +230,7 @@
 				</div>
 			{/if}
 			{#if step === 3}<label class="check"
-					><input type="checkbox" bind:checked={signed} /><span
+					><input type="checkbox" data-signature="true" bind:checked={signed} /><span
 						>I, {app.user.name}, confirm this report is accurate.</span
 					></label
 				>{/if}
@@ -218,6 +241,8 @@
 						class="btn sec"
 						onclick={() => {
 							error = '';
+							signed = false;
+							onDirty?.();
 							step -= 1;
 						}}>Back</button
 					>{/if}<button class="btn grow" disabled={busy || !app.db || (step === 3 && !signed)}
@@ -238,9 +263,16 @@
 					>
 				</div>{/each}
 		</div>{/if}
-</div>
+</fieldset>
 
 <style>
+	.care-fields {
+		border: 0;
+		padding: 0;
+		margin: 0;
+		min-width: 0;
+	}
+
 	.short {
 		min-height: 70px;
 	}
