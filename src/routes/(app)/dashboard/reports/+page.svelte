@@ -70,6 +70,7 @@
 		permissions.
 	</p>
 	<a class="textbtn" href={resolve('/(app)/dashboard/timesheets')}>Payroll and timesheets →</a>
+	{#if page.data.user?.features?.includes('mar')}<a class="textbtn" href={resolve('/(app)/dashboard/medications')}>Manage medication definitions →</a>{/if}
 	{#if page.data.user?.features?.includes('goals')}<a class="textbtn" href={resolve('/(app)/dashboard/goals')}>Manage goals and templates →</a>{/if}
 	<form class="card pad stack" onsubmit={download}>
 		<label

@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
+	NewMedication,
+	MedicationChanges,
+	MedicationId,
+	MedicationHistoryFilter,
+	createMedication,
+	updateMedication,
+	stopMedication,
+	medicationHistory,
 	acknowledgeDose,
 	listMar,
 	listMedications,
@@ -71,6 +79,18 @@ export const marRouter = router({
 });
 
 export const medicationRouter = router({
+	create: featureRoleProcedure('mar', 'supervisor')
+		.input(NewMedication)
+		.mutation(({ ctx, input }) => createMedication(ctx.db, ctx.user.agencyId, ctx.user, input)),
+	update: featureRoleProcedure('mar', 'supervisor')
+		.input(MedicationChanges)
+		.mutation(({ ctx, input }) => updateMedication(ctx.db, ctx.user.agencyId, ctx.user, input)),
+	stop: featureRoleProcedure('mar', 'supervisor')
+		.input(MedicationId)
+		.mutation(({ ctx, input }) => stopMedication(ctx.db, ctx.user.agencyId, ctx.user, input)),
+	history: featureRoleProcedure('mar', 'supervisor')
+		.input(MedicationHistoryFilter)
+		.query(({ ctx, input }) => medicationHistory(ctx.db, ctx.user.agencyId, ctx.user, input)),
 	list: featureProcedure('mar')
 		.input(z.object({ clientId: z.uuid(), includeStopped: z.boolean().default(false) }))
 		.query(({ ctx, input }) =>
