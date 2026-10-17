@@ -6,7 +6,7 @@
 // CLOUD_SQL_INSTANCE is set, and DB_RUNTIME_USERS lists the service accounts
 // (web, worker; comma or semicolon separated) whose IAM database users may
 // act as app_user / app_service.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -40,6 +40,26 @@ try {
 		await pool.query(readFileSync('.specify/rls.sql', 'utf8'));
 		await pool.query('COMMIT');
 		console.log('rls.sql: applied');
+	}
+
+	// rls.sql runs once per database, so later changes to policies, triggers and
+	// functions ship as numbered patches in .specify/sql-patches/ (see its
+	// README). Each is applied once, in order, inside a transaction.
+	await pool.query(
+		'CREATE TABLE IF NOT EXISTS app.sql_patches (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())'
+	);
+	const done = new Set(
+		(await pool.query('SELECT name FROM app.sql_patches')).rows.map((r) => r.name)
+	);
+	const patches = readdirSync('.specify/sql-patches')
+		.filter((f) => /^\d{4}_[a-z0-9_]+\.sql$/.test(f))
+		.sort();
+	for (const name of patches.filter((f) => !done.has(f))) {
+		await pool.query('BEGIN');
+		await pool.query(readFileSync(`.specify/sql-patches/${name}`, 'utf8'));
+		await pool.query('INSERT INTO app.sql_patches (name) VALUES ($1)', [name]);
+		await pool.query('COMMIT');
+		console.log(`sql patch: applied ${name}`);
 	}
 
 	// Every table has RLS (rls.sql), including ones added by later migrations

@@ -1,0 +1,1 @@
+ALTER TABLE "profiles" ADD COLUMN "plan_features" text[] DEFAULT '{}' NOT NULL;

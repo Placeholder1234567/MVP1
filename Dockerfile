@@ -29,6 +29,7 @@ COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/scripts/db-setup.mjs /app/scripts/sync-rules.mjs ./scripts/
 COPY --from=build /app/src/lib/server/db/pool.ts ./src/lib/server/db/pool.ts
 COPY --from=build /app/.specify/rls.sql /app/.specify/offline-sync.md ./.specify/
+COPY --from=build /app/.specify/sql-patches ./.specify/sql-patches
 USER node
 EXPOSE 8080
 CMD ["node", "build"]

@@ -691,6 +691,8 @@ For a reusable pattern, use a `FeatureGuard` wrapper component:
 
 ## 8. PowerSync Sync Gating
 
+**As built:** Sync Streams can only gate with subqueries tied to the signed-in user (an uncorrelated subquery on `agencies` returns every agency and hits PowerSync's 1,000-result limit). So a trigger copies each agency's effective features onto its profiles (`profiles.plan_features`, from `app.plan_features()` in `.specify/sql-patches/0001_plan_features.sql`, tested against `resolveFeatures()`), and each gated stream in offline-sync.md §4 adds `agency_id IN (SELECT p.agency_id FROM profiles p, json_each(p.plan_features) AS f WHERE p.auth_uid = auth.user_id() AND p.active = true AND f.value = '<feature>')`. Gated: notes, note_goals, attendance, client_health_info (charting); goals, goal_templates (goals); medications, mar_records (mar); health_entries (health); incidents (incidents). Scheduling, timekeeping and messaging tables are in every tier and stay ungated. A plan change reaches devices within seconds. The YAML below is the original design and is kept for reference.
+
 PowerSync sync rules determine which tables are synced to each client device. Feature-gated tables are wrapped with tier and feature checks so disabled features produce no local data.
 
 ```yaml
