@@ -225,6 +225,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### analytics
 
+**As built:** one procedure, `analytics.weekly({ homeId?, weeks = 4 })`, returns every weekly series the analytics screen draws (frontend-spec-3.md §4.4): coverage (needing cover, fill rate, minutes to fill), documentation (notes signed, drafted with Lomi, hours from signing to approval, sent back), care (doses given, refused or held, incidents) and goal progress (independent rate per goal). Weeks start Monday in the agency's time zone. Supervisors and admins on plans with `analytics`. The four procedures below are not built separately.
+
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
 | `analytics.overview` | query | `{ homeId?: uuid, dateRange?: { from: string, to: string } }` | `{ notesCount, notesApproved, notesPending, incidentCount, incidentsBySeverity, marCompletionRate, clockVerificationRate, coverageFillRate }` | supervisor | Dashboard overview metrics. If `homeId` is omitted, returns agency-wide aggregates. |

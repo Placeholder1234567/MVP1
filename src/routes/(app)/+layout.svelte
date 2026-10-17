@@ -49,6 +49,7 @@
 					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake' },
 					{ href: '/dashboard/people', label: 'People' },
 					{ href: '/dashboard/goals', label: app.labels.goalsNav, feature: 'goals' },
+					{ href: '/dashboard/analytics', label: 'Analytics', feature: 'analytics' },
 					{ href: '/dashboard/reports', label: 'Reports', feature: ['reports', 'reports_basic'] },
 					{ href: '/dashboard/staff', label: 'Staff' },
 					{ href: '/messages', label: 'Messages', feature: 'messaging' },
