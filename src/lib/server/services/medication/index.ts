@@ -1,6 +1,16 @@
 // Medication Service (services.md): MAR records. Every record is permanent
 // (constitution principle 13); corrections are new records with amendsId.
 import { z } from 'zod';
+export {
+	NewMedication,
+	MedicationChanges,
+	MedicationId,
+	MedicationHistoryFilter,
+	createMedication,
+	updateMedication,
+	stopMedication,
+	medicationHistory
+} from './management';
 import { addDays, hhmm, localTime, medTimes } from '../../../domain/index.ts';
 import { doseNeedsReason } from '../../../domain/clinical.ts';
 import { asService, type Tx } from '../../db';
@@ -199,11 +209,14 @@ export function listMar(
 }
 
 /** A person's medications; stopped ones only when asked (medication.list). */
-export function listMedications(
+export async function listMedications(
 	tx: Tx,
 	agencyId: string,
 	clientId: string,
 	includeStopped = false
 ) {
-	return selectMedications(tx, agencyId, clientId, includeStopped);
+	const rows = await selectMedications(tx, agencyId, clientId, includeStopped);
+	if (rows.length > 500)
+		throw new ServiceError('VALIDATION_FAILED', 'Too many medications for this person');
+	return rows;
 }
