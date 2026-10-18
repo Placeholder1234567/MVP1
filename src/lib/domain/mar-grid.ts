@@ -144,6 +144,24 @@ export function compliance(rows: GridRow[]): {
 	return { given, due, percent: due ? Math.round((given / due) * 100) : null };
 }
 
+/**
+ * Share of due scheduled doses given on each day (one value per grid column),
+ * across any number of grids; null for a day with nothing due yet.
+ */
+export function dailyCompliance(grids: GridRow[][], days: number): (number | null)[] {
+	const given = Array<number>(days).fill(0);
+	const due = Array<number>(days).fill(0);
+	for (const rows of grids)
+		for (const row of rows)
+			row.cells.forEach((c, i) => {
+				if (i >= days) return;
+				if (c.kind === 'given' || c.kind === 'refused' || c.kind === 'held' || c.kind === 'missing')
+					due[i]++;
+				if (c.kind === 'given') given[i]++;
+			});
+	return due.map((d, i) => (d ? Math.round((given[i] / d) * 100) : null));
+}
+
 /** Bar colour band: >= 95 ok, 90-94 caution, < 90 bad. */
 export const complianceBand = (percent: number) =>
 	percent >= 95 ? 'ok' : percent >= 90 ? 'caution' : 'bad';
