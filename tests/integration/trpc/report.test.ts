@@ -26,7 +26,8 @@ const signed = randomUUID(),
 const original = randomUUID(),
 	amendment = randomUUID(),
 	conflict = randomUUID();
-const goalA = randomUUID(), goalB = randomUUID();
+const goalA = randomUUID(),
+	goalB = randomUUID();
 const uid = (id: string) => `report-${id}`;
 const createCaller = createCallerFactory(appRouter);
 const as = async (id: string) =>
@@ -140,37 +141,31 @@ beforeAll(async () => {
 				status: 'submitted'
 			}
 		]);
-		await tx
-			.insert(s.noteHistory)
-			.values({
-				agency_id: agency,
-				note_id: signed,
-				action: 'signed',
-				by_name: 'Record author',
-				occurred_at: new Date('2026-03-09T03:00Z')
-			});
-		await tx
-			.insert(s.medications)
-			.values({
-				id: medication,
-				agency_id: agency,
-				client_id: person,
-				name: 'Current medication label deliberately omitted',
-				dose: 'Changed dose'
-			});
-		await tx
-			.insert(s.marRecords)
-			.values({
-				id: original,
-				agency_id: agency,
-				client_id: person,
-				medication_id: medication,
-				day: '2026-03-08',
-				scheduled_time: '08:00',
-				status: 'given',
-				recorded_by: caregiver,
-				recorded_by_name: 'Record author'
-			});
+		await tx.insert(s.noteHistory).values({
+			agency_id: agency,
+			note_id: signed,
+			action: 'signed',
+			by_name: 'Record author',
+			occurred_at: new Date('2026-03-09T03:00Z')
+		});
+		await tx.insert(s.medications).values({
+			id: medication,
+			agency_id: agency,
+			client_id: person,
+			name: 'Current medication label deliberately omitted',
+			dose: 'Changed dose'
+		});
+		await tx.insert(s.marRecords).values({
+			id: original,
+			agency_id: agency,
+			client_id: person,
+			medication_id: medication,
+			day: '2026-03-08',
+			scheduled_time: '08:00',
+			status: 'given',
+			recorded_by: caregiver,
+			recorded_by_name: 'Record author'
+		});
 		await tx.insert(s.marRecords).values([
 			{
 				id: amendment,
@@ -193,23 +188,21 @@ beforeAll(async () => {
 				conflict_with: original
 			}
 		]);
-		await tx
-			.insert(s.healthEntries)
-			.values(
-				[
-					'2026-03-08T04:59:59Z',
-					'2026-03-08T05:00:00Z',
-					'2026-03-09T03:59:59Z',
-					'2026-03-09T04:00:00Z'
-				].map((at) => ({
-					agency_id: agency,
-					client_id: person,
-					kind: 'vitals' as const,
-					data: { temp: 98.6 },
-					recorded_at: new Date(at),
-					recorded_by: caregiver
-				}))
-			);
+		await tx.insert(s.healthEntries).values(
+			[
+				'2026-03-08T04:59:59Z',
+				'2026-03-08T05:00:00Z',
+				'2026-03-09T03:59:59Z',
+				'2026-03-09T04:00:00Z'
+			].map((at) => ({
+				agency_id: agency,
+				client_id: person,
+				kind: 'vitals' as const,
+				data: { temp: 98.6 },
+				recorded_at: new Date(at),
+				recorded_by: caregiver
+			}))
+		);
 		await tx.insert(s.incidents).values([
 			{
 				agency_id: agency,
@@ -271,6 +264,10 @@ it('exports only signed/approved notes with available signature events and appro
 	expect(html.content).toContain('ሰላም');
 	const csv = await caller.report.exportClinical({ ...input, type: 'notes', format: 'csv' });
 	expect(csv.content).toContain('"\'=Synthetic person"');
+	// The PDF font is Latin-only; the Ethiopic note text is refused, never drawn as boxes.
+	await expect(
+		caller.report.exportClinical({ ...input, type: 'notes', format: 'pdf' })
+	).rejects.toThrow('characters the PDF can’t show');
 });
 
 it('exports all MAR amendments/conflicts, bounded health timestamps, incident and attendance records', async () => {
@@ -291,6 +288,14 @@ it('exports all MAR amendments/conflicts, bounded health timestamps, incident an
 	expect(incidents.rows).toHaveLength(1);
 	expect(JSON.stringify(incidents)).not.toContain('Excluded');
 	expect((await report('attendance')).rows).toHaveLength(1);
+	const pdf = await caller.report.exportClinical({ ...input, type: 'attendance', format: 'pdf' });
+	expect(pdf).toMatchObject({
+		contentType: 'application/pdf',
+		encoding: 'base64',
+		filename: 'guad-care-report.pdf',
+		rows: 1
+	});
+	expect(Buffer.from(pdf.content, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
 	const audit = await withService((tx) =>
 		tx
 			.select()

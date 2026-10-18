@@ -7,8 +7,10 @@ import {
 	clinicalPeriod,
 	type ClinicalReport
 } from '../../../domain/clinical-export';
+import { clinicalPdfReport } from '../../../domain/report-pdf';
 import { asService, type RequestInfo, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
+import { PdfUnsupportedText, renderPdf } from '../../pdf';
 import type { CurrentUser } from '../auth/index.ts';
 import { clinicalScope, clinicalRows, clinicalNoteHistory } from './clinical.queries';
 import { recordExport } from './report.queries';
@@ -20,7 +22,7 @@ export const ClinicalExport = z.object({
 	clientId: z.uuid().optional(),
 	fromDay: z.iso.date(),
 	toDay: z.iso.date(),
-	format: z.enum(['csv', 'json', 'html']),
+	format: z.enum(['csv', 'json', 'html', 'pdf']),
 	approvedOnly: z.boolean().default(false)
 });
 const REQUIRED_FEATURE = {
@@ -43,6 +45,12 @@ const DATE_BASIS = {
 	goals:
 		'Signed note shift start calendar day in agency time zone; definitions are current, not historical snapshots; refusal and unknown trial codes remain in the recorded-trial denominator'
 };
+const CONTENT_TYPES = {
+	csv: 'text/csv;charset=utf-8',
+	json: 'application/json;charset=utf-8',
+	html: 'text/html;charset=utf-8',
+	pdf: 'application/pdf'
+} as const;
 export async function exportClinical(
 	tx: Tx,
 	user: CurrentUser,
@@ -114,9 +122,29 @@ export async function exportClinical(
 			'VALIDATION_FAILED',
 			'Report is too large. Choose a shorter period or one person.'
 		);
-	const content =
-		p.format === 'json' ? json : p.format === 'csv' ? clinicalCsv(report) : clinicalHtml(report);
-	if (Buffer.byteLength(content, 'utf8') > 8 * 1024 * 1024)
+	let content: string;
+	let bytes: number;
+	if (p.format === 'pdf') {
+		let pdf: Buffer;
+		try {
+			pdf = await renderPdf(clinicalPdfReport(report));
+		} catch (e) {
+			if (e instanceof PdfUnsupportedText)
+				throw new ServiceError(
+					'VALIDATION_FAILED',
+					'This report has characters the PDF can’t show. Download CSV or print-ready HTML instead.'
+				);
+			throw e;
+		}
+		// tRPC carries JSON, so the PDF travels as base64.
+		content = pdf.toString('base64');
+		bytes = pdf.length;
+	} else {
+		content =
+			p.format === 'json' ? json : p.format === 'csv' ? clinicalCsv(report) : clinicalHtml(report);
+		bytes = Buffer.byteLength(content, 'utf8');
+	}
+	if (bytes > 8 * 1024 * 1024)
 		throw new ServiceError(
 			'VALIDATION_FAILED',
 			'Report is too large. Choose a shorter period or one person.'
@@ -127,12 +155,8 @@ export async function exportClinical(
 	return {
 		content,
 		filename: `guad-care-report.${p.format}`,
-		contentType:
-			p.format === 'csv'
-				? 'text/csv;charset=utf-8'
-				: p.format === 'html'
-					? 'text/html;charset=utf-8'
-					: 'application/json;charset=utf-8',
+		contentType: CONTENT_TYPES[p.format],
+		encoding: p.format === 'pdf' ? ('base64' as const) : ('utf8' as const),
 		rows: rows.length
 	};
 }

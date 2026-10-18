@@ -1,5 +1,5 @@
 // GET /api/v1/reports/{type}/{reportId}/download (openapi.yaml downloadReport):
-// the CSV while it's ready, 409 before then or after it expires.
+// the CSV or PDF while it's ready, 409 before then or after it expires.
 import type { RequestHandler } from './$types';
 import { isReportType, isUuid } from '#lib/domain/index.ts';
 import { ApiError, handleApi, notFound } from '#lib/server/external-api.ts';
@@ -15,7 +15,7 @@ export const GET: RequestHandler = (event) =>
 			throw new ApiError(409, 'CONFLICT', 'Report is not ready for download or has expired');
 		return {
 			body: result.body,
-			contentType: 'text/csv; charset=utf-8',
+			contentType: result.contentType,
 			filename: result.filename,
 			records: result.rows
 		};

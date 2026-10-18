@@ -355,5 +355,12 @@ test('supervisor downloads bounded payroll and clinical exports with safe format
 	expect(html).toContain('@media print');
 	expect(html).not.toContain('<script');
 	expect(html).toContain(person);
+	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('pdf');
+	const pdfDownload = page.waitForEvent('download');
+	await page.getByRole('button', { name: 'Download care report', exact: true }).click();
+	const pdf = await pdfDownload;
+	expect(pdf.suggestedFilename()).toBe('guad-care-report.pdf');
+	expect((await downloaded(pdf, info, 'care-report.pdf')).startsWith('%PDF-')).toBe(true);
+	await expect(page.getByText(/^Downloaded \d+ records\./)).toBeVisible();
 	await proof(page, info, 'clinical-report-downloads');
 });

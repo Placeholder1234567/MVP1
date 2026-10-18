@@ -17,6 +17,8 @@ import {
 import { EXPORTS } from './export.queries';
 
 export const REPORT_ROW_LIMIT = 50_000;
+/** PDFs print one block per record; past this they're too long to read. */
+export const PDF_ROW_LIMIT = 2_000;
 
 /** CSV columns per type, so an empty report still has its header. */
 export const REPORT_COLUMNS: Record<string, string[]> = {
@@ -221,7 +223,7 @@ export async function setJob(
 	set: Partial<
 		Pick<
 			typeof reportJobs.$inferInsert,
-			'status' | 'storage_path' | 'ready_at' | 'expires_at' | 'error'
+			'status' | 'storage_path' | 'ready_at' | 'expires_at' | 'error' | 'params'
 		>
 	>
 ) {
