@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { useSession, parseJson } from './session.svelte';
 	import {
 		clock12,
@@ -14,7 +15,18 @@
 	import { canReachServer, insertClinical, timeOf } from './clinical-write';
 	import { trpc } from '#lib/trpc.ts';
 	import type { Database } from '#lib/sync/schema.ts';
-	let { clientId, onSaved }: { clientId: string; onSaved?: () => void } = $props();
+	let {
+		clientId,
+		onSaved,
+		onDirty,
+		onBusyChange
+	}: {
+		clientId: string;
+		onSaved?: () => void;
+		onDirty?: () => void;
+		onBusyChange?: (busy: boolean) => void;
+	} = $props();
+	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
 	const tz = app.user.timeZone;
 	const today = localTime(new Date(), tz).day;
@@ -64,6 +76,8 @@
 	const sheetMed = $derived(meds.find((m) => m.id === sheet?.medId));
 
 	function open(medId: string, time: string | null, status: DoseStatus, amends?: Mar) {
+		if (busy) return;
+		onDirty?.();
 		sheet = { medId, time, status, amends };
 		reason = '';
 		signed = false;
@@ -85,6 +99,7 @@
 			return false;
 		}
 		busy = true;
+		onBusyChange?.(true);
 		try {
 			await insertClinical(app, 'mar_records', clientId, {
 				medication_id: medId,
@@ -106,6 +121,7 @@
 			return false;
 		} finally {
 			busy = false;
+			onBusyChange?.(false);
 		}
 	}
 	async function saveSheet() {
@@ -140,6 +156,7 @@
 			return;
 		}
 		busy = true;
+		onBusyChange?.(true);
 		error = '';
 		try {
 			await trpc.mar.recordEffect.mutate({ id, effect });
@@ -149,6 +166,7 @@
 			error = 'Could not record the effect. Try again.';
 		} finally {
 			busy = false;
+			onBusyChange?.(false);
 		}
 	}
 	const statusPill = (s: string | null | undefined) =>
@@ -186,6 +204,10 @@
 	{#if sheet && sheetMed}<form
 			class="card pad stack"
 			aria-label="Record dose"
+			oninput={(event) => {
+				if (!(event.target instanceof HTMLInputElement && event.target.dataset.signature))
+					signed = false;
+			}}
 			onsubmit={(e) => {
 				e.preventDefault();
 				void saveSheet();
@@ -209,7 +231,13 @@
 					{#each ['given', 'refused', 'held'] as const as s (s)}<button
 							type="button"
 							aria-pressed={sheet.status === s}
-							onclick={() => sheet && (sheet.status = s)}>{statusLabel(s)}</button
+							onclick={() => {
+								if (sheet) {
+									sheet.status = s;
+									signed = false;
+									onDirty?.();
+								}
+							}}>{statusLabel(s)}</button
 						>{/each}
 				</div>{/if}
 			<label
@@ -223,7 +251,7 @@
 				</p>{/if}
 			{#if error}<p class="callout bad" role="alert">{error}</p>{/if}
 			<label class="check"
-				><input type="checkbox" bind:checked={signed} /><span
+				><input type="checkbox" data-signature="true" bind:checked={signed} /><span
 					>I, {app.user.name}, confirm this dose record is accurate.</span
 				></label
 			>
@@ -232,7 +260,7 @@
 		</form>{/if}
 {/snippet}
 
-<div class="stack">
+<fieldset class="stack care-fields" disabled={busy} aria-label="Care record editor">
 	<p class="callout warn">
 		Check the right person, medication, dose, time and route against the label before giving.
 	</p>
@@ -329,9 +357,16 @@
 						onclick={() => open(med.id, null, 'given')}>Give as needed</button
 					>{/if}{/if}
 		</article>{/each}
-</div>
+</fieldset>
 
 <style>
+	.care-fields {
+		border: 0;
+		padding: 0;
+		margin: 0;
+		min-width: 0;
+	}
+
 	.dose {
 		gap: 12px;
 	}
