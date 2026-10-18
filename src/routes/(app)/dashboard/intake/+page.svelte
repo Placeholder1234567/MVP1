@@ -190,8 +190,8 @@
 			<p class="stat-number">{loaded ? occupied : '—'}</p>
 		</div>
 	</div>
-	<div class="review-layout">
-		<section class="stack" aria-label="Referral pipeline">
+	<div class="review-layout" class:picked={creating || !!selected}>
+		<section class="stack pipeline" aria-label="Referral pipeline">
 			<div class="spread">
 				<h2>Referrals</h2>
 				<button
@@ -251,8 +251,19 @@
 				>
 			</div>
 		</section>
-		<section class="stack" aria-label="Referral details">
+		<section class="stack details" aria-label="Referral details">
 			{#if creating || selected}
+				<!-- Narrow screens show the list or the referral, not both (frontend-audit finding 20). -->
+				<button
+					type="button"
+					class="textbtn back"
+					onclick={() => {
+						if (!leaveForm()) return;
+						selected = null;
+						creating = false;
+						dirty = false;
+					}}>← All referrals</button
+				>
 				<form
 					class="card pad stack"
 					onsubmit={save}
@@ -418,5 +429,18 @@
 	}
 	.record-choice {
 		text-align: left;
+	}
+	.back {
+		display: none;
+		align-self: flex-start;
+	}
+	@media (max-width: 900px) {
+		.picked .pipeline,
+		.review-layout:not(.picked) .details {
+			display: none;
+		}
+		.back {
+			display: inline-flex;
+		}
 	}
 </style>
