@@ -10,6 +10,8 @@ import {
 	saveScheduleTemplate,
 	applyScheduleTemplate,
 	deleteScheduleTemplate,
+	suggestScheduleWeek,
+	applyScheduleSuggestions,
 	startCoverage,
 	respondCoverage,
 	coverageOffers
@@ -64,6 +66,27 @@ export const scheduleRouter = router({
 	copyWeek: featureRoleProcedure('scheduling', 'supervisor')
 		.input(z.object({ homeId: z.uuid(), fromWeek: z.iso.date(), toWeek: z.iso.date() }))
 		.mutation(({ ctx, input }) => copyScheduleWeek(ctx.db, ctx.user, input)),
+	suggest: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ homeId: z.uuid(), weekStart: z.iso.date() }))
+		.query(({ ctx, input }) => suggestScheduleWeek(ctx.db, ctx.user, input)),
+	applySuggestions: featureRoleProcedure('scheduling', 'supervisor')
+		.input(
+			z.object({
+				homeId: z.uuid(),
+				weekStart: z.iso.date(),
+				picks: z
+					.array(
+						z.object({
+							day: z.iso.date(),
+							shift: z.enum(['am', 'pm', 'on']),
+							profileId: z.uuid()
+						})
+					)
+					.min(1)
+					.max(21)
+			})
+		)
+		.mutation(({ ctx, input }) => applyScheduleSuggestions(ctx.db, ctx.user, input)),
 	templates: featureRoleProcedure('scheduling', 'supervisor')
 		.input(z.object({ homeId: z.uuid() }))
 		.query(({ ctx, input }) => listScheduleTemplates(ctx.db, ctx.user, input.homeId)),

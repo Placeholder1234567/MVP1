@@ -488,3 +488,50 @@ it('saves a week as a template and applies it to the open slots of another week'
 		supervisor.schedule.applyTemplate({ id: saved.id, toWeek: to })
 	).rejects.toMatchObject({ code: 'NOT_FOUND' });
 });
+
+it('suggests eligible staff for open shifts without double-booking, and applies only what is kept', async () => {
+	const supervisor = await as(sam);
+	const week = weekStart(addDays(day, 84));
+	await expect(
+		(await as(cara)).schedule.suggest({ homeId: oak, weekStart: week })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+	const suggestions = await supervisor.schedule.suggest({ homeId: oak, weekStart: week });
+	expect(suggestions).toHaveLength(21);
+	const picked = suggestions.filter((x) => x.profileId);
+	// Only caregivers trained at Oak; never twice in a day; at most five shifts each.
+	expect(new Set(picked.map((x) => x.profileId))).toEqual(new Set([eli, bea, cara]));
+	for (const d of new Set(picked.map((x) => x.day))) {
+		const that = picked.filter((x) => x.day === d).map((x) => x.profileId);
+		expect(new Set(that).size).toBe(that.length);
+	}
+	for (const id of [eli, bea, cara])
+		expect(picked.filter((x) => x.profileId === id).length).toBeLessThanOrEqual(5);
+	expect(suggestions.filter((x) => !x.profileId).every((x) => x.reason)).toBe(true);
+	// Nothing was assigned by suggesting.
+	expect(
+		(await supervisor.schedule.get({ homeId: oak, weekStart: week })).slots.filter(
+			(s) => s.assigned_to
+		)
+	).toEqual([]);
+
+	const keep = picked
+		.slice(0, 2)
+		.map((x) => ({ day: x.day, shift: x.shift, profileId: x.profileId! }));
+	expect(
+		(await supervisor.schedule.applySuggestions({ homeId: oak, weekStart: week, picks: keep }))
+			.copied
+	).toBe(2);
+	const after = await supervisor.schedule.get({ homeId: oak, weekStart: week });
+	for (const k of keep)
+		expect(after.slots.find((s) => s.day === k.day && s.shift === k.shift)?.assigned_to).toBe(
+			k.profileId
+		);
+	await expect(
+		supervisor.schedule.applySuggestions({
+			homeId: oak,
+			weekStart: week,
+			picks: [{ day: addDays(week, 7), shift: 'am', profileId: eli }]
+		})
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+});

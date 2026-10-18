@@ -209,3 +209,53 @@ test('supervisor saves a week as a template, fills another week from it and drag
 		if ((await weekOf()) === first) await slot(plus(first, 1)).selectOption('');
 	}
 });
+
+test('supervisor reviews suggested staff for open shifts and assigns only the ones kept', async ({
+	page
+}, info) => {
+	test.setTimeout(180000);
+	await page.goto('/login');
+	await page.getByLabel('Email', { exact: true }).fill('supervisor@guad.test');
+	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
+	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
+	await page.getByLabel('Confirm PIN', { exact: true }).fill('654321');
+	await page.getByRole('button', { name: 'Save PIN and open', exact: true }).click();
+	await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
+	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	await page.getByRole('link', { name: 'Schedule', exact: true }).first().click();
+	// Weeks no other test uses: twelve ahead on desktop, fourteen on phone.
+	const ahead = info.project.name === 'phone' ? 14 : 12;
+	for (let i = 0; i < ahead; i++)
+		await page.getByRole('button', { name: 'Next week →', exact: true }).click();
+	const saved = page.getByText('Schedule saved. Updates will appear after sync.', { exact: true });
+	const assigned = page
+		.getByRole('combobox', { name: / assignment$/ })
+		.filter({ hasNot: page.locator('option:checked[value=""]') });
+	// Start from an empty week (an earlier failed run may have left one).
+	while ((await assigned.count()) > 0) {
+		await assigned.first().selectOption('');
+		await expect(saved).toBeVisible();
+	}
+
+	await page.getByRole('button', { name: 'Suggest staff for open shifts', exact: true }).click();
+	await expect(page.getByText(/^\d+ of 21 open shifts have a suggestion\./)).toBeVisible();
+	const list = page.getByRole('group', { name: 'Suggested assignments', exact: true });
+	const boxes = list.getByRole('checkbox');
+	const n = await boxes.count();
+	expect(n).toBeGreaterThan(0);
+	for (let i = 1; i < n; i++) await boxes.nth(i).uncheck();
+	const first = (await list.locator('label.check').first().innerText()).replace(/\s+/g, ' ');
+	await page.getByRole('button', { name: 'Assign checked', exact: true }).click();
+	await expect(page.getByText(/^Assigned 1 shift\./)).toBeVisible();
+
+	// Exactly that shift is now assigned; clear it again.
+	await expect(assigned).toHaveCount(1);
+	expect(first).toContain(await assigned.locator('option:checked').innerText());
+	const axe = await new AxeBuilder({ page }).analyze();
+	expect(axe.violations).toEqual([]);
+	await assigned.selectOption('');
+	await expect(saved).toBeVisible();
+	await expect(assigned).toHaveCount(0);
+});

@@ -153,6 +153,57 @@
 				.filter(Boolean)
 				.join(' ');
 		}, 'Could not apply the template. Reconnect and try again.');
+	// Suggested staff for open shifts (frontend-audit.md finding 17, fix 2):
+	// shown for review; only the checked ones are assigned.
+	type Suggestion = Awaited<ReturnType<typeof trpc.schedule.suggest.query>>[number];
+	let suggestions = $state<(Suggestion & { keep: boolean })[] | null>(null);
+	let suggestedFor = $state('');
+	const WHY: Record<string, string> = {
+		already_working: 'everyone trained here already works that day',
+		over_40_hours: 'everyone free would go over 40 hours',
+		not_med_certified: 'doses are due and nobody free is med-certified',
+		not_trained_at_home: 'nobody is trained for this home',
+		called_out: 'nobody free',
+		inactive: 'nobody free'
+	};
+	const suggest = () =>
+		run(async () => {
+			const list = await trpc.schedule.suggest.query({ homeId: app.homeId!, weekStart: start });
+			suggestions = list.map((x) => ({ ...x, keep: !!x.profileId }));
+			suggestedFor = context;
+			const n = list.filter((x) => x.profileId).length;
+			return list.length
+				? `${n} of ${list.length} open ${list.length === 1 ? 'shift' : 'shifts'} have a suggestion. Check them, then assign.`
+				: 'No open shifts to fill this week.';
+		}, 'Could not suggest staff. Reconnect and try again.');
+	const applySuggestions = () =>
+		run(async () => {
+			const picks = (suggestions ?? [])
+				.filter((x) => x.keep && x.profileId)
+				.map((x) => ({ day: x.day, shift: x.shift, profileId: x.profileId! }));
+			const { copied, skipped } = await trpc.schedule.applySuggestions.mutate({
+				homeId: app.homeId!,
+				weekStart: start,
+				picks
+			});
+			suggestions = null;
+			return [
+				`Assigned ${copied} ${copied === 1 ? 'shift' : 'shifts'}. Updates will appear after sync.`,
+				skipped.length
+					? `${skipped.length} changed since the suggestion and ${skipped.length === 1 ? 'was' : 'were'} left as ${skipped.length === 1 ? 'it was' : 'they were'}.`
+					: ''
+			]
+				.filter(Boolean)
+				.join(' ');
+		}, 'Could not assign the suggestions. Reconnect and try again.');
+	const shiftName = (key: string) => SHIFTS.find((x) => x.key === key)?.label ?? key;
+	const dayName = (day: string) =>
+		new Date(day + 'T12:00:00').toLocaleDateString(undefined, {
+			weekday: 'short',
+			month: 'short',
+			day: 'numeric'
+		});
+
 	const deleteTemplate = () => {
 		const name = templates.find((t) => t.id === templateId)?.name;
 		if (!name || !confirm(`Delete the template “${name}”? Schedules already filled stay.`)) return;
@@ -216,6 +267,38 @@
 		<button class="btn sec" disabled={busy || !online || !app.homeId} onclick={copyLastWeek}
 			>Copy last week’s assignments</button
 		>
+		<section class="card pad stack" aria-labelledby="suggest-h">
+			<h2 id="suggest-h">Fill open shifts</h2>
+			<p class="muted s14">
+				Lomi suggests trained staff who are free, under 40 hours and med-certified when doses are
+				due. Nothing is assigned until you choose.
+			</p>
+			<div class="actions">
+				<button class="btn sec" disabled={busy || !online || !app.homeId} onclick={suggest}
+					>Suggest staff for open shifts</button
+				>
+			</div>
+			{#if suggestions?.length && suggestedFor === context}<fieldset class="stack suggestions">
+					<legend class="sr">Suggested assignments</legend>
+					{#each suggestions as x (`${x.day}:${x.shift}`)}{#if x.profileId}<label class="check"
+								><input type="checkbox" bind:checked={x.keep} disabled={busy} />{dayName(x.day)}
+								· {shiftName(x.shift)}:
+								<b>{app.staff.find((p) => p.id === x.profileId)?.name ?? 'Staff member'}</b></label
+							>{:else}<p class="muted s14">
+								{dayName(x.day)} · {shiftName(x.shift)}: no suggestion ({WHY[x.reason ?? ''] ??
+									'nobody free'})
+							</p>{/if}{/each}
+					<div class="actions">
+						<button
+							class="btn"
+							disabled={busy || !online || !suggestions.some((x) => x.keep && x.profileId)}
+							onclick={applySuggestions}>Assign checked</button
+						><button type="button" class="textbtn" onclick={() => (suggestions = null)}
+							>Dismiss</button
+						>
+					</div>
+				</fieldset>{/if}
+		</section>
 		<section class="card pad stack" aria-labelledby="templates-h">
 			<h2 id="templates-h">Templates</h2>
 			<p class="muted s14">
