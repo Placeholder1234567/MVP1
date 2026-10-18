@@ -527,6 +527,18 @@ it('suggests eligible staff for open shifts without double-booking, and applies 
 		expect(after.slots.find((s) => s.day === k.day && s.shift === k.shift)?.assigned_to).toBe(
 			k.profileId
 		);
+	// A stale pick is checked again: the person now works that day, so it is skipped.
+	const taken = new Set(keep.filter((k) => k.day === keep[0].day).map((k) => k.shift));
+	const free = (['am', 'pm', 'on'] as const).find((sh) => !taken.has(sh))!;
+	const stale = await supervisor.schedule.applySuggestions({
+		homeId: oak,
+		weekStart: week,
+		picks: [{ day: keep[0].day, shift: free, profileId: keep[0].profileId }]
+	});
+	expect(stale).toEqual({
+		copied: 0,
+		skipped: [{ day: keep[0].day, shift: free, reason: 'unavailable' }]
+	});
 	await expect(
 		supervisor.schedule.applySuggestions({
 			homeId: oak,

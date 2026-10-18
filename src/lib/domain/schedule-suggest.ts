@@ -66,3 +66,48 @@ export function suggestShifts(
 			return { day: slot.day, shift: slot.shift, profileId: null, reason };
 		});
 }
+
+/**
+ * Re-checks kept suggestions when they are applied: the week may have changed
+ * since they were suggested (someone assigned by hand, or suggestions for
+ * another home applied first). Picks are checked in day and shift order, each
+ * accepted one counting toward that person's day and week, so applying can
+ * never double-book anyone or push them past 40 hours.
+ */
+export function checkPicks<P extends { day: string; shift: ShiftKey; profileId: string }>(
+	picks: readonly P[],
+	staff: readonly Candidate[],
+	scheduled: readonly { profileId: string | null; day: string }[],
+	homeId: string,
+	doseTimes: string[]
+): { ok: P[]; refused: P[] } {
+	const weekly = new Map<string, number>();
+	const working = new Map<string, Set<string>>();
+	const add = (profileId: string, day: string) => {
+		weekly.set(profileId, (weekly.get(profileId) ?? 0) + 1);
+		const set = working.get(day) ?? new Set<string>();
+		set.add(profileId);
+		working.set(day, set);
+	};
+	for (const s of scheduled) if (s.profileId) add(s.profileId, s.day);
+	const order = (s: P) => `${s.day}:${['am', 'pm', 'on'].indexOf(s.shift)}`;
+	const ok: P[] = [];
+	const refused: P[] = [];
+	for (const pick of [...picks].sort((a, b) => order(a).localeCompare(order(b)))) {
+		const person = staff.find((p) => p.id === pick.profileId);
+		const [result] = person
+			? eligibility([person], {
+					homeId,
+					shift: pick.shift,
+					doseTimes,
+					workingThatDay: working.get(pick.day) ?? new Set(),
+					weeklyShifts: weekly
+				})
+			: [];
+		if (result?.eligible) {
+			add(pick.profileId, pick.day);
+			ok.push(pick);
+		} else refused.push(pick);
+	}
+	return { ok, refused };
+}
