@@ -596,6 +596,8 @@ A four-section analytics dashboard with KPI cards containing embedded bar charts
 | **Documentation** | Notes signed, Drafted with Lomi %, Minutes to chart, Notes sent back |
 | **Care** | Doses given, Refused or held, Incidents, Goal progress (independent rate per goal) |
 
+**As built (US-38):** Documentation also has **Shifts with a signed note** (%): of the shifts worked that week (an assigned schedule slot whose shift has ended), the share where the person on shift signed at least one note at that home for that day and shift (`weeklyNoteCompleteness`). Care also has **Scheduled doses given** (%), the medication compliance: scheduled doses given out of those due, where a dose is due once its time has passed while the medication was running and a corrected dose counts as its latest correction (`weeklyDoseCompliance`, both in `domain/analytics.ts`). Weeks with nothing to measure show "—".
+
 **Goal Progress Card (special layout within Care section):**
 ```
   Title: "Goal progress"

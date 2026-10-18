@@ -103,6 +103,7 @@
 
 		<h2>Documentation</h2>
 		<div class="kpis">
+			{@render kpi('Shifts with a signed note', data.documentation.completeness, '%')}
 			{@render kpi('Notes signed', data.documentation.signed)}
 			{@render kpi('Drafted with Lomi', data.documentation.lomiRate, '%')}
 			{@render kpi('Hours to approve', data.documentation.hoursToApprove, ' h', 'lower')}
@@ -111,6 +112,7 @@
 
 		<h2>Care</h2>
 		<div class="kpis">
+			{@render kpi('Scheduled doses given', data.care.medCompliance, '%')}
 			{@render kpi('Doses given', data.care.dosesGiven)}
 			{@render kpi('Refused or held', data.care.refusedOrHeld, '', 'lower')}
 			{@render kpi('Incidents', data.care.incidents, '', 'lower')}
