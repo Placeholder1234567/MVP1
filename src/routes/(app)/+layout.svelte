@@ -7,6 +7,7 @@
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	// Catches the browser's install offer early; Today's banner shows it.
 	import '#lib/pwa/install.svelte.ts';
+	import CommandPalette from '#lib/app/CommandPalette.svelte';
 	import { inspectDevice, deviceIssue } from '#lib/pwa/readiness.ts';
 	import { page } from '$app/state';
 	import { goto, onNavigate } from '$app/navigation';
@@ -306,6 +307,7 @@
 						>{app.pending ? `${app.pending} changes waiting to sync` : app.status}</span
 					>
 					<ThemeToggle />
+					<CommandPalette pages={nav} />
 					<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
 					<a
 						class="textbtn"

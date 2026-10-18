@@ -24,6 +24,14 @@ export function trialScore(trials: string[]): string {
 	return `${independent} of ${trials.length} independent`;
 }
 
+/**
+ * A goal milestone worth celebrating (frontend-spec-3.md §13 item 40): every
+ * trial this shift was Independent. One trial is too little to call it.
+ */
+export function goalMilestone(trials: string[]): boolean {
+	return trials.length >= 2 && trials.every((t) => t === 'Independent');
+}
+
 /** Daily services for attendance (billing). */
 export const ATTENDANCE_SERVICES = [
 	'In-home support',

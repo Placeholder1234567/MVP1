@@ -850,3 +850,74 @@ button.row:hover {
 		animation: none !important;
 	}
 }
+/* Small celebrations (frontend-spec-3.md §13 item 40, frontend-spec-2.md §6
+   "all notes done"): a green flash and a spring checkmark when every goal
+   trial was Independent; a Lomi bounce when the shift's notes are done.
+   Reduced motion keeps the colour and text, without movement. */
+.card.milestone {
+	border-color: var(--ok);
+	animation: milestone-flash 900ms ease-out;
+}
+.milestone-note {
+	margin: 0;
+	color: var(--ok);
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.milestone-check {
+	display: inline-grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 999px;
+	background: var(--ok-bg);
+	animation: milestone-check 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.all-done {
+	margin: 0;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-weight: 600;
+}
+.all-done .orb {
+	display: inline-grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 999px;
+	background: var(--lemon);
+	color: var(--ink);
+	font-size: 16px;
+}
+.bounce {
+	animation: lomi-bounce 200ms ease-out 2;
+}
+@keyframes milestone-flash {
+	0% {
+		box-shadow: 0 0 0 0 var(--ok-bg);
+	}
+	40% {
+		box-shadow: 0 0 0 6px var(--ok-bg);
+	}
+}
+@keyframes milestone-check {
+	from {
+		transform: scale(0.3);
+		opacity: 0;
+	}
+}
+@keyframes lomi-bounce {
+	50% {
+		transform: translateY(-4px);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.card.milestone,
+	.milestone-check,
+	.bounce {
+		animation: none;
+	}
+}
