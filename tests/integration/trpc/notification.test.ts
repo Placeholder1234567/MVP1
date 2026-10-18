@@ -4,7 +4,12 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { closeDb, withService } from '../../../src/lib/server/db';
 import * as s from '../../../src/lib/server/db/schema';
 import { getCurrentUser } from '../../../src/lib/server/services/auth';
-import { notify } from '../../../src/lib/server/services/notification';
+import {
+	announceMaintenance,
+	notify,
+	platformAgencies,
+	platformAnnouncementId
+} from '../../../src/lib/server/services/notification';
 import { createCallerFactory } from '../../../src/lib/server/trpc/middleware';
 import { appRouter } from '../../../src/lib/server/trpc/router';
 import { setProvidersForTests } from '../../../src/lib/server/messaging';
@@ -409,4 +414,46 @@ it('admins announce maintenance to everyone active in their agency, once', async
 			.map((r) => r.channel)
 			.sort()
 	).toEqual(['in_app', 'push']);
+});
+
+it('an operator announcement reaches every agency once, in its own time zone', async () => {
+	const runId = randomUUID();
+	const startsAt = new Date(Date.now() + 3 * 86_400_000);
+	const input = {
+		startsAt,
+		endsAt: new Date(startsAt.getTime() + 3_600_000),
+		impact: 'slow' as const
+	};
+	const agencies = await withService((tx) => platformAgencies(tx));
+	expect(agencies).toEqual(expect.arrayContaining([agency, other]));
+	const send = (id: string) =>
+		withService((tx) =>
+			announceMaintenance(tx, id, { ...input, id: platformAnnouncementId(runId, id) })
+		);
+	const first = await send(agency);
+	expect(first).toMatchObject({ recipients: 2, alreadySent: false });
+	expect((await send(other)).recipients).toBe(1);
+	// Running the same announcement again sends nothing new.
+	expect((await send(agency)).alreadySent).toBe(true);
+	const rows = await withService((tx) =>
+		tx
+			.select()
+			.from(s.notifications)
+			.where(
+				and(
+					eq(s.notifications.type, 'system_maintenance'),
+					inArray(s.notifications.reference_id, [
+						platformAnnouncementId(runId, agency),
+						platformAnnouncementId(runId, other)
+					])
+				)
+			)
+	);
+	// One row per channel; three people in all.
+	expect(new Set(rows.map((r) => r.profile_id)).size).toBe(3);
+	expect(new Set(rows.map((r) => r.agency_id))).toEqual(new Set([agency, other]));
+	expect(platformAnnouncementId(runId, agency)).toMatch(
+		/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+	);
+	expect(platformAnnouncementId(runId, agency)).not.toBe(platformAnnouncementId(runId, other));
 });
