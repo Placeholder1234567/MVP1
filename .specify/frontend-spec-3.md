@@ -210,6 +210,8 @@ Display as a progress ring (SVG donut, 48px diameter, stroke-width 5):
 
 > *Note: These compliance-specific thresholds (90/70) differ from the generic progress ring thresholds (80/50) in section 5.5. The compliance score uses stricter thresholds because regulatory standards typically require >=90% documentation compliance.*
 
+**As built:** a "Compliance, 7 days" card on the overview (`domain/compliance.ts`, from the device, current home, last seven days) with the ring at 90/70. The three parts, each shown as "X of Y": shifts with a signed note (worked shifts, an assigned slot whose shift has ended, where the person on shift signed a note for it; "on time" is not measured because signing times are not synced), scheduled doses given (as on the MAR grid; plans with `mar`), and incidents reviewed within a day (`INCIDENT_REVIEW_AFTER_HOURS`; open incidents still inside the day are not counted yet, and a reviewed incident's last change stands for its review time). A part with nothing to measure is left out of the average; with nothing at all the card is hidden. No delta arrow yet.
+
 **Attention Queue (severity-tiered, replaces current flat list):**
 
 > *Rebuild target -- the current MVP prototype (app-office.js attention() + O.overview()) renders all attention items as a single flat list inside one `<div class="list card">` with no urgency banding, no colored left borders, and no collapsible sections.*
