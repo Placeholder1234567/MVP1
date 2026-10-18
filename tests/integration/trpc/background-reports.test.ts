@@ -1,6 +1,6 @@
 // Synthetic fixtures only. Queue delivery is manual; report files stay in memory.
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 
 vi.mock('../../../src/lib/server/jobs/queue.ts', () => ({ enqueue: vi.fn(async () => undefined) }));
@@ -26,7 +26,17 @@ const uid = (id: string) => `background-report-${id}`;
 const files = new Map<string, Buffer>();
 let puts = 0;
 let beforePut: ((path: string) => Promise<void>) | undefined;
+let afterRemove: ((path: string) => Promise<void>) | undefined;
 let failNextRemove = false;
+const pendingReleases = new Set<() => void>();
+afterEach(() => {
+	beforePut = undefined;
+	afterRemove = undefined;
+	failNextRemove = false;
+	vi.useRealTimers();
+	for (const release of pendingReleases) release();
+	pendingReleases.clear();
+});
 const caller = createCallerFactory(appRouter);
 const as = async (id = owner) =>
 	caller({
@@ -71,6 +81,7 @@ beforeAll(async () => {
 				throw new Error('Synthetic storage remove failure');
 			}
 			files.delete(path);
+			await afterRemove?.(path);
 		}
 	});
 	await withService(async (tx) => {
@@ -388,6 +399,7 @@ it('removes a late storage write after expiry cleanup and retains its cleanup po
 		const putReleased = new Promise<void>((resolve) => {
 			release = resolve;
 		});
+		pendingReleases.add(release);
 		beforePut = async (writePath) => {
 			expect(writePath).toBe(path);
 			started();
@@ -430,6 +442,81 @@ it('removes a late storage write after expiry cleanup and retains its cleanup po
 			failNextRemove = false;
 			release();
 			await generating;
+			pendingReleases.delete(release);
 		}
+	}
+});
+
+it('prevents an older cleanup from clearing a newer failure recovery pointer', async () => {
+	const { id } = await queue();
+	const [job] = await withService((tx) =>
+		tx
+			.select()
+			.from(s.reportJobs)
+			.where(and(eq(s.reportJobs.agency_id, agency), eq(s.reportJobs.id, id)))
+	);
+	const path = job.storage_path!;
+	let releasePut!: () => void, putStarted!: () => void;
+	let releaseCleanup!: () => void, removeStarted!: () => void;
+	const putting = new Promise<void>((resolve) => {
+		putStarted = resolve;
+	});
+	const putReleased = new Promise<void>((resolve) => {
+		releasePut = resolve;
+	});
+	const removing = new Promise<void>((resolve) => {
+		removeStarted = resolve;
+	});
+	const cleanupReleased = new Promise<void>((resolve) => {
+		releaseCleanup = resolve;
+	});
+	pendingReleases.add(releasePut);
+	pendingReleases.add(releaseCleanup);
+	beforePut = async () => {
+		putStarted();
+		await putReleased;
+	};
+	let blocked = false;
+	afterRemove = async (removedPath) => {
+		if (removedPath !== path || blocked) return;
+		blocked = true;
+		removeStarted();
+		await cleanupReleased;
+	};
+	const generating = generate(id);
+	let cleanup: Promise<unknown> | undefined;
+	try {
+		await putting;
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date(job.expires_at!.getTime() + 1000));
+		cleanup = integration.cleanupReports();
+		await removing; // Old cleanup removed the absent file but has not cleared its old pointer.
+		failNextRemove = true;
+		releasePut();
+		expect(await generating).toMatchObject({ status: 'failed' });
+		expect(files.has(path)).toBe(true);
+		releaseCleanup();
+		await cleanup;
+		const [failed] = await withService((tx) =>
+			tx
+				.select({ path: s.reportJobs.storage_path })
+				.from(s.reportJobs)
+				.where(and(eq(s.reportJobs.agency_id, agency), eq(s.reportJobs.id, id)))
+		);
+		expect(failed.path).toBe(path);
+		afterRemove = undefined;
+		await integration.cleanupReports();
+		expect(files.has(path)).toBe(false);
+	} finally {
+		beforePut = undefined;
+		afterRemove = undefined;
+		failNextRemove = false;
+		releasePut();
+		releaseCleanup();
+		await generating;
+		await cleanup;
+		vi.useRealTimers();
+		pendingReleases.delete(releasePut);
+		pendingReleases.delete(releaseCleanup);
 	}
 });
