@@ -6,6 +6,70 @@ import { test, expect, type Download, type Page, type TestInfo } from '@playwrig
 test.use({ timezoneId: 'UTC' });
 const PIN = '654321';
 
+test('expanded health readings and explicit bowel observations survive offline sync and export', async ({
+	page,
+	context
+}, info) => {
+	test.setTimeout(180000);
+	const person = info.project.name === 'phone' ? 'Rosa Demo' : 'Marcus Demo';
+	await signIn(page, 'supervisor@guad.test');
+	await openPerson(page, person, true);
+	await page.getByRole('link', { name: /^Health Vitals/ }).click();
+	await expect(
+		page.getByText('No alert limits configured; follow the care plan', { exact: true })
+	).toHaveCount(3);
+	await context.setOffline(true);
+	await page.getByLabel('Respiratory rate', { exact: true }).fill('18');
+	await page.getByLabel('SpO2', { exact: true }).fill('97');
+	await page.getByLabel('Blood glucose', { exact: true }).fill('101');
+	await page.getByRole('button', { name: 'Save vitals', exact: true }).click();
+	await expect(page.getByText(/^Vitals saved for /)).toBeVisible();
+	await page.getByRole('button', { name: 'Bowel', exact: true }).click();
+	await page.getByRole('button', { name: 'Save bowel', exact: true }).click();
+	await expect(page.getByRole('alert')).toBeVisible();
+	await page.getByLabel('Observation', { exact: true }).selectOption('Observed');
+	await page
+		.getByLabel('Consistency (only if observed)', { exact: true })
+		.fill('Synthetic observation');
+	await page.getByLabel('Observation', { exact: true }).selectOption('Not observed');
+	await expect(page.getByLabel('Consistency (only if observed)', { exact: true })).toHaveCount(0);
+	await page.getByLabel('Observation', { exact: true }).selectOption('Observed');
+	await expect(page.getByLabel('Consistency (only if observed)', { exact: true })).toHaveValue('');
+	await page
+		.getByLabel('Consistency (only if observed)', { exact: true })
+		.fill('Synthetic observation');
+	await page.getByLabel('Time of observation or check', { exact: true }).fill('09:15');
+	await page.getByRole('button', { name: 'Save bowel', exact: true }).click();
+	await expect(page.getByText(/^Bowel saved for /)).toBeVisible();
+	await context.setOffline(false);
+	await synced(page);
+	await proof(page, info, 'expanded-health-reconnected');
+	await page.getByRole('link', { name: 'Overview', exact: true }).first().click();
+	await page.getByRole('link', { name: 'Timesheets', exact: true }).first().click();
+	await page.getByRole('link', { name: 'Care record reports →', exact: true }).click();
+	await page.getByRole('combobox', { name: 'Report', exact: true }).selectOption('health');
+	await page.getByRole('combobox', { name: 'Person', exact: true }).selectOption({ label: person });
+	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('json');
+	const download = page.waitForEvent('download');
+	await page.getByRole('button', { name: 'Download care report', exact: true }).click();
+	const report = JSON.parse(await downloaded(await download, info, 'expanded-health.json'));
+	expect(
+		report.rows.some(
+			(row: { data?: Record<string, unknown> }) =>
+				row.data?.respiration === 18 && row.data?.oxygen === 97 && row.data?.glucose === 101
+		)
+	).toBe(true);
+	expect(
+		report.rows.some(
+			(row: { kind?: string; data?: Record<string, unknown> }) =>
+				row.kind === 'bowel' &&
+				row.data?.status === 'Observed' &&
+				row.data?.time === '09:15' &&
+				row.data?.consistency === 'Synthetic observation'
+		)
+	).toBe(true);
+});
+
 async function signIn(page: Page, email: string, home = 'Oak House') {
 	await page.goto('/login');
 	await page.getByLabel('Email', { exact: true }).fill(email);

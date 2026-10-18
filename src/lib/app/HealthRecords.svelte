@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import type { DraftData } from './care-drafts.ts';
 	import { useSession, parseJson } from './session.svelte';
 	import {
+		localTime,
 		HEALTH_FIELDS,
 		HEALTH_KINDS,
 		healthFlags,
@@ -17,18 +19,37 @@
 		clientId,
 		onSaved,
 		onDirty,
-		onBusyChange
+		onBusyChange,
+		initialDraft,
+		onDraft
 	}: {
 		clientId: string;
 		onSaved?: () => void;
 		onDirty?: () => void;
 		onBusyChange?: (busy: boolean) => void;
+		initialDraft?: DraftData | null;
+		onDraft?: (data: DraftData) => void;
 	} = $props();
 	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
 	const person = $derived(app.people.find((p) => p.id === clientId));
-	let kind = $state<HealthKind>('vitals');
-	let fields = $state<Record<string, string | number | null>>({});
+	const restored = untrack(() => initialDraft);
+	let kind = $state<HealthKind>((restored?.kind as HealthKind) ?? 'vitals');
+	let fields = $state<Record<string, string | number | null>>(
+		(restored?.fields as Record<string, string | number | null>) ?? {}
+	);
+	$effect(() =>
+		onDraft?.({
+			day: localTime(new Date(), app.user.timeZone).day,
+			kind,
+			fields: $state.snapshot(fields)
+		})
+	);
+	$effect(() => {
+		if (kind === 'bowel' && fields.status !== 'Observed' && fields.consistency) {
+			fields.consistency = '';
+		}
+	});
 	let touched = $state<Record<string, boolean>>({});
 	let busy = $state(false);
 	let message = $state('');
@@ -37,6 +58,7 @@
 	const rows = $derived.by(() => {
 		const out: HealthField[][] = [];
 		for (const f of HEALTH_FIELDS[kind]) {
+			if (kind === 'bowel' && f.key === 'consistency' && fields.status !== 'Observed') continue;
 			const last = out.at(-1);
 			if (f.half && last?.length === 1 && last[0].half) last.push(f);
 			else out.push([f]);
@@ -105,7 +127,9 @@
 				id="h-{f.key}"
 				bind:value={fields[f.key]}
 				style="margin-top:6px"
-				>{#each f.options ?? [] as o (o)}<option>{o}</option>{/each}</select
+				><option value="">Choose an option</option>{#each f.options ?? [] as o (o)}<option
+						>{o}</option
+					>{/each}</select
 			>
 		{:else if f.input === 'number'}<div class="unit">
 				<input
@@ -115,7 +139,11 @@
 					type="number"
 					step={f.decimal ? '0.1' : '1'}
 					inputmode={f.decimal ? 'decimal' : 'numeric'}
-					aria-describedby={warning ? `h-${f.key}-warn` : undefined}
+					aria-describedby={warning
+						? `h-${f.key}-warn`
+						: f.alertConfigured === false
+							? `h-${f.key}-limits`
+							: undefined}
 					bind:value={fields[f.key]}
 					onblur={() => (touched[f.key] = true)}
 				/><em>{f.unit}</em>
@@ -130,6 +158,9 @@
 				bind:value={fields[f.key]}
 				style="margin-top:6px"
 			/>{/if}
+		{#if f.alertConfigured === false}<p class="muted s13" id="h-{f.key}-limits">
+				No alert limits configured; follow the care plan
+			</p>{/if}
 	</div>
 {/snippet}
 

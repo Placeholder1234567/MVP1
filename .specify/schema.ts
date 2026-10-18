@@ -68,6 +68,7 @@ export const healthEntryKindEnum = pgEnum('health_entry_kind', [
   'seizure',
   'illness',
   'appointment',
+  'bowel',
 ]);
 
 export const coverageStatusEnum = pgEnum('coverage_status', [

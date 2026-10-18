@@ -18,7 +18,7 @@ import {
 } from '../../services/incident/index.ts';
 import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
 
-const kind = z.enum(['vitals', 'seizure', 'illness', 'appointment']);
+const kind = z.enum(['vitals', 'seizure', 'illness', 'appointment', 'bowel']);
 const page = {
 	limit: z.number().int().min(1).max(100).default(50),
 	offset: z.number().int().min(0).default(0)

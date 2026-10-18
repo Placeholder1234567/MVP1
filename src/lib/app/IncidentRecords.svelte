@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import type { DraftData } from './care-drafts.ts';
 	import { useSession } from './session.svelte';
 	import {
+		localTime,
 		INCIDENT_LOCATIONS,
 		INCIDENT_SEVERITIES,
 		INCIDENT_TYPES,
@@ -18,12 +20,16 @@
 		clientId,
 		onSaved,
 		onDirty,
-		onBusyChange
+		onBusyChange,
+		initialDraft,
+		onDraft
 	}: {
 		clientId: string;
 		onSaved?: () => void;
 		onDirty?: () => void;
 		onBusyChange?: (busy: boolean) => void;
+		initialDraft?: DraftData | null;
+		onDraft?: (data: DraftData) => void;
 	} = $props();
 	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
@@ -42,8 +48,14 @@
 		severity: 'Low' as IncidentSeverity,
 		told: [] as string[]
 	});
-	let form = $state(blank());
-	let step = $state(1);
+	const restored = untrack(() => initialDraft);
+	let form = $state(
+		restored?.form ? { ...blank(), ...(restored.form as ReturnType<typeof blank>) } : blank()
+	);
+	let step = $state(Number(restored?.step ?? 1));
+	$effect(() =>
+		onDraft?.({ day: localTime(new Date(), tz).day, form: $state.snapshot(form), step })
+	);
 	let busy = $state(false);
 	let error = $state('');
 	let done = $state(false);

@@ -408,7 +408,7 @@ paths:
         - `incidents` — Incident reports
         - `mar` — Medication administration records
         - `medications` — Medication list per client
-        - `health` — Vitals, seizures, illness, appointments
+        - `health` — Vitals, seizures, illness, appointments, bowel observations
         - `attendance` — Daily attendance/services
         - `clock_records` — Clock-in/out with GPS data
         - `schedule` — Schedule slots
