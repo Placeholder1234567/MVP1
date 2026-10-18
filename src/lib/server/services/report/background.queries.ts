@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import { clients, profiles, reportJobs } from '../../db/schema';
 import type { CurrentUser } from '../auth';
@@ -12,6 +12,16 @@ const owned = (user: Owner, id: string) =>
 	);
 export async function ownReport(tx: Tx, user: CurrentUser, id: string) {
 	return (await tx.select().from(reportJobs).where(owned(user, id)).limit(1))[0] ?? null;
+}
+export function recentCareReports(tx: Tx, user: CurrentUser) {
+	return tx
+		.select()
+		.from(reportJobs)
+		.where(
+			and(eq(reportJobs.agency_id, user.agencyId), eq(reportJobs.requested_by, user.profileId))
+		)
+		.orderBy(desc(reportJobs.created_at), desc(reportJobs.id))
+		.limit(50);
 }
 export async function insertCareReport(tx: Tx, data: typeof reportJobs.$inferInsert) {
 	return (await tx.insert(reportJobs).values(data).returning())[0];

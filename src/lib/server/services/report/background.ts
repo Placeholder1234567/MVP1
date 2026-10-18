@@ -15,11 +15,14 @@ import {
 	requesterUid,
 	updateCareReport,
 	visibleReportClients,
-	publishCareReport
+	publishCareReport,
+	recentCareReports
 } from './background.queries';
+import { clinicalScope } from './clinical.queries';
 
 export const BackgroundRequest = ClinicalExport.extend({ expectedProfileId: z.uuid() });
 export const BackgroundId = z.object({ id: z.uuid(), expectedProfileId: z.uuid() });
+export const BackgroundRecent = z.object({ homeId: z.uuid(), expectedProfileId: z.uuid() });
 const Params = z.object({
 	kind: z.literal('care-v1'),
 	input: ClinicalExport,
@@ -90,10 +93,8 @@ export async function requestBackground(
 	};
 }
 
-async function authorisedJob(tx: Tx, user: CurrentUser, raw: z.input<typeof BackgroundId>) {
-	const input = BackgroundId.parse(raw);
-	bindProfile(user, input.expectedProfileId);
-	const job = await ownReport(tx, user, input.id);
+type CareJob = NonNullable<Awaited<ReturnType<typeof ownReport>>>;
+async function authorisedParams(tx: Tx, user: CurrentUser, job: CareJob | null) {
 	const parsed = Params.safeParse(job?.params);
 	if (
 		!job ||
@@ -106,15 +107,16 @@ async function authorisedJob(tx: Tx, user: CurrentUser, raw: z.input<typeof Back
 	await clinicalAccess(tx, user, parsed.data.input);
 	if (!(await visibleReportClients(tx, user, parsed.data.input.homeId, parsed.data.clientIds)))
 		throw unavailable();
-	return { job, params: parsed.data };
+	return parsed.data;
 }
-
-export async function backgroundStatus(
-	tx: Tx,
-	user: CurrentUser,
-	input: z.input<typeof BackgroundId>
-) {
-	const { job, params } = await authorisedJob(tx, user, input);
+async function authorisedJob(tx: Tx, user: CurrentUser, raw: z.input<typeof BackgroundId>) {
+	const input = BackgroundId.parse(raw);
+	bindProfile(user, input.expectedProfileId);
+	const job = await ownReport(tx, user, input.id);
+	const params = await authorisedParams(tx, user, job);
+	return { job: job!, params };
+}
+function describeStatus(job: CareJob, params: z.infer<typeof Params>) {
 	const expired = !job.expires_at || job.expires_at <= new Date();
 	const status: 'queued' | 'processing' | 'ready' | 'failed' | 'expired' = expired
 		? 'expired'
@@ -137,6 +139,45 @@ export async function backgroundStatus(
 			? { error: 'Could not generate this report. Try a smaller period or a different format.' }
 			: {})
 	};
+}
+
+export async function backgroundStatus(
+	tx: Tx,
+	user: CurrentUser,
+	input: z.input<typeof BackgroundId>
+) {
+	const { job, params } = await authorisedJob(tx, user, input);
+	return describeStatus(job, params);
+}
+
+/** Bounded account history lets users recover references after a reload or privacy lock. */
+export async function recentBackground(
+	tx: Tx,
+	user: CurrentUser,
+	raw: z.input<typeof BackgroundRecent>
+) {
+	const input = BackgroundRecent.parse(raw);
+	bindProfile(user, input.expectedProfileId);
+	assignedHome(user, input.homeId);
+	if (
+		user.role === 'caregiver' ||
+		!user.features.includes('reports') ||
+		!(await clinicalScope(tx, user.agencyId, input.homeId))
+	)
+		throw unavailable();
+	const results: ReturnType<typeof describeStatus>[] = [];
+	for (const job of await recentCareReports(tx, user)) {
+		const parsed = Params.safeParse(job.params);
+		if (!parsed.success || parsed.data.input.homeId !== input.homeId) continue;
+		try {
+			const params = await authorisedParams(tx, user, job);
+			results.push(describeStatus(job, params));
+			if (results.length === 20) break;
+		} catch (error) {
+			if (!(error instanceof ServiceError)) throw error;
+		}
+	}
+	return results;
 }
 
 export async function downloadBackground(

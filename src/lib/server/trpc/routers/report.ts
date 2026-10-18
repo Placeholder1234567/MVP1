@@ -6,13 +6,18 @@ import {
 	ClinicalExport,
 	BackgroundRequest,
 	BackgroundId,
+	BackgroundRecent,
 	requestBackground,
 	backgroundStatus,
+	recentBackground,
 	downloadBackground
 } from '../../services/report/index.ts';
 import { featureRoleProcedure, router } from '../middleware.ts';
 
 export const reportRouter = router({
+	recentBackground: featureRoleProcedure('reports', 'supervisor')
+		.input(BackgroundRecent)
+		.mutation(({ ctx, input }) => recentBackground(ctx.db, ctx.user, input)),
 	requestBackground: featureRoleProcedure('reports', 'supervisor')
 		.input(BackgroundRequest)
 		.mutation(({ ctx, input }) => requestBackground(ctx.db, ctx.user, input)),

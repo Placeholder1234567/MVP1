@@ -8,8 +8,10 @@ export { ClinicalExport, exportClinical } from './clinical';
 export {
 	BackgroundRequest,
 	BackgroundId,
+	BackgroundRecent,
 	requestBackground,
 	backgroundStatus,
+	recentBackground,
 	downloadBackground,
 	generateCareReport
 } from './background';
