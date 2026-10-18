@@ -73,6 +73,22 @@
 		}
 	}
 	const when = (iso: string) => new Date(iso).toLocaleString();
+
+	// Who did what to the note (note_history, written by the database), loaded
+	// when the History section is opened; it needs a connection.
+	type History = Awaited<ReturnType<typeof trpc.note.get.query>>['history'];
+	let history = $state<{ noteId: string; list: History } | null>(null);
+	let historyError = $state('');
+	async function loadHistory(id: string) {
+		if (history?.noteId === id) return;
+		historyError = '';
+		try {
+			const { history: list } = await trpc.note.get.query({ id });
+			if (note?.id === id) history = { noteId: id, list };
+		} catch {
+			historyError = 'The history needs a connection. Reconnect and open it again.';
+		}
+	}
 	async function review(action: 'approve' | 'return') {
 		if (!note || busy) return;
 		if (!app.db?.currentStatus.connected) {
@@ -233,6 +249,23 @@
 								: parseJson<string[]>(goal.trials, []).join(', ')}
 						</p>
 					</section>{/each}
+				{#key note.id}
+					<details
+						class="history"
+						ontoggle={(e) => {
+							if ((e.currentTarget as HTMLDetailsElement).open) void loadHistory(note.id);
+						}}
+					>
+						<summary>History</summary>
+						{#if historyError}<p class="muted" role="status">{historyError}</p>
+						{:else if history?.noteId !== note.id}<p class="muted">Loading…</p>
+						{:else}<ol class="trail">
+								{#each history.list as h, i (i)}<li>
+										<span class="muted">{when(String(h.occurredAt))}</span>
+										{h.byName ?? 'System'} · {h.action}
+									</li>{:else}<li class="muted">No history recorded.</li>{/each}
+							</ol>{/if}
+					</details>{/key}
 				{#if note.status === 'submitted'}
 					<label class="checkline"
 						><input type="checkbox" bind:checked={signature} disabled={busy} />I have read this note
@@ -294,6 +327,29 @@
 		.back {
 			display: inline-flex;
 		}
+	}
+	.history summary {
+		min-height: 44px;
+		padding-block: 10px;
+		cursor: pointer;
+	}
+	.trail {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 6px;
+		font-size: 13px;
+	}
+	.trail li::before {
+		content: '';
+		display: inline-block;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--line2);
+		margin-right: 8px;
+		vertical-align: middle;
 	}
 	.versions {
 		border: 1px solid var(--line2);

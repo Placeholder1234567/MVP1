@@ -55,6 +55,11 @@ test('a supervisor compares a resubmitted note with the version they sent back',
 		await expect(
 			review.getByText('This is the first signed version; there is nothing earlier to compare.')
 		).toBeVisible();
+		// The note's history lists who did what, from the server.
+		await review.getByText('History', { exact: true }).click();
+		await expect(
+			review.getByRole('listitem').filter({ hasText: /Lena Park · signed/ })
+		).toBeVisible();
 		await review.getByLabel('Feedback for the author', { exact: true }).fill('What did Theo eat?');
 		await review.getByRole('button', { name: 'Send back', exact: true }).click();
 		await expect(
