@@ -490,7 +490,7 @@ src/lib/server/services/
 
 **Responsibility:** The external API (openapi.yaml) for state EVV aggregators, data warehouses and other integrations: agency API keys, EVV visit records and bulk data export. Webhook subscriptions and API report generation belong here too (not built yet).
 
-**Owns tables:** `api_keys` (and later `webhooks`, `webhook_deliveries`)
+**Owns tables:** `api_keys`, `webhooks`, `webhook_deliveries`
 
 **Key functions:**
 - `createApiKey`, `listApiKeys`, `revokeApiKey` (admins, through tRPC `apiKey.*`, as app_user so RLS applies).
@@ -503,7 +503,7 @@ An API key acts for its agency, not a person, so its reads run as app_service an
 **Depends on:**
 - Audit (access log)
 
-**Jobs:** None yet (webhook delivery will add one).
+**Jobs:** `webhook-sweep` (maintenance, every minute: audited changes on event tables become deliveries) and `webhook-deliver` (`webhooks` queue: one signed attempt; the handler queues its own retries after 1, 5, 30 and 120 minutes).
 
 ---
 

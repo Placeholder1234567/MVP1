@@ -28,10 +28,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Webhook and job routes authenticate by signature or OIDC token instead.
 	const { pathname } = event.url;
 	const exempt = pathname.startsWith('/api/webhooks/') || pathname.startsWith('/api/jobs/');
+	// The external API (openapi.yaml) authenticates by Bearer API key only and
+	// ignores cookies, so a cross-site request can't act as a signed-in user.
+	const bearerApi = pathname.startsWith('/api/v1/');
 	// The worker service serves only job and webhook routes, which check a
 	// Google OIDC token or an SNS signature themselves (deploy/README.md).
 	if (process.env.GUAD_SERVICE === 'worker' && !exempt) error(404, 'Not found');
-	if (UNSAFE.has(event.request.method) && !exempt) {
+	if (UNSAFE.has(event.request.method) && !exempt && !bearerApi) {
 		const origin = event.request.headers.get('origin');
 		if (origin !== event.url.origin) error(403, 'Cross-site request blocked');
 	}

@@ -16,6 +16,8 @@ const SETTINGS: Record<string, { concurrency: number; perSecond?: number }> = {
 	'notifications-escalation': { concurrency: 5 },
 	'notifications-digest': { concurrency: 3 },
 	reports: { concurrency: 2 },
+	// Webhook sends wait up to 5 s each on external endpoints.
+	webhooks: { concurrency: 10 },
 	maintenance: { concurrency: 1 }
 };
 
