@@ -1,8 +1,15 @@
-// Health Service (services.md): vitals, seizures, illness and appointments.
+// Health Service (services.md): vitals, seizures, illness, visits and bowel observations.
 // Vital flags come from the shared domain rules, so the device shows the same
 // warning offline that the server records.
 import { z } from 'zod';
-import { healthFlags } from '../../../domain/index.ts';
+import {
+	healthFlags,
+	healthReading,
+	bowelDataError,
+	BOWEL_STATUSES,
+	type HealthKind,
+	type HEALTH_READING_LIMITS
+} from '../../../domain/clinical.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -15,23 +22,46 @@ import {
 	type HealthFilter
 } from './health.queries';
 
-const num = z.coerce.number().finite().nullish();
+const num = (key: keyof typeof HEALTH_READING_LIMITS) =>
+	z
+		.unknown()
+		.transform((value, ctx) => {
+			const parsed = healthReading(key, value);
+			if (!parsed.ok) {
+				ctx.addIssue({ code: 'custom', message: 'Check the health reading' });
+				return z.NEVER;
+			}
+			return parsed.value;
+		})
+		.optional();
 const text = z.string().trim().max(1000).nullish();
 const time = z
 	.string()
-	.regex(/^\d{2}:\d{2}$/)
+	.regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
 	.nullish();
 
 const DATA = {
-	vitals: z.object({
-		temp: num,
-		pulse: num,
-		systolic: num,
-		diastolic: num,
-		respiration: num,
-		oxygen: num,
-		weight: num
-	}),
+	vitals: z
+		.object({
+			temp: num('temp'),
+			pulse: num('pulse'),
+			systolic: num('systolic'),
+			diastolic: num('diastolic'),
+			respiration: num('respiration'),
+			oxygen: num('oxygen'),
+			weight: num('weight'),
+			glucose: num('glucose')
+		})
+		.transform((data) =>
+			Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))
+		)
+		.refine((data) => Object.keys(data).length > 0, 'Enter at least one reading.'),
+	bowel: z
+		.strictObject({ status: z.enum(BOWEL_STATUSES), time, consistency: text, notes: text })
+		.superRefine((data, ctx) => {
+			const error = bowelDataError(data);
+			if (error) ctx.addIssue({ code: 'custom', message: error });
+		}),
 	// Keys match the device form (domain HEALTH_FIELDS). `type` and `triggers`
 	// are kept for entries written before the form asked "What you saw".
 	seizure: z.object({
@@ -58,15 +88,28 @@ const DATA = {
 	})
 };
 
-const Json = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v);
+const Json = (v: unknown) => {
+	if (typeof v !== 'string') return v;
+	try {
+		return JSON.parse(v);
+	} catch {
+		return undefined;
+	}
+};
 
 export const NewHealthEntry = z.object({
 	id: z.uuid(),
 	clientId: z.uuid(),
-	kind: z.enum(['vitals', 'seizure', 'illness', 'appointment']),
+	kind: z.enum(['vitals', 'seizure', 'illness', 'appointment', 'bowel']),
 	data: z.preprocess(Json, z.record(z.string(), z.unknown())),
 	recordedAt: z.coerce.date().optional()
 });
+
+export function parseHealthData(kind: HealthKind, data: unknown) {
+	const result = DATA[kind].safeParse(data);
+	if (!result.success) throw new ServiceError('VALIDATION_FAILED', 'Check the health entry fields');
+	return result.data;
+}
 
 /** Metric names outside the limits, as stored in health_entries.flags. */
 export function flagsFor(kind: string, data: Record<string, unknown>): string[] {
@@ -84,7 +127,7 @@ export async function createHealthEntry(
 	input: z.input<typeof NewHealthEntry>
 ) {
 	const entry = NewHealthEntry.parse(input);
-	const data = DATA[entry.kind].parse(entry.data);
+	const data = parseHealthData(entry.kind, entry.data);
 	if (entry.recordedAt && entry.recordedAt.getTime() > Date.now() + 5 * 60_000) {
 		throw new ServiceError('VALIDATION_FAILED', 'The time is in the future');
 	}

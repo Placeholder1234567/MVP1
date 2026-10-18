@@ -45,6 +45,11 @@
 			fields: $state.snapshot(fields)
 		})
 	);
+	$effect(() => {
+		if (kind === 'bowel' && fields.status !== 'Observed' && fields.consistency) {
+			fields.consistency = '';
+		}
+	});
 	let touched = $state<Record<string, boolean>>({});
 	let busy = $state(false);
 	let message = $state('');
@@ -53,6 +58,7 @@
 	const rows = $derived.by(() => {
 		const out: HealthField[][] = [];
 		for (const f of HEALTH_FIELDS[kind]) {
+			if (kind === 'bowel' && f.key === 'consistency' && fields.status !== 'Observed') continue;
 			const last = out.at(-1);
 			if (f.half && last?.length === 1 && last[0].half) last.push(f);
 			else out.push([f]);
@@ -133,7 +139,11 @@
 					type="number"
 					step={f.decimal ? '0.1' : '1'}
 					inputmode={f.decimal ? 'decimal' : 'numeric'}
-					aria-describedby={warning ? `h-${f.key}-warn` : undefined}
+					aria-describedby={warning
+						? `h-${f.key}-warn`
+						: f.alertConfigured === false
+							? `h-${f.key}-limits`
+							: undefined}
 					bind:value={fields[f.key]}
 					onblur={() => (touched[f.key] = true)}
 				/><em>{f.unit}</em>
@@ -148,6 +158,9 @@
 				bind:value={fields[f.key]}
 				style="margin-top:6px"
 			/>{/if}
+		{#if f.alertConfigured === false}<p class="muted s13" id="h-{f.key}-limits">
+				No alert limits configured; follow the care plan
+			</p>{/if}
 	</div>
 {/snippet}
 
