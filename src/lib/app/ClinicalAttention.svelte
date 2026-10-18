@@ -27,6 +27,7 @@
 	const items = $derived(
 		attentionItems({
 			today,
+			incidentRules: app.incidentRules,
 			incidents: app.incidents.filter(inHome),
 			health: app.health.filter(inHome),
 			doses: app.doses.filter(inHome).map((r) => ({

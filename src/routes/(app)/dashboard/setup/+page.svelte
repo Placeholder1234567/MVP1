@@ -5,6 +5,8 @@
 	import { onMount } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import ControlledRulesSettings from '#lib/app/ControlledRulesSettings.svelte';
+	import MaintenanceNotice from '#lib/app/MaintenanceNotice.svelte';
+	import IncidentRulesSettings from '#lib/app/IncidentRulesSettings.svelte';
 
 	type Agency = Awaited<ReturnType<typeof trpc.agency.get.query>>;
 	type Home = Awaited<ReturnType<typeof trpc.home.list.query>>[number];
@@ -206,5 +208,7 @@
 			{/each}
 		</div>
 		<ControlledRulesSettings settings={agency.settings} onSaved={load} />
+		<IncidentRulesSettings settings={agency.settings} onSaved={load} />
+		<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
 	{/if}
 </section>

@@ -1,7 +1,8 @@
 export const CSV_LIMITS = { bytes: 262144, rows: 100, field: 4000, columns: 16 } as const;
 export class CsvImportError extends Error {}
-export type ImportKind = 'people' | 'goals' | 'medications';
+export type ImportKind = 'people' | 'goals' | 'medications' | 'staff';
 export const IMPORT_HEADERS = {
+	staff: ['email', 'name', 'role', 'home_ids', 'med_certified'],
 	people: ['home_id', 'name', 'first_name', 'info'],
 	goals: ['client_id', 'area', 'text', 'frequency', 'target'],
 	medications: [
@@ -13,6 +14,13 @@ export const IMPORT_HEADERS = {
 		'prn_instructions',
 		'notes'
 	]
+} as const;
+/** Optional columns extend existing templates without invalidating older files. */
+export const IMPORT_EXTRA_HEADERS = {
+	people: ['dob', 'guardian', 'allergies', 'conditions', 'diet', 'doctor', 'behaviors'],
+	goals: ['steps'],
+	staff: [],
+	medications: []
 } as const;
 export interface CsvRecord {
 	line: number;
@@ -94,10 +102,44 @@ export function parseImportCsv(input: string): ParsedCsv {
 	return { headers, rows: records };
 }
 export type ImportPayload =
-	| { kind: 'people'; input: { homeId: string; name: string; firstName?: string; info?: string } }
+	| {
+			kind: 'staff';
+			input: {
+				email: string;
+				name: string;
+				role: 'caregiver' | 'supervisor';
+				homeIds: string[];
+				medCertified: boolean;
+			};
+	  }
+	| {
+			kind: 'people';
+			input: {
+				homeId: string;
+				name: string;
+				firstName?: string;
+				info?: string;
+				behaviors?: string[];
+				healthInfo?: {
+					dob?: string;
+					guardian?: string;
+					allergies?: string;
+					conditions?: string;
+					diet?: string;
+					doctor?: string;
+				};
+			};
+	  }
 	| {
 			kind: 'goals';
-			input: { clientId: string; area: string; text: string; frequency?: string; target?: string };
+			input: {
+				clientId: string;
+				area: string;
+				text: string;
+				frequency?: string;
+				target?: string;
+				steps?: string[];
+			};
 	  }
 	| {
 			kind: 'medications';
@@ -136,11 +178,14 @@ export function previewImport(
 	context: ImportContext
 ): ImportPreviewRow[] {
 	const expected: readonly string[] = IMPORT_HEADERS[kind];
+	const allowed: readonly string[] = [...expected, ...IMPORT_EXTRA_HEADERS[kind]];
 	if (
-		csv.headers.length !== expected.length ||
-		expected.some((header) => !csv.headers.includes(header))
+		expected.some((header) => !csv.headers.includes(header)) ||
+		csv.headers.some((header) => !allowed.includes(header))
 	)
-		throw new CsvImportError(`Use exactly these headers: ${expected.join(', ')}.`);
+		throw new CsvImportError(
+			`Use exactly these required headers: ${expected.join(', ')}. Optional columns: ${IMPORT_EXTRA_HEADERS[kind].join(', ') || 'none'}.`
+		);
 	const seen = new Set<string>();
 	const existing = new Set(context.existingKeys ?? []);
 	if (kind === 'people')
@@ -157,23 +202,113 @@ export function previewImport(
 			if (text.length > max) errors.push(`${header} is too long (maximum ${max}).`);
 			return text;
 		};
+		const list = (header: string, itemMax: number): string[] | undefined => {
+			if (!value(header)) return undefined;
+			try {
+				const parsed: unknown = JSON.parse(value(header));
+				if (
+					!Array.isArray(parsed) ||
+					parsed.length > 30 ||
+					parsed.some(
+						(item) => typeof item !== 'string' || !item.trim() || item.trim().length > itemMax
+					)
+				)
+					throw new Error();
+				return parsed.map((item: string) => item.trim());
+			} catch {
+				errors.push(
+					`${header} must be a JSON array of at most 30 nonempty text items (maximum ${itemMax} characters each).`
+				);
+				return undefined;
+			}
+		};
 		const id = value(kind === 'people' ? 'home_id' : 'client_id').toLowerCase();
 		const home = context.homes.find((item) => item.id === id);
 		const person = context.people.find((item) => item.id === id && item.active);
-		if (kind === 'people' ? !home : !person)
+		if (kind !== 'staff' && (kind === 'people' ? !home : !person))
 			errors.push(
 				kind === 'people'
 					? 'home_id must identify an accessible home.'
 					: 'client_id must identify an accessible active person.'
 			);
 		let payload: ImportPayload, key: string;
-		if (kind === 'people') {
+		let staffTarget = '';
+		if (kind === 'staff') {
+			const email = bounded('email', 254, true).toLowerCase();
+			const name = bounded('name', 100, true);
+			const role = value('role');
+			const certified = value('med_certified').toLowerCase();
+			const homeIds = value('home_ids')
+				? value('home_ids')
+						.toLowerCase()
+						.split(';')
+						.map((id) => id.trim())
+				: [];
+			// Match the existing invitation API's email format without a runtime dependency.
+			if (
+				!/^(?:[A-Za-z0-9_'+-]+\.)*[A-Za-z0-9_'+-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/.test(
+					email
+				)
+			)
+				errors.push('email must be a valid email address.');
+			if (role !== 'caregiver' && role !== 'supervisor')
+				errors.push('role must be caregiver or supervisor. Invite administrators individually.');
+			if (certified !== 'true' && certified !== 'false')
+				errors.push('med_certified must be true or false.');
+			if (
+				!homeIds.length ||
+				homeIds.length > 50 ||
+				new Set(homeIds).size !== homeIds.length ||
+				homeIds.some((id) => !context.homes.some((home) => home.id === id))
+			)
+				errors.push(
+					'home_ids must contain 1–50 distinct accessible home IDs separated by semicolons.'
+				);
+			staffTarget = homeIds
+				.map((id) => context.homes.find((home) => home.id === id)?.name ?? 'Unresolved home')
+				.join('; ');
+			payload = {
+				kind,
+				input: {
+					email,
+					name,
+					role: role === 'supervisor' ? 'supervisor' : 'caregiver',
+					homeIds,
+					medCertified: certified === 'true'
+				}
+			};
+			key = importKey(kind, [email]);
+		} else if (kind === 'people') {
 			const name = bounded('name', 100, true),
 				firstName = bounded('first_name', 50),
 				info = bounded('info', 4000);
+			const healthInfo = {
+				dob: bounded('dob', 10) || undefined,
+				guardian: bounded('guardian', 500) || undefined,
+				allergies: bounded('allergies', 2000) || undefined,
+				conditions: bounded('conditions', 2000) || undefined,
+				diet: bounded('diet', 2000) || undefined,
+				doctor: bounded('doctor', 500) || undefined
+			};
+			if (healthInfo.dob) {
+				const date = new Date(`${healthInfo.dob}T00:00:00Z`);
+				if (
+					!/^\d{4}-\d{2}-\d{2}$/.test(healthInfo.dob) ||
+					Number.isNaN(date.getTime()) ||
+					date.toISOString().slice(0, 10) !== healthInfo.dob
+				)
+					errors.push('dob must be a valid YYYY-MM-DD calendar date.');
+			}
 			payload = {
 				kind,
-				input: { homeId: id, name, firstName: firstName || undefined, info: info || undefined }
+				input: {
+					homeId: id,
+					name,
+					firstName: firstName || undefined,
+					info: info || undefined,
+					...(csv.headers.includes('behaviors') ? { behaviors: list('behaviors', 100) } : {}),
+					...(Object.values(healthInfo).some(Boolean) ? { healthInfo } : {})
+				}
 			};
 			key = importKey(kind, [id, name]);
 		} else if (kind === 'goals') {
@@ -188,7 +323,8 @@ export function previewImport(
 					area,
 					text,
 					frequency: frequency || undefined,
-					target: target || undefined
+					target: target || undefined,
+					...(csv.headers.includes('steps') ? { steps: list('steps', 1000) } : {})
 				}
 			};
 			key = importKey(kind, [id, area, text]);
@@ -232,13 +368,15 @@ export function previewImport(
 		seen.add(key);
 		return {
 			line: record.line,
-			values: expected.map((header) => value(header)),
+			values: csv.headers.map((header) => value(header)),
 			target:
-				kind === 'people'
-					? (home?.name ?? 'Unresolved home')
-					: person
-						? `${person.name} · ${context.homes.find((item) => item.id === person.homeId)?.name ?? 'Home'}`
-						: 'Unresolved person',
+				kind === 'staff'
+					? staffTarget
+					: kind === 'people'
+						? (home?.name ?? 'Unresolved home')
+						: person
+							? `${person.name} · ${context.homes.find((item) => item.id === person.homeId)?.name ?? 'Home'}`
+							: 'Unresolved person',
 			errors,
 			payload,
 			key

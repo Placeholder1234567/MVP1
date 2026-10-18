@@ -37,6 +37,7 @@ export {
 	controlledCountersignRequest
 } from './care-events';
 export { sweepCareReminders } from './care-reminders';
+export { announceMaintenance, MaintenanceInput } from './maintenance';
 export { handleEmailEvent, handleSmsEvent, type EventOutcome } from './events';
 export {
 	getNotification,
