@@ -26,6 +26,20 @@
 			(s) => s.home_id === app.homeId && s.day! >= start && s.day! <= addDays(start, 6)
 		)
 	);
+	/** Shifts each person already has this week, at any home (prd.md US-17). */
+	const weekCounts = $derived.by(() => {
+		const counts: Record<string, number> = {};
+		for (const s of app.shifts)
+			if (s.assigned_to && s.day! >= start && s.day! <= addDays(start, 6))
+				counts[s.assigned_to] = (counts[s.assigned_to] ?? 0) + 1;
+		return counts;
+	});
+	const CALLOUT_REASONS = ['Sick', 'Family emergency', 'Transportation', 'Other'];
+	/** The shift whose "I can't make this shift" form is open (day:shift). */
+	let calloutFor = $state('');
+	let calloutReason = $state('');
+	let calloutDetail = $state('');
+
 	async function assign(day: string, shift: 'am' | 'pm' | 'on', profileId: string) {
 		if (!online || !app.homeId || busy) return false;
 		const homeId = app.homeId;
@@ -224,7 +238,7 @@
 		if (id) await assign(day, shift, id);
 	}
 
-	async function cover(day: string, shift: 'am' | 'pm' | 'on') {
+	async function cover(day: string, shift: 'am' | 'pm' | 'on', reason?: string) {
 		if (!online || !app.homeId || busy) return false;
 		const homeId = app.homeId;
 		const operationScope = context;
@@ -233,7 +247,10 @@
 		message = '';
 		try {
 			if (manager) await trpc.schedule.postOpen.mutate({ homeId, day, shift });
-			else await trpc.coverage.callout.mutate({ homeId, day, shift });
+			else await trpc.coverage.callout.mutate({ homeId, day, shift, reason });
+			calloutFor = '';
+			calloutReason = '';
+			calloutDetail = '';
 			if (context === operationScope)
 				message = 'Coverage requested. Eligible staff will receive an offer.';
 		} catch {
@@ -410,8 +427,10 @@
 										if (!(await assign(day, shift.key, control.value)) && context === originalScope)
 											control.value = before;
 									}}
-									><option value="">Open shift</option>{#each staff as person (person.id)}<option
-											value={person.id}>{person.name}</option
+									><option value="">Open shift</option
+									>{#each staff as person (person.id)}{@const n = weekCounts[person.id] ?? 0}<option
+											value={person.id}
+											>{person.name} · {n} {n === 1 ? 'shift' : 'shifts'} this week</option
 										>{/each}</select
 								></label
 							>{:else}<p>
@@ -424,13 +443,51 @@
 						{#if !shiftIsPast(day, shift.key, new Date(), app.user.timeZone) && ((manager && !slot?.assigned_to) || (!manager && slot?.assigned_to === app.user.profileId))}<button
 								class="textbtn"
 								disabled={busy || !online || !app.homeId || slot?.status === 'filling'}
-								onclick={() => cover(day, shift.key)}
+								onclick={() =>
+									manager ? cover(day, shift.key) : (calloutFor = `${day}:${shift.key}`)}
 								>{slot?.status === 'filling'
 									? 'Finding cover…'
 									: manager
 										? 'Find cover with Lomi'
 										: 'I can’t make this shift'}</button
 							>{/if}
+						{#if !manager && calloutFor === `${day}:${shift.key}`}<form
+								class="stack callout-form"
+								aria-label="Why you can’t make this shift"
+								onsubmit={(e) => {
+									e.preventDefault();
+									void cover(
+										day,
+										shift.key,
+										[calloutReason, calloutDetail.trim()].filter(Boolean).join(': ')
+									);
+								}}
+							>
+								<label
+									>Reason<select
+										class="input"
+										aria-label="Reason"
+										bind:value={calloutReason}
+										required
+										><option value="" disabled>Choose a reason</option
+										>{#each CALLOUT_REASONS as r (r)}<option>{r}</option>{/each}</select
+									></label
+								>
+								<label
+									>Anything your supervisor should know (optional)<input
+										class="input"
+										maxlength="300"
+										bind:value={calloutDetail}
+									/></label
+								>
+								<p class="muted s13">Only your supervisors see this.</p>
+								<div class="actions">
+									<button class="btn" disabled={busy || !calloutReason}>Request cover</button
+									><button type="button" class="btn sec" onclick={() => (calloutFor = '')}
+										>Cancel</button
+									>
+								</div>
+							</form>{/if}
 					</div>{/each}
 			</div>
 		</section>{/each}
