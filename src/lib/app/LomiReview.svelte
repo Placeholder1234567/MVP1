@@ -17,9 +17,12 @@
 		type,
 		onUse,
 		onDirty,
-		voice = false
+		voice = false,
+		said = ''
 	}: {
 		result: DraftResult;
+		/** What the caregiver typed or said, shown under "What I said" (frontend-spec-2 §6) */
+		said?: string;
 		clientId: string;
 		type: NoteKind;
 		voice?: boolean;
@@ -134,6 +137,10 @@
 </script>
 
 <div class="stack" role="group" aria-label="Review Lomi draft">
+	{#if said.trim()}<details class="said">
+			<summary>What I said</summary>
+			<p class="said-text">{said}</p>
+		</details>{/if}
 	<p class="callout warn">
 		{usedAi
 			? 'AI-generated draft. Check every section against what actually happened.'
@@ -379,6 +386,15 @@
 		box-shadow: inset 0 -2px 0 var(--flag-line);
 	}
 	.record-text {
+		overflow-wrap: anywhere;
+	}
+	/* The original words, for checking the draft against (frontend-spec-2 §6). */
+	.said-text {
+		margin: 0;
+		font-size: 14px;
+		color: var(--muted);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 	}
 </style>

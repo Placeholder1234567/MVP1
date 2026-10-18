@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	baselineBloodPressure,
 	lastReadings,
 	outOfRange,
 	TREND_SERIES,
@@ -62,5 +63,27 @@ describe('lastReadings', () => {
 			weight: { value: 185, at: '2026-10-03T09:00:00Z' },
 			pulse: { value: 72, at: '2026-10-05T09:00:00Z' }
 		});
+	});
+});
+
+describe('baselineBloodPressure', () => {
+	const e = (at: string, systolic: unknown, diastolic: unknown) => ({
+		recorded_at: at,
+		data: { systolic, diastolic }
+	});
+	it('is the latest reading with both numbers in range', () => {
+		expect(
+			baselineBloodPressure([
+				e('2026-10-01T08:00:00Z', 118, 76),
+				e('2026-10-03T08:00:00Z', 122, 80),
+				e('2026-10-05T08:00:00Z', 150, 80), // top high
+				e('2026-10-06T08:00:00Z', 120, 95), // bottom high
+				e('2026-10-07T08:00:00Z', 125, null) // incomplete
+			])
+		).toEqual({ systolic: 122, diastolic: 80, at: '2026-10-03T08:00:00Z' });
+	});
+	it('is null when no normal reading was saved', () => {
+		expect(baselineBloodPressure([e('2026-10-05T08:00:00Z', 160, 100)])).toBeNull();
+		expect(baselineBloodPressure([])).toBeNull();
 	});
 });

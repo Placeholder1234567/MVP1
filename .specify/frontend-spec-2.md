@@ -25,7 +25,7 @@
 | Status bar + safe area | ~50px | System status bar + `env(safe-area-inset-top)` |
 | Home bar | ~56px | "Guad" wordmark (Figtree 24px semibold, left), sync indicator dot (6px, right -- implemented in SvelteKit migration, not in vanilla-JS MVP), team messages icon (44x44 tap target, chat bubble SVG, right), user avatar circle (34px, right) |
 | Urgent alert banner (conditional) | ~56px | Red/amber strip. Only when: health vitals flagged, meds overdue >30 min, or open incident. E.g., "Maria: BP high, needs recheck." Left-border 3px `var(--bad)`. |
-| Greeting + shift context | ~54px | "Good morning, Aisha" -- Georgia serif, 24px, `var(--ink)`. Below in 14px `var(--muted)`: "Oak Street · Shift 7am to 3pm" (matches code format: `sh.time.replace("–"," to ")`). *(Rebuild target -- not in MVP:)* Countdown timer "4h 23m left" updating every 60s. |
+| Greeting + shift context | ~54px | "Good morning, Aisha" -- Georgia serif, 24px, `var(--ink)`. Below in 14px `var(--muted)`: "Oak Street · Shift 7am to 3pm" (matches code format: `sh.time.replace("–"," to ")`). Countdown "4h 23m left" updating every 60s (as built: `shiftMinutesLeft()` / `timeLeftText()` in `domain/shifts.ts`, wall-clock minutes to the end of the current shift in the agency time zone). |
 | Progress card | ~56px | White `cv-card` (18px radius). Left: "Today's notes" (15px semibold). Right: "3 of 5 done" (15px `var(--muted)`). Full-width progress bar: 8px height, `var(--sky)` track, `var(--blue)` fill, 999px radius. Transition: `width 600ms cubic-bezier(.32,.72,0,1)`. |
 | Coverage offer (conditional) | ~70px | `callout.warn` (lemon-2 bg, lemon-line border, 18px radius). Lomi icon (26px). "Can you pick up a shift? Oak St, tomorrow AM." Two actions: "I'll take it" (`.btn.sm`, primary) and "Not this time" (`.textbtn`). Max 1 offer on Today. |
 | Person list | remaining ~160px+ | Scrollable. Shows 2-3 person cards initially. |
@@ -1485,6 +1485,7 @@ AI-filled sections appear at opacity 0.85 (slightly faded). When the DSP taps in
 - Collapsed by default after AI processing completes
 - Contains the raw transcript text in 14px `var(--muted)`, monospace feel
 - 95% of users will never expand it
+- **As built:** `LomiReview.svelte` opens with a collapsed "What I said" disclosure holding the words the draft was made from (typed text and transcribed recordings, as sent to Lomi), 14px muted monospace.
 
 **Per-section editing:**
 
@@ -1548,7 +1549,7 @@ AI-filled sections appear at opacity 0.85 (slightly faded). When the DSP taps in
 | Last weight | Most recent vitals entry for person | Health form placeholder: "Last: 185 lb on Oct 3" *(Rebuild target -- not in MVP)* |
 | Baseline BP | Most recent vitals with normal BP | Health form reference below BP fields *(Rebuild target -- not in MVP)* |
 
-**As built (last readings):** each number field on the vitals form shows the person's last saved reading under it, "Last: 185 lb · Oct 3" (`lastReadings()` in `domain/vital-trend.ts`, from the vitals on the device), linked to the field with `aria-describedby` rather than a placeholder that disappears on typing. Blood pressure shows the last top and bottom readings this way; a separate "baseline" from the last normal reading is not built. Fields are never pre-filled, so nothing is entered for the caregiver.
+**As built (last readings):** each number field on the vitals form shows the person's last saved reading under it, "Last: 185 lb · Oct 3" (`lastReadings()` in `domain/vital-trend.ts`, from the vitals on the device), linked to the field with `aria-describedby` rather than a placeholder that disappears on typing. Blood pressure shows the last top and bottom readings this way, and under them "Baseline BP: 118/76 · Oct 2 (last normal reading)": the most recent reading with both numbers within the alert limits (`baselineBloodPressure()`), described by both fields. Fields are never pre-filled, so nothing is entered for the caregiver.
 
 **Visual indicator for auto-filled values:** *(Rebuild target -- not in MVP)*
 
