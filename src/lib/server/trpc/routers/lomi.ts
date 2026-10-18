@@ -7,9 +7,11 @@ import {
 	routeObservations,
 	lomiCapabilities,
 	LomiRateLimitError,
+	SummarizeInput,
+	summarizeDay,
 	transcribeAudio
 } from '../../services/lomi/index.ts';
-import { featureProcedure, router, userProcedure } from '../middleware.ts';
+import { featureProcedure, featureRoleProcedure, router, userProcedure } from '../middleware.ts';
 
 async function limited<T>(fn: () => Promise<T>) {
 	try {
@@ -74,5 +76,9 @@ export const lomiRouter = router({
 				mimeType: z.enum(['audio/webm', 'audio/mp4', 'audio/wav', 'audio/ogg'])
 			})
 		)
-		.mutation(({ ctx, input }) => limited(() => transcribeAudio(ctx.user, input)))
+		.mutation(({ ctx, input }) => limited(() => transcribeAudio(ctx.user, input))),
+	// lomi_summary gates access; analytics_advanced adds highlights and recommendations.
+	summarize: featureRoleProcedure('lomi_summary', 'supervisor')
+		.input(SummarizeInput)
+		.mutation(({ ctx, input }) => limited(() => summarizeDay(ctx.db, ctx.user, input)))
 });

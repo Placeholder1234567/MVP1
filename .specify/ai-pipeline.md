@@ -419,6 +419,8 @@ When the caller's agency lacks `analytics_advanced`, `highlights` and `recommend
 
 No headings, no bullet symbols, no markdown. Written as if briefing a supervisor walking in.
 
+**As built:** `lomi.summarize` (services/lomi/summary.ts) builds the `DaySnapshot` for one home and day (`src/lib/domain/day-summary.ts`): open shifts, coverage, notes, people with no note yet, notes to review, open incidents, refused or held doses, scheduled doses past their time with no record, unacknowledged health alerts, and clock exceptions. People appear by first name only, as in the MVP. It uses the fast model. Any markdown in the reply is stripped. Instead of an empty text, the fallback writes the briefing from the snapshot in the priority order above (the MVP's rules, app-main.js `summary()`), and the snapshot is always returned for the raw data view. The overview card generates on request ("Summarize today" / "Refresh summary") like the MVP, not on page load as frontend-spec-3.md §4.1 says, because of the 5-per-hour limit.
+
 ### Task: section_edit (per-box rewrite)
 
 Used by Mode 2 (per-box editing) and when Lomi processes chat input that targets a single section.

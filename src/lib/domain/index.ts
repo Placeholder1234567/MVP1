@@ -17,3 +17,4 @@ export * from './people';
 export * from './goal-templates';
 export * from './analytics';
 export * from './med-reminders';
+export * from './day-summary';
