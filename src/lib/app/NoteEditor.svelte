@@ -4,6 +4,7 @@
 	import { useSession, parseJson } from './session.svelte';
 	import {
 		PROMPT_LEVELS,
+		goalMilestone,
 		shiftAt,
 		isEditableByAuthor,
 		type NoteStatus
@@ -354,7 +355,10 @@
 				</div>{/snippet}
 			{@render sections(ordered.before)}
 			{#if kind === 'shift' && goals.length}<h2>{app.labels.goals}</h2>
-				{#each goals as goal (goal.id)}<section class="card pad stack">
+				{#each goals as goal (goal.id)}<section
+						class="card pad stack"
+						class:milestone={goalMilestone(scores[goal.id]?.trials ?? [])}
+					>
 						<div>
 							<b>{goal.text}</b>
 							<p class="muted">{goal.area}</p>
@@ -370,6 +374,13 @@
 										}}>{i + 1}. {trial} ×</button
 									>{/each}
 							</div>{/if}
+						{#if goalMilestone(scores[goal.id]?.trials ?? [])}<p
+								class="milestone-note"
+								role="status"
+							>
+								<span class="milestone-check" aria-hidden="true">✓</span> Independent on every trial this
+								shift
+							</p>{/if}
 						{#if editable}<label
 								>Add a trial<select
 									class="input"

@@ -2304,7 +2304,7 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 | 37 | ~~Family/guardian read-only portal~~ | Post-v1 | Out of scope for v1 (prd.md non-goal 5: no family portal). Revisit after launch. |
 | 38 | Cmd+K command palette (desktop) | P2 | Power-user differentiator. Quick actions and global search. |
 | 39 | Charting preset system (Therap terminology) | P1 | Agency-level toggle: Shift Note = T-Log, Incident = GER, Messages = SComm, etc. |
-| 40 | Celebration micro-animations for goal milestones | P2 | When all trials are Independent: card border flashes green, scale-up checkmark. Respect prefers-reduced-motion. |
+| 40 | Celebration micro-animations for goal milestones | P2 | When all trials are Independent: card border flashes green, scale-up checkmark. Respect prefers-reduced-motion. As built: two or more trials this shift, all Independent (`goalMilestone()` in domain/charting.ts); the card turns green with a spring checkmark and the status text "Independent on every trial this shift". Today shows "All notes done for this shift" with a Lomi bounce once every person's note is signed. Reduced motion keeps the colour and text without movement. |
 
 ---
 
