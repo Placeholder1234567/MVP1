@@ -15,6 +15,13 @@ export const IMPORT_HEADERS = {
 		'notes'
 	]
 } as const;
+/** Optional columns extend existing templates without invalidating older files. */
+export const IMPORT_EXTRA_HEADERS = {
+	people: ['dob', 'guardian', 'allergies', 'conditions', 'diet', 'doctor', 'behaviors'],
+	goals: ['steps'],
+	staff: [],
+	medications: []
+} as const;
 export interface CsvRecord {
 	line: number;
 	cells: string[];
@@ -105,10 +112,34 @@ export type ImportPayload =
 				medCertified: boolean;
 			};
 	  }
-	| { kind: 'people'; input: { homeId: string; name: string; firstName?: string; info?: string } }
+	| {
+			kind: 'people';
+			input: {
+				homeId: string;
+				name: string;
+				firstName?: string;
+				info?: string;
+				behaviors?: string[];
+				healthInfo?: {
+					dob?: string;
+					guardian?: string;
+					allergies?: string;
+					conditions?: string;
+					diet?: string;
+					doctor?: string;
+				};
+			};
+	  }
 	| {
 			kind: 'goals';
-			input: { clientId: string; area: string; text: string; frequency?: string; target?: string };
+			input: {
+				clientId: string;
+				area: string;
+				text: string;
+				frequency?: string;
+				target?: string;
+				steps?: string[];
+			};
 	  }
 	| {
 			kind: 'medications';
@@ -147,11 +178,14 @@ export function previewImport(
 	context: ImportContext
 ): ImportPreviewRow[] {
 	const expected: readonly string[] = IMPORT_HEADERS[kind];
+	const allowed: readonly string[] = [...expected, ...IMPORT_EXTRA_HEADERS[kind]];
 	if (
-		csv.headers.length !== expected.length ||
-		expected.some((header) => !csv.headers.includes(header))
+		expected.some((header) => !csv.headers.includes(header)) ||
+		csv.headers.some((header) => !allowed.includes(header))
 	)
-		throw new CsvImportError(`Use exactly these headers: ${expected.join(', ')}.`);
+		throw new CsvImportError(
+			`Use exactly these required headers: ${expected.join(', ')}. Optional columns: ${IMPORT_EXTRA_HEADERS[kind].join(', ') || 'none'}.`
+		);
 	const seen = new Set<string>();
 	const existing = new Set(context.existingKeys ?? []);
 	if (kind === 'people')
@@ -167,6 +201,26 @@ export function previewImport(
 			if (required && !text) errors.push(`${header} is required.`);
 			if (text.length > max) errors.push(`${header} is too long (maximum ${max}).`);
 			return text;
+		};
+		const list = (header: string, itemMax: number): string[] | undefined => {
+			if (!value(header)) return undefined;
+			try {
+				const parsed: unknown = JSON.parse(value(header));
+				if (
+					!Array.isArray(parsed) ||
+					parsed.length > 30 ||
+					parsed.some(
+						(item) => typeof item !== 'string' || !item.trim() || item.trim().length > itemMax
+					)
+				)
+					throw new Error();
+				return parsed.map((item: string) => item.trim());
+			} catch {
+				errors.push(
+					`${header} must be a JSON array of at most 30 nonempty text items (maximum ${itemMax} characters each).`
+				);
+				return undefined;
+			}
 		};
 		const id = value(kind === 'people' ? 'home_id' : 'client_id').toLowerCase();
 		const home = context.homes.find((item) => item.id === id);
@@ -228,9 +282,33 @@ export function previewImport(
 			const name = bounded('name', 100, true),
 				firstName = bounded('first_name', 50),
 				info = bounded('info', 4000);
+			const healthInfo = {
+				dob: bounded('dob', 10) || undefined,
+				guardian: bounded('guardian', 500) || undefined,
+				allergies: bounded('allergies', 2000) || undefined,
+				conditions: bounded('conditions', 2000) || undefined,
+				diet: bounded('diet', 2000) || undefined,
+				doctor: bounded('doctor', 500) || undefined
+			};
+			if (healthInfo.dob) {
+				const date = new Date(`${healthInfo.dob}T00:00:00Z`);
+				if (
+					!/^\d{4}-\d{2}-\d{2}$/.test(healthInfo.dob) ||
+					Number.isNaN(date.getTime()) ||
+					date.toISOString().slice(0, 10) !== healthInfo.dob
+				)
+					errors.push('dob must be a valid YYYY-MM-DD calendar date.');
+			}
 			payload = {
 				kind,
-				input: { homeId: id, name, firstName: firstName || undefined, info: info || undefined }
+				input: {
+					homeId: id,
+					name,
+					firstName: firstName || undefined,
+					info: info || undefined,
+					...(csv.headers.includes('behaviors') ? { behaviors: list('behaviors', 100) } : {}),
+					...(Object.values(healthInfo).some(Boolean) ? { healthInfo } : {})
+				}
 			};
 			key = importKey(kind, [id, name]);
 		} else if (kind === 'goals') {
@@ -245,7 +323,8 @@ export function previewImport(
 					area,
 					text,
 					frequency: frequency || undefined,
-					target: target || undefined
+					target: target || undefined,
+					...(csv.headers.includes('steps') ? { steps: list('steps', 1000) } : {})
 				}
 			};
 			key = importKey(kind, [id, area, text]);
@@ -289,7 +368,7 @@ export function previewImport(
 		seen.add(key);
 		return {
 			line: record.line,
-			values: expected.map((header) => value(header)),
+			values: csv.headers.map((header) => value(header)),
 			target:
 				kind === 'staff'
 					? staffTarget
