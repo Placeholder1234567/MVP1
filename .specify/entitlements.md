@@ -228,7 +228,7 @@ export function hasFeatureServer(
 
 ## 5. tRPC Middleware Implementation
 
-> **As built (Oct 2026):** `featureProcedure(flag)` and `featureRoleProcedure(flag, role)` in `src/lib/server/trpc/middleware.ts`. The effective feature set is resolved once per request with the user's profile (`CurrentUser.features`, from `subscription_tier` and `enabled_features`), so gating needs no extra query. `agency.get` returns `features` for the UI. The shared tier module is `src/lib/entitlements/tier-features.ts`. **Not built yet:** UI hiding (§7) and PowerSync stream gating (§8).
+> **As built (Oct 2026):** `featureProcedure(flag)` and `featureRoleProcedure(flag, role)` in `src/lib/server/trpc/middleware.ts`. The effective feature set is resolved once per request with the user's profile (`CurrentUser.features`, from `subscription_tier` and `enabled_features`), so gating needs no extra query. `agency.get` returns `features` for the UI. The shared tier module is `src/lib/entitlements/tier-features.ts`. UI hiding (§7) and PowerSync stream gating (§8) are built too; see their as-built notes.
 
 ### Middleware
 
@@ -517,7 +517,7 @@ Every tRPC procedure is mapped to a feature flag and minimum role. Procedures ma
 
 ## 7. UI Navigation Gating
 
-**As built:** the app shell gets the agency's effective features from the session (`(app)/+layout.server.ts`) and hides nav items outside the plan. Gated routes have a server `+layout.server.ts` guard (`requireFeature`, `src/lib/server/feature-guard.ts`) that redirects home: `/notes` charting, `/shifts` scheduling, `/messages` messaging, `/dashboard/notes` note_review, `/dashboard/timesheets` timekeeping, `/dashboard/intake` intake, `/dashboard/reports` reports or reports_basic. Routes in the table below that don't exist yet get a guard when they're built.
+**As built:** the app shell gets the agency's effective features from the session (`(app)/+layout.server.ts`) and hides nav items outside the plan. Gated routes have a server `+layout.server.ts` guard (`requireFeature`, `src/lib/server/feature-guard.ts`) that redirects home: `/notes`, and a person's note, behavior, attendance and health summary screens (charting); `/shifts` (scheduling); `/messages` (messaging); `/controlled`, `/dashboard/mar`, `/dashboard/medications` and a person's medications (mar); a person's health screen (health); a person's incident screen (incidents); `/dashboard/notes` (note_review); `/dashboard/timesheets` (timekeeping); `/dashboard/intake` (intake); `/dashboard/reports` (reports or reports_basic); `/dashboard/goals` (goals); `/dashboard/analytics` (analytics); `/dashboard/audit` (audit_log). `tests/unit/server/feature-guard.test.ts` pins this list. The person page shows only the care links the plan includes (`app.has(feature)`), and the device keeps the plan features with its offline session so the offline start screen hides the same links. The routes in the table below are the original design's paths.
 
 ### hasFeature Utility
 
