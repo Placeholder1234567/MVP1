@@ -228,8 +228,12 @@ test('CSV imports require valid review, preserve offline preview and create each
 	await page.goto('/dashboard/goals');
 	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
 	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
-	await page.getByLabel('Goal home', { exact: true }).selectOption({ label: 'Oak House' });
-	await page.getByLabel('Goal person', { exact: true }).selectOption({ label: name });
+	await page
+		.getByRole('combobox', { name: 'Goal home', exact: true })
+		.selectOption({ label: 'Oak House' });
+	await page
+		.getByRole('combobox', { name: 'Goal person', exact: true })
+		.selectOption({ label: name });
 	await expect(page.getByText('First, prepare', { exact: true })).toBeVisible();
 	await expect(page.getByText('Then finish', { exact: true })).toBeVisible();
 	expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
