@@ -36,9 +36,21 @@ const sync_notices = new Table(
 
 // The last server-verified workspace identity, kept inside the encrypted database.
 const offline_sessions = new Table({ user_json: column.text }, { localOnly: true });
+// Unsigned form recovery only. localOnly excludes these rows from the CRUD upload queue.
+const care_drafts = new Table(
+	{
+		profile_id: column.text,
+		client_id: column.text,
+		section: column.text,
+		data: column.text,
+		updated_at: column.text
+	},
+	{ localOnly: true }
+);
 export const DeviceSchema = new Schema({
 	...syncedTables,
 	failed_writes,
 	sync_notices,
-	offline_sessions
+	offline_sessions,
+	care_drafts
 });

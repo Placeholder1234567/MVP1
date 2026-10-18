@@ -4,6 +4,7 @@
 import { PowerSyncDatabase, WASQLiteVFS } from '@powersync/web';
 import { GuadConnector } from './connector.ts';
 import { toHex } from './device-key.ts';
+import { flushCareDrafts } from '#lib/app/care-drafts.ts';
 import { DeviceSchema } from './app-schema.ts';
 
 let db: PowerSyncDatabase | undefined;
@@ -36,6 +37,8 @@ export async function openDb(
 
 /** Locking drops the database (and with it the key) from memory. */
 export async function closeDb(): Promise<void> {
+	// The session reference is already disposed when privacy locking starts.
+	if (db) await flushCareDrafts(db);
 	await db?.close();
 	db = undefined;
 }

@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import type { DraftData } from './care-drafts.ts';
 	import { useSession, parseJson } from './session.svelte';
 	import {
+		localTime,
 		HEALTH_FIELDS,
 		HEALTH_KINDS,
 		healthFlags,
@@ -17,18 +19,32 @@
 		clientId,
 		onSaved,
 		onDirty,
-		onBusyChange
+		onBusyChange,
+		initialDraft,
+		onDraft
 	}: {
 		clientId: string;
 		onSaved?: () => void;
 		onDirty?: () => void;
 		onBusyChange?: (busy: boolean) => void;
+		initialDraft?: DraftData | null;
+		onDraft?: (data: DraftData) => void;
 	} = $props();
 	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
 	const person = $derived(app.people.find((p) => p.id === clientId));
-	let kind = $state<HealthKind>('vitals');
-	let fields = $state<Record<string, string | number | null>>({});
+	const restored = untrack(() => initialDraft);
+	let kind = $state<HealthKind>((restored?.kind as HealthKind) ?? 'vitals');
+	let fields = $state<Record<string, string | number | null>>(
+		(restored?.fields as Record<string, string | number | null>) ?? {}
+	);
+	$effect(() =>
+		onDraft?.({
+			day: localTime(new Date(), app.user.timeZone).day,
+			kind,
+			fields: $state.snapshot(fields)
+		})
+	);
 	let touched = $state<Record<string, boolean>>({});
 	let busy = $state(false);
 	let message = $state('');
@@ -105,7 +121,9 @@
 				id="h-{f.key}"
 				bind:value={fields[f.key]}
 				style="margin-top:6px"
-				>{#each f.options ?? [] as o (o)}<option>{o}</option>{/each}</select
+				><option value="">Choose an option</option>{#each f.options ?? [] as o (o)}<option
+						>{o}</option
+					>{/each}</select
 			>
 		{:else if f.input === 'number'}<div class="unit">
 				<input
