@@ -267,6 +267,21 @@ it('offers only eligible caregivers and the first acceptance wins atomically', a
 	expect([eli, bea]).toContain(
 		slots.slots.find((s) => s.day === day && s.shift === 'pm')?.assigned_to
 	);
+	// Lomi posts the offer and the cover on the home's board, without an author.
+	const board = await withService((tx) =>
+		tx
+			.select({ body: s.messages.body, from: s.messages.from_name, by: s.messages.created_by })
+			.from(s.messages)
+			.where(eq(s.messages.home_id, oak))
+	);
+	expect(board.filter((m) => m.from === 'Lomi' && m.by === null).map((m) => m.body)).toEqual(
+		expect.arrayContaining([
+			expect.stringMatching(
+				/^Test can’t make the evening shift on .+\. I’ve offered it to 2 eligible staff members\.$/
+			),
+			expect.stringMatching(/^The evening shift on .+ is covered by Available\.$/)
+		])
+	);
 	// The activity log shows who was offered, why others weren't, and each reply.
 	const detail = await supervisor.coverage.get({ id: request.id });
 	const byId = new Map(detail.candidates.map((c) => [c.profileId, c]));

@@ -317,6 +317,23 @@ test('a caregiver gives a reason when they can’t make a shift, and the supervi
 		await expect(
 			cara.getByText('Coverage requested. Eligible staff will receive an offer.')
 		).toBeVisible();
+		// Lomi posts the callout on the home's board, without the reason.
+		const label = new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			timeZone: 'UTC'
+		});
+		await cara
+			.getByRole('link', { name: /^Today/ })
+			.first()
+			.click();
+		await cara.getByRole('link', { name: /^Team messages/ }).click();
+		const post = cara
+			.getByRole('article')
+			.filter({ hasText: `Cara can’t make the evening shift on ${label}.` })
+			.first();
+		await expect(post).toContainText('Lomi · coverage update');
+		await expect(post).not.toContainText('Sick');
 	} finally {
 		await caregiver.close();
 	}
