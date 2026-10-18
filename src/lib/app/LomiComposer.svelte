@@ -27,6 +27,8 @@
 		onDirty?: () => void;
 	} = $props();
 	let text = $state('');
+	// The words the shown draft was made from.
+	let said = $state('');
 	let busy = $state(false);
 	let recording = $state(false);
 	let transcribing = $state(false);
@@ -117,6 +119,7 @@
 	async function draft() {
 		if (!text.trim() || busy) return;
 		busy = true;
+		said = text;
 		message = '';
 		try {
 			preview = await trpc.lomi.draft.mutate({ clientId, type, prompt: text });
@@ -195,6 +198,7 @@
 		</p>{/if}
 	{#if preview}{#key preview}<LomiReview
 				result={preview}
+				{said}
 				{voice}
 				{clientId}
 				{type}
