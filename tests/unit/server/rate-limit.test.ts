@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RateLimiter } from '../../../src/lib/server/rate-limit';
+import { photoUploads, RateLimiter } from '../../../src/lib/server/rate-limit';
 
 describe('RateLimiter (security.md T4)', () => {
 	it('allows a burst up to capacity, then says how long to wait', () => {
@@ -31,5 +31,14 @@ describe('RateLimiter (security.md T4)', () => {
 		expect(limiter.status('k')).toEqual({ remaining: 28, resetSeconds: 4 });
 		now = 2000;
 		expect(limiter.status('k')).toEqual({ remaining: 29, resetSeconds: 2 });
+	});
+});
+
+describe('photo uploads', () => {
+	it('allow 30 an hour per person, then about one every two minutes', () => {
+		const key = 'synthetic-photo-uploader';
+		for (let i = 0; i < 30; i++) expect(photoUploads.take(key)).toBe(0);
+		expect(photoUploads.take(key)).toBeGreaterThan(60);
+		expect(photoUploads.take('someone-else')).toBe(0);
 	});
 });
