@@ -96,6 +96,33 @@ test('every caregiver screen passes axe and loads within budget', async ({ page 
 test('every office screen passes axe and loads within budget', async ({ page }, info) => {
 	test.setTimeout(300000);
 	await signIn(page, 'admin@guad.test');
+	// An open medication-error report puts a Critical band on the overview,
+	// so its colors are checked too.
+	await open(page, '/dashboard/people');
+	await page
+		.getByRole('link', { name: /Rosa Demo/ })
+		.first()
+		.click();
+	await page.waitForURL(/\/dashboard\/people\/[0-9a-f-]{36}$/);
+	const rosa = new URL(page.url()).pathname.split('/').pop()!;
+	await open(page, `/people/${rosa}/incident`);
+	await page
+		.getByRole('group', { name: 'What kind of incident?', exact: true })
+		.getByRole('button', { name: 'Medication error', exact: true })
+		.click();
+	await page
+		.getByLabel('What happened', { exact: true })
+		.fill(`Synthetic ${info.project.name} sweep report; no actual incident.`);
+	await page.getByRole('button', { name: 'Next', exact: true }).click();
+	await page
+		.getByLabel('What you did', { exact: true })
+		.fill('Recorded for interface verification.');
+	await page.getByRole('button', { name: 'Next', exact: true }).click();
+	await page.getByRole('checkbox', { name: /confirm this report is accurate/ }).check();
+	await page.getByRole('button', { name: 'Sign and submit report', exact: true }).click();
+	await expect(page.getByRole('heading', { name: /Incident report submitted/i })).toBeVisible();
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+
 	const timings: Record<string, number> = {};
 	for (const path of [
 		'/dashboard',
