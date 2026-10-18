@@ -79,3 +79,37 @@ export async function visibleReportClients(
 		);
 	return rows.length === ids.length;
 }
+
+/** Publication cannot revive a job whose deadline or storage pointer changed during I/O. */
+export async function publishCareReport(
+	tx: Tx,
+	user: CurrentUser,
+	id: string,
+	path: string,
+	params: typeof reportJobs.$inferInsert.params
+) {
+	const now = new Date();
+	return (
+		(
+			await tx
+				.update(reportJobs)
+				.set({
+					status: 'ready',
+					params,
+					ready_at: now,
+					expires_at: new Date(now.getTime() + 24 * 3600000),
+					error: null,
+					updated_at: now
+				})
+				.where(
+					and(
+						owned(user, id),
+						eq(reportJobs.status, 'processing'),
+						eq(reportJobs.storage_path, path),
+						gt(reportJobs.expires_at, now)
+					)
+				)
+				.returning()
+		)[0] ?? null
+	);
+}

@@ -22,6 +22,7 @@ import { generateCareReport } from '../report/index.ts';
 import type { ApiCaller } from './keys';
 import {
 	expiredJobs,
+	clearExpiredPath,
 	insertJob,
 	jobById,
 	PDF_ROW_LIMIT,
@@ -208,7 +209,7 @@ export async function cleanupReports(now = new Date()): Promise<{ removed: numbe
 	const jobs = await withService((tx) => expiredJobs(tx, now));
 	for (const j of jobs) {
 		if (j.path) await fileStorage().remove(j.path);
-		await withService((tx) => setJob(tx, j.id, { storage_path: null }));
+		await withService((tx) => clearExpiredPath(tx, j));
 	}
 	return { removed: jobs.length };
 }

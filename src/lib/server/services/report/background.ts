@@ -14,7 +14,8 @@ import {
 	queuedCareReport,
 	requesterUid,
 	updateCareReport,
-	visibleReportClients
+	visibleReportClients,
+	publishCareReport
 } from './background.queries';
 
 export const BackgroundRequest = ClinicalExport.extend({ expectedProfileId: z.uuid() });
@@ -23,7 +24,8 @@ const Params = z.object({
 	kind: z.literal('care-v1'),
 	input: ClinicalExport,
 	clientIds: z.array(z.uuid()).max(10000).default([]),
-	rows: z.number().int().min(0).max(10000).optional()
+	rows: z.number().int().min(0).max(10000).optional(),
+	revision: z.uuid().optional()
 });
 const FORMAT = {
 	csv: { contentType: 'text/csv;charset=utf-8', encoding: 'utf8' },
@@ -59,7 +61,7 @@ export async function requestBackground(
 			requested_by: user.profileId,
 			type: p.type,
 			format: p.format,
-			params: { kind: 'care-v1', input: p, clientIds: [] },
+			params: { kind: 'care-v1', input: p, clientIds: [], revision: randomUUID() },
 			status: 'queued',
 			storage_path: path,
 			expires_at: new Date(Date.now() + 15 * 60000)
@@ -153,7 +155,7 @@ export async function downloadBackground(
 	)
 		throw unavailable();
 	const body = await fileStorage().get(job.storage_path);
-	if (!body || body.length > 8 * 1024 * 1024) throw unavailable();
+	if (!body || body.length > 8 * 1024 * 1024 || job.expires_at <= new Date()) throw unavailable();
 	await asService(tx, (t) =>
 		recordExport(
 			t,
@@ -195,6 +197,8 @@ export async function generateCareReport(input: { id: string }): Promise<{ statu
 		await withService((tx) =>
 			updateCareReport(tx, owner, job.id, {
 				status: 'failed',
+				storage_path: job.storage_path,
+				params: { ...parsed.data, revision: randomUUID() },
 				error: 'Could not generate this report. Try a smaller period or a different format.'
 			})
 		);
@@ -210,6 +214,16 @@ export async function generateCareReport(input: { id: string }): Promise<{ statu
 		return fail();
 	const claimed = await withService((tx) => claimCareReport(tx, user, job.id, new Date()));
 	if (!claimed) return { status: 'unclaimed' };
+	let writeStarted = false;
+	const removeLateFile = async () => {
+		if (writeStarted && claimed.storage_path) {
+			try {
+				await fileStorage().remove(claimed.storage_path);
+			} catch {
+				/* fail() restores the durable pointer for the next expiry sweep. */
+			}
+		}
+	};
 	try {
 		assignedHome(user, parsed.data.input.homeId);
 		let clientIds: string[] = [];
@@ -227,23 +241,31 @@ export async function generateCareReport(input: { id: string }): Promise<{ statu
 				}
 			)
 		);
-		const params = Params.parse({ ...parsed.data, rows: file.rows, clientIds });
+		const params = Params.parse({
+			...parsed.data,
+			rows: file.rows,
+			clientIds,
+			revision: randomUUID()
+		});
 		if (!job.expires_at || job.expires_at <= new Date() || !claimed.storage_path) return fail();
 		const body = Buffer.from(file.content, file.encoding);
+		writeStarted = true;
 		await fileStorage().put(claimed.storage_path, body, file.contentType);
-		if (job.expires_at <= new Date()) return fail();
+		if (job.expires_at <= new Date()) {
+			await removeLateFile();
+			return fail();
+		}
 		// Ready files remain private and are never handed out by storage URLs.
-		await withService((tx) =>
-			updateCareReport(tx, user, job.id, {
-				status: 'ready',
-				params,
-				ready_at: new Date(),
-				expires_at: new Date(Date.now() + 24 * 3600000),
-				error: null
-			})
+		const published = await withService((tx) =>
+			publishCareReport(tx, user, job.id, claimed.storage_path!, params)
 		);
+		if (!published) {
+			await removeLateFile();
+			return fail();
+		}
 		return { status: 'ready' };
 	} catch {
+		await removeLateFile();
 		// The deterministic storage path stays on the job for the existing expiry cleanup.
 		return fail();
 	}

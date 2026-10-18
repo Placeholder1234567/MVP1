@@ -3,7 +3,7 @@
 // attendance by their day, goal trials by their note's day, timesheets by
 // clock-in, the audit log by when it was written. Every query is scoped by
 // agency_id; columns reuse the bulk export lists so nothing internal leaves.
-import { and, asc, eq, gte, inArray, isNotNull, lt, lte, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	auditLog,
@@ -236,7 +236,13 @@ export async function setJob(
 /** Ready reports past their expiry (any agency; the cleanup job runs as app_service). */
 export function expiredJobs(tx: Tx, now: Date) {
 	return tx
-		.select({ id: reportJobs.id, path: reportJobs.storage_path })
+		.select({
+			id: reportJobs.id,
+			path: reportJobs.storage_path,
+			params: reportJobs.params,
+			status: reportJobs.status,
+			expiresAt: reportJobs.expires_at
+		})
 		.from(reportJobs)
 		.where(
 			and(
@@ -252,4 +258,24 @@ export function expiredJobs(tx: Tx, now: Date) {
 			)
 		)
 		.limit(500);
+}
+
+/** Do not erase a pointer restored by a worker that finished after this cleanup read. */
+export async function clearExpiredPath(
+	tx: Tx,
+	job: Awaited<ReturnType<typeof expiredJobs>>[number]
+) {
+	if (!job.path || !job.expiresAt) return;
+	await tx
+		.update(reportJobs)
+		.set({ storage_path: null, updated_at: new Date() })
+		.where(
+			and(
+				eq(reportJobs.id, job.id),
+				eq(reportJobs.storage_path, job.path),
+				eq(reportJobs.status, job.status),
+				eq(reportJobs.expires_at, job.expiresAt),
+				job.params === null ? isNull(reportJobs.params) : eq(reportJobs.params, job.params)
+			)
+		);
 }
