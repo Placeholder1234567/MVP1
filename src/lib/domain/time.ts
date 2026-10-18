@@ -47,3 +47,12 @@ export function hhmm(time: string): string {
 	const [h = '0', m = '0'] = time.split(':');
 	return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
 }
+
+/** '2026-10-18' -> 'Oct 18', for notification text (notifications.md {dayFormatted}). */
+export function dayLabel(day: string): string {
+	return new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', {
+		month: 'short',
+		day: 'numeric',
+		timeZone: 'UTC'
+	});
+}
