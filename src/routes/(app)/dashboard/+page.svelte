@@ -3,7 +3,12 @@
 	import { useSession, parseJson } from '#lib/app/session.svelte.ts';
 	import { dosesDue, localTime } from '#lib/domain/index.ts';
 	import ClinicalAttention from '#lib/app/ClinicalAttention.svelte';
+	import LomiSummary from '#lib/app/LomiSummary.svelte';
+	import { page } from '$app/state';
 	const app = useSession();
+	const lomiSummary = $derived(
+		((page.data.user?.features ?? []) as readonly string[]).includes('lomi_summary')
+	);
 	const now = localTime(new Date(), app.user.timeZone);
 	const today = now.day;
 	const clock = `${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')}`;
@@ -56,6 +61,7 @@
 		Documentation and attention for {app.homes.find((h) => h.id === app.homeId)?.name ??
 			'your home'}.
 	</p>
+	{#if lomiSummary && app.homeId}<LomiSummary homeId={app.homeId} />{/if}
 	<div class="stats four">
 		<a class="card pad stat" href={resolve('/(app)/dashboard/notes')}>
 			<p class="muted">Notes to review</p>
