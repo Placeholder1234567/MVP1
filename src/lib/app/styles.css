@@ -784,3 +784,41 @@ button.row:hover {
 		scroll-behavior: auto !important;
 	}
 }
+/* Page transitions (frontend-spec-3.md item 26; (app)/+layout.svelte onNavigate).
+   Only the main area changes; the sidebar and app bar stay still. */
+.main-content {
+	view-transition-name: page;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation: none;
+}
+::view-transition-old(page),
+::view-transition-new(page) {
+	animation-duration: 150ms;
+	animation-timing-function: ease-out;
+}
+:root[data-nav='forward']::view-transition-old(page) {
+	animation: 200ms ease-out both page-out;
+}
+:root[data-nav='forward']::view-transition-new(page) {
+	animation: 200ms ease-out both page-in;
+}
+@keyframes page-in {
+	from {
+		opacity: 0;
+		transform: translateX(24px);
+	}
+}
+@keyframes page-out {
+	to {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
+}

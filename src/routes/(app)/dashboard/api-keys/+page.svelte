@@ -4,6 +4,7 @@
 	// when it's no longer needed. Keys are never deleted, so access stays auditable.
 	import { onMount } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
+	import Skeleton from '#lib/app/Skeleton.svelte';
 
 	type Key = Awaited<ReturnType<typeof trpc.apiKey.list.query>>[number];
 	type Created = Awaited<ReturnType<typeof trpc.apiKey.create.mutate>>;
@@ -136,7 +137,7 @@
 		</form>
 	{/if}
 
-	{#if loading}<p class="muted">Loading keys…</p>{:else}
+	{#if loading}<Skeleton count={2} label="Loading API keys" />{:else}
 		<div class="list card" role="list">
 			{#each keys as key (key.id)}
 				<div class="row" role="listitem">

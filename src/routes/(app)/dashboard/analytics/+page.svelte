@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import Skeleton from '#lib/app/Skeleton.svelte';
 
 	type Weekly = Awaited<ReturnType<typeof trpc.analytics.weekly.query>>;
 	const app = useSession();
@@ -70,6 +71,7 @@
 		>
 	</div>
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
+	{#if !data && !message}<Skeleton kind="stats" count={3} label="Loading analytics" />{/if}
 	{#if data}
 		<div class="spread">
 			<h2>Coverage</h2>
