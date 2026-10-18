@@ -20,6 +20,7 @@ import {
 	findNote,
 	findNoteGoal,
 	insertNote,
+	findNoteGoalById,
 	insertNoteGoal,
 	selectClientGoals,
 	selectNoteGoals,
@@ -91,7 +92,8 @@ async function saveGoals(
 	agencyId: string,
 	noteId: string,
 	clientId: string,
-	entries: z.infer<typeof GoalEntry>[]
+	entries: z.infer<typeof GoalEntry>[],
+	rowIds: Record<string, string> = {}
 ) {
 	if (!entries.length) return;
 	const allowed = new Set((await selectClientGoals(tx, agencyId, clientId)).map((g) => g.id));
@@ -107,7 +109,13 @@ async function saveGoals(
 		const existing = await findNoteGoal(tx, agencyId, noteId, g.goalId);
 		if (existing) await updateNoteGoal(tx, existing.id, set);
 		else
-			await insertNoteGoal(tx, { agency_id: agencyId, note_id: noteId, goal_id: g.goalId, ...set });
+			await insertNoteGoal(tx, {
+				id: rowIds[g.goalId],
+				agency_id: agencyId,
+				note_id: noteId,
+				goal_id: g.goalId,
+				...set
+			});
 	}
 }
 
@@ -158,6 +166,11 @@ export interface UpdateOptions {
 	 * meantime, a queued "sign" is refused: the author hasn't seen the comment.
 	 */
 	fromOfflineQueue?: boolean;
+	/**
+	 * Row IDs the device chose for new goal-trial rows (goal ID -> row ID), so a
+	 * later edit queued on the device names a row the server knows.
+	 */
+	goalRowIds?: Record<string, string>;
 }
 
 /** Edits, adds goal data to, or signs the caller's own note. */
@@ -191,7 +204,7 @@ export async function updateNote(
 	const to = set.status ?? from;
 	const check = canTransition(from, to, 'author');
 	if (!check.ok) throw new ServiceError('RULE_VIOLATION', check.reason);
-	if (set.goals) await saveGoals(tx, agencyId, id, note.clientId, set.goals);
+	if (set.goals) await saveGoals(tx, agencyId, id, note.clientId, set.goals, options.goalRowIds);
 	const updatedAt = await updateNoteRow(tx, agencyId, id, {
 		content: set.content,
 		lomi_drafted: set.lomiDrafted,
@@ -266,6 +279,11 @@ export function listNotes(tx: Tx, agencyId: string, filter: NoteFilter) {
 }
 
 /** The person, if the caller can see them. Shared with other care-record services. */
+/** A goal-trial row by its own ID (agency-scoped), or null. */
+export function findNoteGoalRow(tx: Tx, agencyId: string, id: string) {
+	return findNoteGoalById(tx, agencyId, id);
+}
+
 export function findVisibleClient(tx: Tx, agencyId: string, clientId: string) {
 	return findClient(tx, agencyId, clientId);
 }

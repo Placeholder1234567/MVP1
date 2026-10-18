@@ -508,6 +508,8 @@ The PowerSync write queue processes mutations in strict FIFO (first-in, first-ou
 
 If the note creation fails, dependent note_goals writes are also rejected. The queue does not skip ahead to independent writes -- strict ordering prevents orphaned child records.
 
+**As built:** a goal-trial row keeps the ID the device gave it, and a later edit to it (`UPDATE note_goals`, uploaded as a PATCH with only the changed columns) is looked up by that ID and applied through the note's update rules, so it is refused once the note is signed or for anyone but the author (who can't see the row: NOT_FOUND).
+
 ### Dependent Write Ordering Rules
 
 | Parent Write | Child Write | Ordering Rule |

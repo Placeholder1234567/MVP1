@@ -142,6 +142,22 @@ export async function findNoteGoal(tx: Tx, agencyId: string, noteId: string, goa
 	return row ?? null;
 }
 
+/** A goal-trial row by its own ID, for edits queued on a device. */
+export async function findNoteGoalById(tx: Tx, agencyId: string, id: string) {
+	const [row] = await tx
+		.select({
+			noteId: noteGoals.note_id,
+			goalId: noteGoals.goal_id,
+			trials: noteGoals.trials,
+			notAttempted: noteGoals.not_attempted,
+			reason: noteGoals.reason
+		})
+		.from(noteGoals)
+		.where(and(eq(noteGoals.agency_id, agencyId), eq(noteGoals.id, id)))
+		.limit(1);
+	return row ?? null;
+}
+
 export async function insertNoteGoal(tx: Tx, row: typeof noteGoals.$inferInsert) {
 	await tx.insert(noteGoals).values(row).onConflictDoNothing({ target: noteGoals.id });
 }

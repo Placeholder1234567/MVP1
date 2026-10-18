@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { useSession, parseJson } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
-	import { sectionChanges } from '#lib/domain/index.ts';
+	import {
+		reviewList,
+		reviewStatusLabel,
+		sectionChanges,
+		type ReviewFilter
+	} from '#lib/domain/index.ts';
 	const app = useSession();
 	type Versions = Awaited<ReturnType<typeof trpc.note.versions.mutate>>['versions'];
 	// Earlier signed versions (frontend-audit.md finding 14), loaded on request.
@@ -12,17 +17,38 @@
 	let signature = $state(false);
 	let busy = $state(false);
 	let message = $state('');
-	const pending = $derived(
-		app.notes.filter((n) => n.home_id === app.homeId && n.status === 'submitted')
+	// Filter bar (frontend-spec-3.md §4.2): to review by default.
+	let filter = $state<ReviewFilter>('submitted');
+	let search = $state('');
+	let from = $state('');
+	let to = $state('');
+	let sort = $state<'newest' | 'oldest'>('newest');
+	/** On narrow screens the list and the note take turns (frontend-audit finding 20). */
+	let picked = $state(false);
+	const FILTERS: { value: ReviewFilter; label: string }[] = [
+		{ value: 'submitted', label: 'To review' },
+		{ value: 'all', label: 'All' },
+		{ value: 'approved', label: 'Approved' },
+		{ value: 'returned', label: 'Sent back' }
+	];
+	const personName = (id: string | null) => app.people.find((p) => p.id === id)?.name ?? 'Person';
+	const list = $derived(
+		reviewList(
+			app.notes.filter((n) => n.home_id === app.homeId),
+			{ status: filter, search, from: from || undefined, to: to || undefined, sort },
+			personName
+		)
 	);
-	const note = $derived(pending.find((n) => n.id === selected) ?? pending[0]);
+	const note = $derived(list.find((n) => n.id === selected) ?? list[0]);
+	const pillClass = (status: string | null) =>
+		status === 'approved' ? 'ok' : status === 'returned' ? 'bad' : '';
 	const content = $derived(parseJson<Record<string, unknown>>(note?.content, {}));
 	$effect(() => {
 		if (note?.id) {
 			selected = note.id;
 			comment = '';
 			signature = false;
-			message = '';
+			// The message stays: "Note approved." must outlive the move to the next note.
 			if (versions?.noteId !== note.id) versions = null;
 		}
 	});
@@ -60,9 +86,15 @@
 		busy = true;
 		message = '';
 		try {
-			if (action === 'approve') await trpc.note.approve.mutate({ id: note.id });
-			else await trpc.note.sendBack.mutate({ id: note.id, comment });
-			selected = '';
+			const done = note.id;
+			if (action === 'approve') await trpc.note.approve.mutate({ id: done });
+			else await trpc.note.sendBack.mutate({ id: done, comment });
+			// Approve and next: the next note waiting for review, in list order.
+			const at = list.findIndex((n) => n.id === done);
+			const waiting = (n: (typeof list)[number]) => n.status === 'submitted' && n.id !== done;
+			const next = list.slice(at + 1).find(waiting) ?? list.find(waiting);
+			selected = next?.id ?? '';
+			if (!next) picked = false;
 			signature = false;
 			comment = '';
 			message = action === 'approve' ? 'Note approved.' : 'Note returned with your feedback.';
@@ -79,22 +111,80 @@
 	<p class="eyebrow">Care records</p>
 	<h1>Read, review, reassure.</h1>
 	<p class="muted">Review each note before approving. Your own notes need another supervisor.</p>
-	<div class="review-layout">
-		<div class="stack">
-			{#each pending as item (item.id)}<button
+	<div
+		class="filters"
+		role="search"
+		aria-label="Filter notes"
+		oninput={() => (picked = false)}
+		onchange={() => (picked = false)}
+	>
+		<div class="seg" role="group" aria-label="Show notes">
+			{#each FILTERS as f (f.value)}<button
+					type="button"
+					aria-pressed={filter === f.value}
+					onclick={() => {
+						filter = f.value;
+						selected = '';
+						picked = false;
+						message = '';
+					}}>{f.label}</button
+				>{/each}
+		</div>
+		<label
+			>Search<input
+				class="input"
+				type="search"
+				bind:value={search}
+				placeholder="Person or author"
+			/></label
+		>
+		<label>From<input class="input" type="date" bind:value={from} /></label>
+		<label>To<input class="input" type="date" bind:value={to} /></label>
+		<label
+			>Sort<select class="input" bind:value={sort}
+				><option value="newest">Newest first</option><option value="oldest">Oldest first</option
+				></select
+			></label
+		>
+	</div>
+	<p class="muted s13" role="status">
+		{list.length}
+		{list.length === 1 ? 'note' : 'notes'} · notes saved on this device (about 30 days)
+	</p>
+	<div class="review-layout" class:picked={picked && !!note}>
+		<div class="stack note-list">
+			{#each list as item (item.id)}<button
 					class="record-choice"
 					aria-pressed={note?.id === item.id}
-					onclick={() => (selected = item.id)}
-					><b>{app.people.find((p) => p.id === item.client_id)?.name ?? 'Person'}</b><span
-						>{item.author_name} · {item.day}</span
+					onclick={() => {
+						selected = item.id;
+						picked = true;
+						message = '';
+					}}
+					><b>{personName(item.client_id)}</b><span
+						>{item.type === 'behavior' ? 'Behavior note' : 'Shift note'} · {item.author_name} · {item.day}</span
+					><span class="pill {pillClass(item.status)}">{reviewStatusLabel(item.status)}</span
 					></button
-				>{:else}<div class="card empty">No notes waiting for review.</div>{/each}
+				>{:else}<div class="card empty">
+					{filter === 'submitted' && !search && !from && !to
+						? 'No notes waiting for review.'
+						: 'No notes match these filters.'}
+				</div>{/each}
 		</div>
-		{#if note}<article class="card pad stack">
-				<div>
-					<h2>{app.people.find((p) => p.id === note.client_id)?.name}</h2>
-					<p class="muted">{note.author_name} · {note.day} · {note.shift?.toUpperCase()}</p>
+		{#if note}<article class="card pad stack note-detail">
+				<button type="button" class="textbtn back" onclick={() => (picked = false)}
+					>← All notes</button
+				>
+				<div class="spread">
+					<div>
+						<h2>{personName(note.client_id)}</h2>
+						<p class="muted">{note.author_name} · {note.day} · {note.shift?.toUpperCase()}</p>
+					</div>
+					<span class="pill {pillClass(note.status)}">{reviewStatusLabel(note.status)}</span>
 				</div>
+				{#if note.status === 'returned' && note.supervisor_comment}<p class="callout">
+						Sent back: {note.supervisor_comment}
+					</p>{/if}
 				{#if note.lomi_drafted}<span class="pill">AI-assisted · reviewed and signed by staff</span
 					>{/if}
 				{#if versions?.noteId !== note.id}<button
@@ -143,31 +233,68 @@
 								: parseJson<string[]>(goal.trials, []).join(', ')}
 						</p>
 					</section>{/each}
-				<label class="checkline"
-					><input type="checkbox" bind:checked={signature} disabled={busy} />I have read this note
-					and approve this care record.</label
-				><button
-					class="btn"
-					disabled={busy || !signature || note.author_id === app.user.profileId}
-					onclick={() => review('approve')}>{app.labels.approve}</button
-				><label
-					>Feedback for the author<textarea
-						class="input"
-						bind:value={comment}
-						maxlength="2000"
-						disabled={busy}
-						placeholder="Explain what needs to be clarified or corrected."></textarea></label
-				><button
-					class="btn sec"
-					disabled={busy || !comment.trim() || note.author_id === app.user.profileId}
-					onclick={() => review('return')}>{app.labels.sendBack}</button
-				>
+				{#if note.status === 'submitted'}
+					<label class="checkline"
+						><input type="checkbox" bind:checked={signature} disabled={busy} />I have read this note
+						and approve this care record.</label
+					><button
+						class="btn"
+						disabled={busy || !signature || note.author_id === app.user.profileId}
+						onclick={() => review('approve')}>{app.labels.approve}</button
+					><label
+						>Feedback for the author<textarea
+							class="input"
+							bind:value={comment}
+							maxlength="2000"
+							disabled={busy}
+							placeholder="Explain what needs to be clarified or corrected."></textarea></label
+					><button
+						class="btn sec"
+						disabled={busy || !comment.trim() || note.author_id === app.user.profileId}
+						onclick={() => review('return')}>{app.labels.sendBack}</button
+					>
+				{:else}<p class="muted">
+						{note.status === 'approved'
+							? 'Approved notes are read-only.'
+							: 'Waiting for the author to revise and sign again.'}
+					</p>{/if}
 			</article>{/if}
 	</div>
 	{#if message}<p role="status" class="callout">{message}</p>{/if}
 </div>
 
 <style>
+	.filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 12px;
+		align-items: end;
+	}
+	.filters label {
+		flex: 1 1 140px;
+	}
+	.filters .seg {
+		flex: 1 1 100%;
+	}
+	.record-choice .pill {
+		margin-top: 6px;
+	}
+	.back {
+		display: none;
+		align-self: flex-start;
+	}
+	/* Narrow screens: the list, or the chosen note with a way back. */
+	@media (max-width: 900px) {
+		.picked .note-list {
+			display: none;
+		}
+		.review-layout:not(.picked) .note-detail {
+			display: none;
+		}
+		.back {
+			display: inline-flex;
+		}
+	}
 	.versions {
 		border: 1px solid var(--line2);
 		border-radius: 16px;
