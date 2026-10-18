@@ -82,3 +82,16 @@ it('separates skipped, empty, unknown and malformed source records without infer
 		independentPercent: 50
 	});
 });
+it('splits the fourteen days into two weeks for the trend arrow', () => {
+	const early = { ...note, id: 'early', day: '2026-10-05' };
+	const trend = savedGoalTrend({
+		...input,
+		notes: [note, early],
+		trials: [
+			trial,
+			{ ...trial, id: 'early-trial', note_id: 'early', trials: '["Refused","Verbal prompt"]' }
+		]
+	});
+	expect(trend.weeks).toEqual([0, 33]);
+	expect(savedGoalTrend(input).weeks).toEqual([null, 33]);
+});
