@@ -3,6 +3,7 @@ import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { hhmm } from '../../../domain/time.ts';
+import { CONTROLLED_SCHEDULES } from '../../../domain/controlled.ts';
 import {
 	appendMedicationHistory,
 	insertManagedMedication,
@@ -22,12 +23,18 @@ const definition = {
 		.max(24)
 		.transform((times) => [...new Set(times)].sort()),
 	prnInstructions: text(2000),
-	notes: text(4000)
+	notes: text(4000),
+	/** Controlled substances go in the count book (domain/controlled.ts). */
+	controlled: z.boolean(),
+	controlledSchedule: z.enum(CONTROLLED_SCHEDULES).nullish(),
+	unitsPerDose: z.number().positive().max(1000)
 };
 export const NewMedication = z.strictObject({
 	clientId: z.uuid(),
 	...definition,
 	scheduledTimes: definition.scheduledTimes.optional(),
+	controlled: definition.controlled.optional(),
+	unitsPerDose: definition.unitsPerDose.optional(),
 	startedAt: z
 		.union([z.date(), z.iso.datetime({ offset: true })])
 		.transform((v) => new Date(v))
@@ -41,7 +48,10 @@ export const MedicationChanges = z
 		route: definition.route,
 		scheduledTimes: definition.scheduledTimes.optional(),
 		prnInstructions: definition.prnInstructions,
-		notes: definition.notes
+		notes: definition.notes,
+		controlled: definition.controlled.optional(),
+		controlledSchedule: definition.controlledSchedule,
+		unitsPerDose: definition.unitsPerDose.optional()
 	})
 	.refine(
 		(v) => Object.entries(v).some(([key, value]) => key !== 'id' && value !== undefined),
@@ -74,6 +84,9 @@ function present(row: Medication) {
 		scheduledTimes: (row.scheduled_times ?? []).map(hhmm),
 		prnInstructions: row.prn_instructions,
 		notes: row.notes,
+		controlled: row.controlled,
+		controlledSchedule: row.controlled_schedule,
+		unitsPerDose: row.units_per_dose,
 		startedAt: row.started_at,
 		stoppedAt: row.stopped_at,
 		createdAt: row.created_at,
@@ -105,6 +118,9 @@ export async function createMedication(
 		scheduled_times: times,
 		prn_instructions: p.prnInstructions || null,
 		notes: p.notes || null,
+		controlled: p.controlled ?? false,
+		controlled_schedule: p.controlled ? (p.controlledSchedule ?? null) : null,
+		units_per_dose: p.unitsPerDose ?? 1,
 		started_at: p.startedAt ?? new Date()
 	});
 	await appendMedicationHistory(tx, agencyId, row.id, user.profileId, 'added');
@@ -132,7 +148,14 @@ export async function updateMedication(
 		...(p.route !== undefined ? { route: p.route || null } : {}),
 		...(p.scheduledTimes !== undefined ? { scheduled_times: p.scheduledTimes } : {}),
 		...(p.prnInstructions !== undefined ? { prn_instructions: p.prnInstructions || null } : {}),
-		...(p.notes !== undefined ? { notes: p.notes || null } : {})
+		...(p.notes !== undefined ? { notes: p.notes || null } : {}),
+		...(p.controlled !== undefined ? { controlled: p.controlled } : {}),
+		...(p.controlledSchedule !== undefined || p.controlled === false
+			? {
+					controlled_schedule: p.controlled === false ? null : (p.controlledSchedule ?? null)
+				}
+			: {}),
+		...(p.unitsPerDose !== undefined ? { units_per_dose: p.unitsPerDose } : {})
 	});
 	await appendMedicationHistory(tx, agencyId, row.id, user.profileId, 'updated');
 	return present(updated);

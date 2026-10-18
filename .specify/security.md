@@ -95,6 +95,7 @@ Row-Level Security (RLS) is enforced at the Postgres level. The matrix below sho
 | **note_history** | Read own notes' history | Read all agency | Read only (written by trigger) |
 | **incidents** | Create own; Read in assigned homes; Update own open incidents | Read/Write all agency; Close incidents | Full CRUD |
 | **mar_records** | Create (if med_certified); Read assigned homes | Read all agency; Create; set `acknowledged` only | Same as supervisor (no edits, no DELETE — amend only) |
+| **controlled_counts** | Create own entries for controlled medications in assigned homes (if med_certified); Read assigned homes; countersign only as the named witness | Read all agency; Create own entries; countersign as witness | Same as supervisor (no edits, no DELETE) |
 | **health_entries** | Create; Read assigned homes | Read/Write all agency | Full CRUD |
 | **attendance** | Create; Read assigned homes | Read/Write all agency | Full CRUD |
 | **messages** | Read/Write in assigned homes | Read/Write all agency | Full CRUD |

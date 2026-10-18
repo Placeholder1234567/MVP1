@@ -3,10 +3,13 @@
 // medication services inside the caller's transaction, so online and offline
 // (sync.upload) writes notify the same way. Wording is domain/care-notices.ts.
 import {
+	controlledCountersignTitle,
+	controlledDiscrepancyTitle,
 	medRefusalTitle,
 	noteApprovedTitle,
 	noteSentBackTitle,
-	noteSubmittedTitle
+	noteSubmittedTitle,
+	type StaffRole
 } from '../../../domain/index.ts';
 import { asService, type Tx } from '../../db';
 import { homeName, noteFacts } from './care-events.queries';
@@ -79,5 +82,41 @@ export async function medRefused(
 		title: medRefusalTitle(status, home ?? HOME),
 		referenceId: marRecordId,
 		referenceType: 'mar_records'
+	});
+}
+
+/** A controlled medication count didn't match the record (notifications.md §2.7b). */
+export async function controlledCountDiscrepancy(
+	tx: Tx,
+	agencyId: string,
+	homeId: string,
+	entryId: string
+) {
+	const home = await asService(tx, (t) => homeName(t, agencyId, homeId));
+	await notifyHomeSupervisors(tx, agencyId, homeId, {
+		type: 'controlled_count_discrepancy',
+		priority: 1,
+		title: controlledDiscrepancyTitle(home ?? HOME),
+		referenceId: entryId,
+		referenceType: 'controlled_counts'
+	});
+}
+
+/** A named witness is asked to countersign a count book entry (notifications.md §2.7c). */
+export async function controlledCountersignRequest(
+	tx: Tx,
+	agencyId: string,
+	witness: { id: string; role: StaffRole },
+	recorderName: string,
+	homeId: string,
+	entryId: string
+) {
+	const home = await asService(tx, (t) => homeName(t, agencyId, homeId));
+	await notify(tx, agencyId, [witness], {
+		type: 'controlled_countersign',
+		priority: 2,
+		title: controlledCountersignTitle(recorderName, home ?? HOME),
+		referenceId: entryId,
+		referenceType: 'controlled_counts'
 	});
 }

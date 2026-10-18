@@ -29,7 +29,16 @@ export async function updateManagedMedication(
 	fields: Partial<
 		Pick<
 			typeof medications.$inferInsert,
-			'name' | 'dose' | 'route' | 'scheduled_times' | 'prn_instructions' | 'notes' | 'stopped_at'
+			| 'name'
+			| 'dose'
+			| 'route'
+			| 'scheduled_times'
+			| 'prn_instructions'
+			| 'notes'
+			| 'stopped_at'
+			| 'controlled'
+			| 'controlled_schedule'
+			| 'units_per_dose'
 		>
 	>
 ) {
@@ -54,15 +63,13 @@ export async function appendMedicationHistory(
 	actor: string,
 	action: 'added' | 'updated' | 'stopped'
 ) {
-	await tx
-		.insert(medicationHistory)
-		.values({
-			agency_id: agencyId,
-			medication_id: medicationId,
-			changed_by: actor,
-			action,
-			changed_at: new Date()
-		});
+	await tx.insert(medicationHistory).values({
+		agency_id: agencyId,
+		medication_id: medicationId,
+		changed_by: actor,
+		action,
+		changed_at: new Date()
+	});
 }
 export function managementHistory(tx: Tx, agencyId: string, medicationId: string) {
 	return tx

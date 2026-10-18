@@ -12,6 +12,7 @@ const WINDOWS: Array<
 	['note_goals', s.noteGoals, s.noteGoals.created_at, 30],
 	['incidents', s.incidents, s.incidents.occurred_at, 30],
 	['mar_records', s.marRecords, s.marRecords.day, 30],
+	['controlled_counts', s.controlledCounts, s.controlledCounts.recorded_at, 30],
 	['health_entries', s.healthEntries, s.healthEntries.recorded_at, 30],
 	['attendance', s.attendance, s.attendance.day, 30],
 	['clock_records', s.clockRecords, s.clockRecords.clock_in_at, 30],

@@ -159,6 +159,9 @@ export function selectMedications(
 			scheduledTimes: medications.scheduled_times,
 			prnInstructions: medications.prn_instructions,
 			notes: medications.notes,
+			controlled: medications.controlled,
+			controlledSchedule: medications.controlled_schedule,
+			unitsPerDose: medications.units_per_dose,
 			startedAt: medications.started_at,
 			stoppedAt: medications.stopped_at
 		})

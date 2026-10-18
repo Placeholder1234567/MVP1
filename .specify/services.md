@@ -99,7 +99,9 @@ src/lib/server/services/
 
 **Responsibility:** Medication profiles, MAR (Medication Administration Record) tracking, scheduled and PRN dose recording, refusal/hold documentation, medication change history. MAR entries are irrevocable per constitution — corrections are appended, never deleted.
 
-**Owns tables:** `medications`, `medication_history`, `mar_records`
+**Owns tables:** `medications`, `medication_history`, `mar_records`, `controlled_counts`
+
+**As built (controlled medications):** medications marked `controlled` keep a count book (`controlled_counts`): receipts, shift counts, waste and disposal, each witnessed per the agency's `controlled_rules` (state presets in `domain/controlled.ts`). Given doses come from `mar_records`, so the expected amount on hand is the last count plus receipts, minus given doses, waste and disposal. `recordCountEntry()` and `countersign()` are the service functions.
 
 **Key functions:**
 - `getMedsDue(agencyId, clientId, day): MedWithStatus[]` — list medications with their MAR status for the day; highlights overdue scheduled meds.

@@ -21,6 +21,8 @@ async function sign(page: Page, text: string) {
 	await page.getByLabel('Activities', { exact: true }).fill(text);
 	await page.getByRole('button', { name: 'Save draft', exact: true }).click();
 	await expect(page.getByText('Draft saved on this device.', { exact: true })).toBeVisible();
+	// A returned note signs online, after the draft has synced (the screen says so).
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await page.getByRole('checkbox', { name: /I reviewed this note/ }).check();
 	await page.getByRole('button', { name: 'Sign and submit', exact: true }).click();
 	await expect(page.getByLabel('Activities', { exact: true })).toBeDisabled();

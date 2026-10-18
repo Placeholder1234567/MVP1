@@ -165,6 +165,32 @@ Update `notifications.sent_at`
 | **Deep Link** | `/mar/{marRecordId}` |
 | **Escalation** | If not read within 15 min, SMS to agency admin. |
 
+### 2.7b controlled_count_discrepancy
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | A controlled medication count (`controlled_counts`, kind `count`) doesn't match what the record says should be on hand: the last count plus receipts, minus given doses, waste and disposal (`expectedOnHand()` in `domain/controlled.ts`). Online or through `sync.upload`. |
+| **Recipients** | All supervisors for the home (admins when the home has none) |
+| **Channels** | Push + SMS (immediate) |
+| **Priority** | Urgent |
+| **Template (Push/SMS)** | `"Controlled medication count does not match at {homeName}. Review now."` |
+| **PHI Safety** | No client name, medication name or amounts. |
+| **Deep Link** | `/dashboard/controlled` |
+| **Escalation** | None (mandatory; the supervisor also files an incident report). |
+
+### 2.7c controlled_countersign
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | A count book entry names a witness who wasn't able to sign on the same device; they countersign from their own device within the agency's window (24 hours by default). |
+| **Recipients** | The named witness |
+| **Channels** | Push |
+| **Priority** | High |
+| **Template (Push)** | `"{recorderName} asked you to countersign a controlled medication entry at {homeName}."` |
+| **PHI Safety** | Staff and home names only. |
+| **Deep Link** | `/controlled` |
+| **Escalation** | None; overdue countersigns show in the supervisor attention queue. |
+
 ### 2.8 med_due_reminder
 
 | Field | Value |
@@ -351,6 +377,8 @@ Update `notifications.sent_at`
 | `note_sent_back` | Normal | Y | N | N | N | 8 hr, 24 hr reminders |
 | `med_refusal` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
 | `med_possible_double_dose` | Urgent | Y | Y | N | Y | 15 min admin SMS |
+| `controlled_count_discrepancy` | Urgent | Y | Y | N | Y | None |
+| `controlled_countersign` | High | Y | N | N | N | None |
 | `med_due_reminder` | Normal | Y | N | N | N | 30 min overdue alert |
 | `med_overdue` | High | Y | N | N | N | None |
 | `health_alert` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
@@ -540,6 +568,8 @@ type NotificationType =
   | 'note_sent_back'
   | 'med_refusal'
   | 'med_possible_double_dose'
+  | 'controlled_count_discrepancy'
+  | 'controlled_countersign'
   | 'med_due_reminder'
   | 'med_overdue'
   | 'health_alert'
@@ -874,6 +904,8 @@ When a profile is created, default notification preferences are seeded based on 
 | `note_sent_back` | Y | N | N | N | N | N | N | N | N |
 | `med_refusal` | N | N | N | Y | N | N | Y | N | N |
 | `med_possible_double_dose` | N | N | N | Y | Y | N | Y | Y | N |
+| `controlled_count_discrepancy` | N | N | N | Y | Y | N | Y | Y | N |
+| `controlled_countersign` | Y | N | N | Y | N | N | Y | N | N |
 | `med_due_reminder` | Y | N | N | N | N | N | N | N | N |
 | `med_overdue` | N | N | N | Y | N | N | Y | N | N |
 | `health_alert` | N | N | N | Y | N | N | Y | N | N |
@@ -895,6 +927,7 @@ The following notifications are always sent regardless of user preferences. The 
 |------|--------|
 | `med_refusal` | Clinical safety -- supervisor must acknowledge medication refusals/holds |
 | `med_possible_double_dose` | Clinical safety -- a dose may have been given twice |
+| `controlled_count_discrepancy` | Diversion and safety -- a controlled medication may be missing |
 | `health_alert` | Clinical safety -- out-of-range vitals require review |
 | `incident_reported` | Regulatory compliance -- all incidents must be reviewed |
 | `incident_high_severity` | Regulatory compliance + safety -- immediate review required |

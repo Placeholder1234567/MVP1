@@ -1,5 +1,6 @@
 // Agency Service (services.md): the caller's agency and its configuration.
 import { z } from 'zod';
+import { STATE_CODES } from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { createStaffAccount } from '../auth/index.ts';
@@ -29,7 +30,25 @@ export async function getAgency(tx: Tx, agencyId: string) {
  */
 export const AgencySettings = z
 	.object({
-		mfa_required_roles: z.array(z.enum(['caregiver', 'supervisor'])).optional()
+		mfa_required_roles: z.array(z.enum(['caregiver', 'supervisor'])).optional(),
+		/** Controlled medication count book rules (domain/controlled.ts). */
+		controlled_rules: z
+			.object({
+				state: z.enum(STATE_CODES),
+				countEvery: z.enum(['shift', 'day']),
+				witness: z
+					.object({
+						receipt: z.boolean(),
+						count: z.boolean(),
+						waste: z.boolean(),
+						disposal: z.boolean()
+					})
+					.strict(),
+				witnessQualification: z.enum(['med_certified', 'any_staff']),
+				countersignHours: z.number().int().min(1).max(72)
+			})
+			.strict()
+			.optional()
 	})
 	.passthrough();
 

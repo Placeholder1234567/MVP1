@@ -11,6 +11,7 @@ export {
 	stopMedication,
 	medicationHistory
 } from './management';
+export { NewCountEntry, Countersign, recordCountEntry, countersign } from './controlled';
 import { addDays, hhmm, localTime, medTimes } from '../../../domain/index.ts';
 import { doseNeedsReason } from '../../../domain/clinical.ts';
 import { asService, type Tx } from '../../db';

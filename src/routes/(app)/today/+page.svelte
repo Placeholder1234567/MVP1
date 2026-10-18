@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
-	import { shiftAt, SHIFTS } from '#lib/domain/index.ts';
+	import { countDue, shiftAt, SHIFTS } from '#lib/domain/index.ts';
 	import ClockPanel from '#lib/app/ClockPanel.svelte';
 	import CoverageOffers from '#lib/app/CoverageOffers.svelte';
 	import InstallPrompt from '#lib/app/InstallPrompt.svelte';
@@ -44,6 +44,27 @@
 				)
 		)
 	);
+	// Controlled medications at this home still needing a count this shift,
+	// and entries waiting for this person's countersignature.
+	const countsDue = $derived(
+		app.medications.filter(
+			(m) =>
+				Number(m.controlled) &&
+				!m.stopped_at &&
+				m.home_id === app.homeId &&
+				countDue(
+					app.controlledCounts.filter((c) => c.medication_id === m.id),
+					now,
+					app.user.timeZone,
+					app.controlledRules
+				)
+		).length
+	);
+	const toCountersign = $derived(
+		app.controlledCounts.filter(
+			(c) => c.witness_id === app.user.profileId && c.witness_status === 'pending'
+		).length
+	);
 	const clock = $derived(
 		app.clocks.find((c) => c.profile_id === app.user.profileId && !c.clock_out_at)
 	);
@@ -63,6 +84,18 @@
 	<GettingStarted />
 	<ClockPanel />
 	<CoverageOffers />
+	{#if countsDue || toCountersign}<a class="card pad row" href={resolve('/(app)/controlled')}
+			><span class="grow"
+				><b>Controlled medications</b><span
+					>{[
+						countsDue ? `${countsDue} to count this shift` : '',
+						toCountersign ? `${toCountersign} waiting for your countersignature` : ''
+					]
+						.filter(Boolean)
+						.join(' · ')}</span
+				></span
+			><span class="pill due">Open</span></a
+		>{/if}
 	<div class="card pad stack">
 		<div class="spread">
 			<b>Notes this shift</b><span class="muted">{completed} of {people.length} done</span>

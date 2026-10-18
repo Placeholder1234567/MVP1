@@ -386,6 +386,12 @@ export const medications = pgTable(
     scheduled_times: time('scheduled_times').array(),
     prn_instructions: text('prn_instructions'),
     notes: text('notes'),
+    // Controlled substance (DEA Schedule II-V): counted at shift change, with
+    // receipts and waste witnessed (controlled_counts, domain/controlled.ts).
+    controlled: boolean('controlled').notNull().default(false),
+    controlled_schedule: text('controlled_schedule'),
+    // Units taken from stock by one given dose (tablets, mL), for the running count.
+    units_per_dose: real('units_per_dose').notNull().default(1),
     started_at: timestamp('started_at', { withTimezone: true }),
     stopped_at: timestamp('stopped_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true })
@@ -1628,5 +1634,69 @@ export const messageReads = pgTable(
     index('message_reads_agency_id_idx').on(t.agency_id),
     index('message_reads_home_id_idx').on(t.home_id),
     uniqueIndex('message_reads_message_profile_idx').on(t.message_id, t.profile_id),
+  ],
+);
+
+// ─── 42. controlled_counts ───────────────────────────────────────────────────
+// The count book for controlled medications: stock received, shift counts,
+// waste and disposal. Given doses come from mar_records, so the expected
+// amount on hand is the last count plus receipts minus given doses and waste
+// (domain/controlled.ts). Append-only like the MAR: a wrong entry is followed
+// by a new count, never edited. The only update is the named witness
+// countersigning (witness_status pending -> verified), enforced in rls.sql.
+
+export const controlledCounts = pgTable(
+  'controlled_counts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id')
+      .notNull()
+      .references(() => homes.id, { onDelete: 'restrict' }),
+    client_id: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'restrict' }),
+    medication_id: uuid('medication_id')
+      .notNull()
+      .references(() => medications.id, { onDelete: 'restrict' }),
+    // receipt | count | waste | disposal
+    kind: text('kind').notNull(),
+    // Units received, counted on hand, wasted or disposed of.
+    quantity: real('quantity').notNull(),
+    // For counts: what the record said should be on hand at the time.
+    expected: real('expected'),
+    discrepancy: boolean('discrepancy').notNull().default(false),
+    // Waste reason, disposal method or a short note. No client details.
+    reason: text('reason'),
+    recorded_by: uuid('recorded_by')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'restrict' }),
+    recorded_by_name: text('recorded_by_name').notNull(),
+    witness_id: uuid('witness_id').references(() => profiles.id, {
+      onDelete: 'restrict',
+    }),
+    witness_name: text('witness_name'),
+    // none | pending | verified
+    witness_status: text('witness_status').notNull().default('none'),
+    witnessed_at: timestamp('witnessed_at', { withTimezone: true }),
+    recorded_at: timestamp('recorded_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // false once older than the clinical sync window (SyncWindowJob).
+    device_sync: boolean('device_sync').notNull().default(true),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('controlled_counts_agency_id_idx').on(t.agency_id),
+    index('controlled_counts_home_id_idx').on(t.home_id),
+    index('controlled_counts_medication_idx').on(t.medication_id, t.recorded_at),
+    index('controlled_counts_witness_idx').on(t.witness_id, t.witness_status),
   ],
 );

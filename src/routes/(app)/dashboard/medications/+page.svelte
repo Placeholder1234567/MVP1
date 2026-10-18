@@ -3,6 +3,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import { CONTROLLED_SCHEDULES, type ControlledSchedule } from '#lib/domain/index.ts';
 	const app = useSession();
 	type Medication = Awaited<ReturnType<typeof trpc.medication.list.query>>[number];
 	type History = Awaited<ReturnType<typeof trpc.medication.history.query>>;
@@ -20,7 +21,10 @@
 		route = $state(''),
 		times = $state(''),
 		prn = $state(''),
-		notes = $state('');
+		notes = $state(''),
+		controlled = $state(false),
+		schedule = $state(''),
+		unitsPerDose = $state('1');
 	let when = $state<'scheduled' | 'prn'>('scheduled');
 	let dirty = $state(false);
 	let history = $state<History>([]),
@@ -53,6 +57,9 @@
 		times = '';
 		prn = '';
 		notes = '';
+		controlled = false;
+		schedule = '';
+		unitsPerDose = '1';
 		when = 'scheduled';
 		dirty = false;
 	}
@@ -120,6 +127,9 @@
 		times = slotTimes(med).join(', ');
 		prn = med.prnInstructions ?? '';
 		notes = med.notes ?? '';
+		controlled = med.controlled;
+		schedule = med.controlledSchedule ?? '';
+		unitsPerDose = String(med.unitsPerDose ?? 1);
 		when = slotTimes(med).length ? 'scheduled' : 'prn';
 		dirty = false;
 		message = '';
@@ -147,10 +157,18 @@
 				'Enter medication wording and, for as-needed use, the instructions from the prescription. Your entries are kept.';
 			return;
 		}
+		const units = Number(unitsPerDose);
+		if (!(units > 0 && units <= 1000)) {
+			message = 'Enter the units taken from stock per dose as a number above zero.';
+			return;
+		}
 		busy = true;
 		message = '';
 		try {
 			const fields = {
+				controlled,
+				controlledSchedule: controlled && schedule ? (schedule as ControlledSchedule) : null,
+				unitsPerDose: units,
 				name: name.trim(),
 				dose: dose.trim() || null,
 				route: route.trim() || null,
@@ -294,7 +312,13 @@
 				class="card pad stack"
 				aria-label="Active medication definition"
 			>
-				<h3 class="record-text">{med.name}</h3>
+				<h3 class="record-text">
+					{med.name}{#if med.controlled}<span class="pill"
+							>Controlled{med.controlledSchedule
+								? ` · Schedule ${med.controlledSchedule}`
+								: ''}</span
+						>{/if}
+				</h3>
 				<p>{[med.dose, med.route].filter(Boolean).join(' · ') || 'Dose/route not recorded'}</p>
 				<p>
 					{slotTimes(med).length ? `Scheduled: ${slotTimes(med).join(', ')}` : 'As needed (PRN)'}
@@ -379,6 +403,36 @@
 				<p class="muted">
 					Copy the authorized as-needed instructions. A PRN definition has no scheduled dose times.
 				</p>{/if}
+			<fieldset class="stack">
+				<legend>Controlled substance</legend>
+				<label class="check"
+					><input type="checkbox" bind:checked={controlled} disabled={busy} /> Keep a count book for this
+					medication (shift counts, witnessed receipts and waste)</label
+				>
+				{#if controlled}<div class="grid">
+						<label
+							>DEA schedule<select class="input" bind:value={schedule} disabled={busy}
+								><option value="">Not recorded</option>{#each CONTROLLED_SCHEDULES as s (s)}<option
+										value={s}>Schedule {s}</option
+									>{/each}</select
+							></label
+						><label
+							>Units taken from stock per dose<input
+								class="input"
+								type="number"
+								min="0.01"
+								max="1000"
+								step="any"
+								bind:value={unitsPerDose}
+								disabled={busy}
+							/></label
+						>
+					</div>
+					<p class="muted">
+						For example 1 tablet, or 5 for 5 mL. Each given dose lowers the expected count by this
+						amount.
+					</p>{/if}
+			</fieldset>
 			<label
 				>Prescription notes<textarea
 					class="input"

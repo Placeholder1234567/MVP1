@@ -38,7 +38,12 @@
 				...k,
 				staffName: app.staff.find((p) => p.id === k.profile_id)?.name
 			})),
-			notes: app.notes.filter(inHome)
+			notes: app.notes.filter(inHome),
+			counts: app.controlledCounts.filter(inHome).map((c) => ({
+				...c,
+				medicationName: app.medications.find((m) => m.id === c.medication_id)?.name
+			})),
+			countersignHours: app.controlledRules.countersignHours
 		})
 	);
 	const incident = $derived(
@@ -163,6 +168,9 @@
 				>{:else if item.kind === 'note'}<a
 					class="btn sec sm"
 					href={resolve('/(app)/dashboard/notes')}>Open</a
+				>{:else if item.kind === 'controlled'}<a
+					class="btn sec sm"
+					href={resolve('/(app)/controlled')}>Count book</a
 				>{:else if item.kind === 'coverage'}<a class="btn sec sm" href={resolve('/(app)/shifts')}
 					>Schedule</a
 				>{:else}{#if item.kind === 'clock'}<a
