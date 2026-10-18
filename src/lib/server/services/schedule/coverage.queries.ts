@@ -214,3 +214,10 @@ export function searchingRequests(tx: Tx) {
 		.where(eq(requests.status, 'searching'))
 		.limit(500);
 }
+export async function profileName(tx: Tx, agencyId: string, id: string) {
+	const [row] = await tx
+		.select({ name: profiles.name })
+		.from(profiles)
+		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, id)));
+	return row?.name ?? null;
+}

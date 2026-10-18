@@ -618,6 +618,8 @@ After signing a note, submitting an incident, or recording a health entry, a suc
 
 Each home has a team channel visible to all staff and supervisors assigned to that home. Lomi posts coverage updates here automatically.
 
+**As built:** the coverage engine posts as Lomi (`from_name` "Lomi", no author, so it can't be mistaken for a person of that name) when a shift is offered ("Cara can’t make the evening shift on Oct 23. I’ve offered it to 3 eligible staff members." or that no one is eligible), when it is covered ("…is covered by Eli."), and when nobody took it in time or everyone declined ("…so a supervisor will fill it."). Wording is `coverageBoardText()` in `domain/coverage-board.ts`. Posts use first names and the shift only, never the callout reason, which only supervisors see. On the board, Lomi's posts have a pale yellow card and "Lomi · coverage update".
+
 **Layout:**
 - **App bar (caregiver).** Back button. Title: "[Home name] team." Subtitle: "Staff, supervisors and Lomi."
 - **Message list.** Chronological list of messages. Each message:

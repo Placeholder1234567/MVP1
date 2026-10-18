@@ -78,6 +78,24 @@ export async function sendMessage(
 	return { created };
 }
 
+/**
+ * Lomi's post on a home's board (charting-ux.md §6): coverage updates. It has
+ * no author (created_by is null), which is how the board tells it apart from
+ * a person who happens to be called Lomi.
+ */
+export async function postLomiUpdate(tx: Tx, agencyId: string, homeId: string, body: string) {
+	await asService(tx, (t) =>
+		insertMessage(t, {
+			agency_id: agencyId,
+			home_id: homeId,
+			from_name: 'Lomi',
+			body,
+			sent_at: new Date(),
+			created_by: null
+		})
+	);
+}
+
 export const ReadReceipt = z.object({
 	id: z.uuid(),
 	messageId: z.uuid(),

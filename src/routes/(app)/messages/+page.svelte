@@ -249,7 +249,11 @@
 				app.people.find((p) => p.id === root.client_id)}{@const followUp = app.incidents.find(
 				(i) => i.id === root.incident_id
 			)}
-			<article class="card pad stack thread" id="m-{root.id}">
+			<article
+				class="card pad stack thread"
+				class:lomi={!root.created_by && root.from_name === 'Lomi'}
+				id="m-{root.id}"
+			>
 				{@render card(root)}
 				{#if thread.orphan}<p class="muted s13">Reply to an earlier message.</p>{/if}
 				{#if followUp}<p class="s13">
@@ -300,8 +304,11 @@
 		app.messageReads
 	)}
 	<div class="spread">
-		<b>{message.from_name}</b><small class="muted"
-			>{message.sent_at ? new Date(message.sent_at).toLocaleString() : ''}</small
+		<b
+			>{message.from_name}{#if !message.created_by && message.from_name === 'Lomi'}<span
+					class="muted s13">&nbsp;· coverage update</span
+				>{/if}</b
+		><small class="muted">{message.sent_at ? new Date(message.sent_at).toLocaleString() : ''}</small
 		>
 	</div>
 	<p class="record-text">{message.body}</p>
@@ -325,6 +332,11 @@
 {/snippet}
 
 <style>
+	/* Lomi's posts: pale yellow, as in charting-ux.md §6 and mvp/styles.css .lomi-card. */
+	.thread.lomi {
+		background: var(--lemon-2);
+		border-color: var(--lemon-line);
+	}
 	.seen {
 		margin-top: 8px;
 	}
