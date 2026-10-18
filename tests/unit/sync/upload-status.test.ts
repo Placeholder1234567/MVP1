@@ -88,3 +88,27 @@ it('ignores outstanding and queued refreshes after the session is disposed', asy
 	expect(emit).toHaveBeenCalledTimes(1);
 	expect(emit).toHaveBeenLastCalledWith(null, 'Checking sync…');
 });
+it('an overtaken check waits for the newest, so its caller sees a settled state', async () => {
+	const first = deferred(),
+		second = deferred();
+	const read = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+	let pending: number | null = -1;
+	const monitor = new UploadStatus(
+		read,
+		() => ({ connected: true, synced: true }),
+		(count) => (pending = count)
+	);
+	// The export awaits this check; a database change starts another meanwhile.
+	const awaited = monitor.refresh();
+	const newer = monitor.refresh();
+	first.resolve(0);
+	let settled = false;
+	void awaited.then(() => (settled = true));
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(settled).toBe(false);
+	second.resolve(0);
+	await awaited;
+	await newer;
+	expect(pending).toBe(0);
+});
