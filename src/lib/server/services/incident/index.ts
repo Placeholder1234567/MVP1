@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
 	INCIDENT_TYPES,
 	incidentNotifyRules,
+	parseIncidentRules,
 	parseReportDetails,
 	reportDetailsError
 } from '../../../domain/index.ts';
@@ -13,6 +14,7 @@ import { findVisibleClient } from '../charting/index.ts';
 import { notifyHomeSupervisors } from '../notification/index.ts';
 import {
 	addNotifiedParty,
+	agencySettings,
 	findIncident,
 	insertIncident,
 	selectIncidents,
@@ -97,7 +99,11 @@ export async function createIncident(
 		status: 'open' as const,
 		createdAt: row?.createdAt ?? null,
 		created: !!row,
-		mustNotify: incidentNotifyRules(i.severity, i.type)
+		mustNotify: incidentNotifyRules(
+			i.severity,
+			i.type,
+			parseIncidentRules(await agencySettings(tx, agencyId))
+		)
 	};
 }
 

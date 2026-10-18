@@ -1,6 +1,6 @@
 // Agency Service (services.md): the caller's agency and its configuration.
 import { z } from 'zod';
-import { STATE_CODES } from '../../../domain/index.ts';
+import { INCIDENT_TYPES, RULE_WHEN_MAX, STATE_CODES } from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { createStaffAccount } from '../auth/index.ts';
@@ -46,6 +46,18 @@ export const AgencySettings = z
 					.strict(),
 				witnessQualification: z.enum(['med_certified', 'any_staff']),
 				countersignHours: z.number().int().min(1).max(72)
+			})
+			.strict()
+			.optional(),
+		/** Who must be told about which incidents, and by when (domain/charting.ts). */
+		incident_rules: z
+			.object({
+				guardianWhen: z.string().trim().min(1).max(RULE_WHEN_MAX),
+				nurseTypes: z.array(z.enum(INCIDENT_TYPES)),
+				nurseWhen: z.string().trim().min(1).max(RULE_WHEN_MAX),
+				stateSeverities: z.array(z.enum(['Low', 'Medium', 'High'])),
+				stateTypes: z.array(z.enum(INCIDENT_TYPES)),
+				stateWhen: z.string().trim().min(1).max(RULE_WHEN_MAX)
 			})
 			.strict()
 			.optional()

@@ -387,6 +387,7 @@ src/lib/server/services/
 - `markRead(agencyId, notificationIds: string[]): void` — mark one or more notifications as read (batch operation).
 - `listNotifications(agencyId, profileId, unreadOnly?, limit?, offset?): Notification[]` — paginated notification list with optional unread-only filter.
 - `getUnread(agencyId, profileId): Notification[]` — unread notifications for the in-app notification center (convenience wrapper around `listNotifications`).
+- `announceMaintenance(agencyId, { id, startsAt, endsAt, impact }): { recipients, title, alreadySent }` — admin maintenance announcement to all active staff (notifications.md §2.18); wording from `domain/maintenance.ts`.
 
 **Depends on:**
 - Auth (user preferences lookup, FCM token resolution)

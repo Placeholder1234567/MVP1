@@ -372,3 +372,41 @@ it('keeps read receipts and delivery preferences out of the offline write allowl
 		'NOT_ALLOWED_OFFLINE'
 	]);
 });
+
+it('admins announce maintenance to everyone active in their agency, once', async () => {
+	const id = randomUUID();
+	const startsAt = new Date(Date.now() + 2 * 86_400_000);
+	const endsAt = new Date(startsAt.getTime() + 90 * 60_000);
+	const input = { id, startsAt, endsAt, impact: 'sync_paused' as const };
+	await expect((await as(caregiver)).agency.announceMaintenance(input)).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
+	const ad = (await as(admin)).agency;
+	await expect(
+		ad.announceMaintenance({ ...input, endsAt: new Date(startsAt.getTime() - 60_000) })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	const sent = await ad.announceMaintenance(input);
+	expect(sent).toMatchObject({ recipients: 2, alreadySent: false });
+	expect(sent.title).toMatch(/^Guad will undergo scheduled maintenance on /);
+	expect(await ad.announceMaintenance(input)).toMatchObject({ alreadySent: true });
+	const rows = await withService((tx) =>
+		tx
+			.select()
+			.from(s.notifications)
+			.where(
+				and(eq(s.notifications.type, 'system_maintenance'), eq(s.notifications.reference_id, id))
+			)
+	);
+	const inApp = rows.filter((r) => r.channel === 'in_app');
+	expect(inApp.map((r) => r.profile_id).sort()).toEqual([admin, caregiver].sort());
+	expect(inApp[0]).toMatchObject({ priority: 4, title: sent.title });
+	expect(inApp[0].body).toMatch(/^Syncing will pause/);
+	expect(rows.every((r) => r.agency_id === agency)).toBe(true);
+	// Caregivers get it by push; supervisors and admins by push and email (notifications.md §4).
+	expect(
+		rows
+			.filter((r) => r.profile_id === caregiver)
+			.map((r) => r.channel)
+			.sort()
+	).toEqual(['in_app', 'push']);
+});

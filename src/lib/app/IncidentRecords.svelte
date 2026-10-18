@@ -82,7 +82,7 @@
 	let error = $state('');
 	let done = $state(false);
 	let signed = $state(false);
-	const rules = $derived(incidentNotifyRules(form.severity, form.type));
+	const rules = $derived(incidentNotifyRules(form.severity, form.type, app.incidentRules));
 	const recent = $derived(app.incidents.filter((r) => r.client_id === clientId).slice(0, 3));
 	function next() {
 		if (step === 1) {
@@ -334,7 +334,7 @@
 				<div class="field stack tight">
 					<span class="fieldlabel">Who needs to be told</span>
 					<p class="muted s13">
-						Check anyone you’ve already told. Placeholder rules: your agency sets the real ones.
+						Check anyone you’ve already told. Your agency sets who must be told and by when.
 					</p>
 					{#each rules as rule (rule.who)}<label class="check"
 							><input type="checkbox" bind:group={form.told} value={rule.who} /><span

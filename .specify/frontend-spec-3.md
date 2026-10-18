@@ -1005,6 +1005,8 @@ Medication History:
 
 Renders within the Setup sidebar item. Contains agency configuration, home management, and staff management (see 4.6).
 
+**As built:** Setup also has an "Announce maintenance" card. It takes the start and end in the agency time zone and one of three fixed impacts, shows a preview of the exact text, and asks for confirmation before sending to everyone active (notifications.md §2.18).
+
 **Sections:**
 
 1. **Homes** -- List of group homes with name, address, GPS radius

@@ -68,6 +68,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
 | `agency.get` | query | none | `{ id, name, slug, chartingPreset, settings, subscriptionTier, enabledFeatures, createdAt, updatedAt }` | caregiver | Returns the caller's agency record. Settings includes notification defaults, shift times, and feature flags. `subscriptionTier` defaults to `'starter'` when null. `enabledFeatures` is an array of per-agency feature flag overrides (see entitlements.md). |
+| `agency.announceMaintenance` | mutation | `{ id: uuid, startsAt: timestamp, endsAt: timestamp, impact: 'unavailable' \| 'slow' \| 'sync_paused' }` | `{ recipients: number, title: string, alreadySent: boolean }` | admin | Sends the `system_maintenance` notification (notifications.md §2.18) to every active profile in the agency. The window must be in the future, end after it starts, last at most 12 hours and start within 60 days. `id` makes a retry a no-op. |
 | `agency.update` | mutation | `{ name?: string, chartingPreset?: 'therap' \| 'default', settings?: jsonb }` | `{ id, name, chartingPreset, settings, updatedAt }` | admin | Updates agency-level configuration. Changing `chartingPreset` affects only UI labels and form ordering, never schema or API. |
 
 ### home
@@ -83,7 +84,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### staff
 
-**As built:** `staff.invite` creates the Identity Platform account with no password and emails the Admin SDK password-setup link after the profile commits. `staff.update` with `active: false` disables the account and revokes its sessions; `active: true` re-enables it. Admins can't demote or deactivate themselves. `agency.update` also takes `timezone`; settings are merged, not replaced, and the plan (tier, features) isn't editable here.
+**As built:** `staff.invite` creates the Identity Platform account with no password and emails the Admin SDK password-setup link after the profile commits. `staff.update` with `active: false` disables the account and revokes its sessions; `active: true` re-enables it. Admins can't demote or deactivate themselves. `agency.update` also takes `timezone`; settings are merged, not replaced, and the plan (tier, features) isn't editable here. Known settings are validated: `mfa_required_roles`, and `incident_rules` (`{ guardianWhen, nurseTypes, nurseWhen, stateSeverities, stateTypes, stateWhen }`, deadlines up to 60 characters), which drives `incident.create`'s `mustNotify` and the device's incident wizard.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|

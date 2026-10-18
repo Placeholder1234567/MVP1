@@ -5,6 +5,7 @@ import { vitalFlags, type VitalFlag } from './vitals';
 import {
 	incidentNotifyRules,
 	INCIDENT_TYPES,
+	type IncidentRules,
 	type IncidentSeverity,
 	type IncidentType
 } from './charting';
@@ -423,7 +424,8 @@ export function incidentOccurredAt(time: string, now: Date, timeZone: string): D
 export function missingNotifications(
 	severity: string | null | undefined,
 	type: string | null | undefined,
-	notified: readonly string[]
+	notified: readonly string[],
+	rules?: IncidentRules
 ): string[] {
 	const sev = (INCIDENT_SEVERITIES as readonly string[]).includes(severity ?? '')
 		? (severity as IncidentSeverity)
@@ -431,7 +433,7 @@ export function missingNotifications(
 	const kind = (INCIDENT_TYPES as readonly string[]).includes(type ?? '')
 		? (type as IncidentType)
 		: 'Other';
-	return incidentNotifyRules(sev, kind)
+	return incidentNotifyRules(sev, kind, rules)
 		.map((r) => r.who as string)
 		.filter((who) => who !== 'Supervisor' && !notified.includes(who));
 }
@@ -467,6 +469,8 @@ type Json = string | readonly string[] | null | undefined;
 export interface AttentionInput {
 	/** Today in the agency's time zone, YYYY-MM-DD */
 	today: string;
+	/** The agency's incident reporting rules (defaults when absent) */
+	incidentRules?: IncidentRules;
 	incidents: readonly {
 		id: string;
 		client_id: string | null;
@@ -579,7 +583,12 @@ export function attentionItems(input: AttentionInput): AttentionItem[] {
 	const items: AttentionItem[] = [];
 	for (const r of input.incidents) {
 		if (r.status !== 'open') continue;
-		const missing = missingNotifications(r.severity, r.type, jsonList(r.notified_parties));
+		const missing = missingNotifications(
+			r.severity,
+			r.type,
+			jsonList(r.notified_parties),
+			input.incidentRules
+		);
 		items.push({
 			kind: 'incident',
 			id: r.id,
