@@ -1485,6 +1485,7 @@ AI-filled sections appear at opacity 0.85 (slightly faded). When the DSP taps in
 - Collapsed by default after AI processing completes
 - Contains the raw transcript text in 14px `var(--muted)`, monospace feel
 - 95% of users will never expand it
+- **As built:** `LomiReview.svelte` opens with a collapsed "What I said" disclosure holding the words the draft was made from (typed text and transcribed recordings, as sent to Lomi), 14px muted monospace.
 
 **Per-section editing:**
 

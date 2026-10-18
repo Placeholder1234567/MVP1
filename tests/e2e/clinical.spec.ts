@@ -256,6 +256,11 @@ test('incident requires a named signature and local Lomi changes require review 
 	await expect(review.getByText(/Simple sorting draft/)).toBeVisible();
 	const draft = review.getByLabel('Activities', { exact: true });
 	await expect(draft).toHaveValue(observation);
+	// The caregiver's own words stay available, collapsed, to check the draft against.
+	const said = review.locator('details.said');
+	await expect(said).not.toHaveAttribute('open', '');
+	await said.getByText('What I said', { exact: true }).click();
+	await expect(said).toContainText(observation);
 	const note = page.locator('form').getByLabel('Activities', { exact: true });
 	await expect(note).toHaveValue('');
 	await review.getByText('Refine activities with Lomi', { exact: true }).click();
