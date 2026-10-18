@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { sparklineSegments, trendChange, trendText } from '../../../src/lib/domain/trend';
+import {
+	fullWeekTrend,
+	sparklineSegments,
+	trendChange,
+	trendText
+} from '../../../src/lib/domain/trend';
 import { dailyCompliance, type GridRow } from '../../../src/lib/domain/mar-grid';
 
 describe('trendChange', () => {
@@ -78,5 +83,19 @@ describe('dailyCompliance', () => {
 	});
 	it('ignores as-needed rows', () => {
 		expect(dailyCompliance([[row([{ kind: 'prn', count: 2 }])]], 1)).toEqual([null]);
+	});
+});
+
+describe('fullWeekTrend', () => {
+	it('drops the current part week and compares the last full week with the two before', () => {
+		// A steady 70 a week, and 10 so far this Monday: steady, not a drop.
+		expect(trendChange(fullWeekTrend([70, 70, 70, 10]))?.direction).toBe('steady');
+		expect(fullWeekTrend([60, 80, 90, 5])).toEqual([70, 90]);
+		expect(trendChange(fullWeekTrend([60, 80, 90, 5]))?.percent).toBe(29);
+	});
+	it('copes with missing weeks', () => {
+		expect(fullWeekTrend([null, 40, 50, 1])).toEqual([40, 50]);
+		expect(fullWeekTrend([null, null, 50, 1])).toEqual([null, 50]);
+		expect(fullWeekTrend([5])).toEqual([null, null]);
 	});
 });
