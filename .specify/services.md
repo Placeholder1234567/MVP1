@@ -485,6 +485,8 @@ src/lib/server/services/
 - `getAuditByUser(agencyId, userId, dateRange): AuditEntry[]` — all actions by a specific user.
 - `getAuditReport(agencyId, dateRange): AuditReport` — compliance report for agency admins.
 
+**As built:** `listAudit()` and `getAudit()` back `/dashboard/audit` (metadata in the list; one entry's values at a time, each view recorded), and `exportAudit()` downloads the list's metadata as CSV for up to 93 days, recorded as a `report_exports` entry (trpc-router.md `audit.export`).
+
 **Depends on:**
 - Auth (performer identity resolution)
 
