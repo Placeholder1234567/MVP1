@@ -32,8 +32,8 @@
 		app.dispose();
 		await closeDb();
 	}}
-	onUnlock={async (key) => {
-		app.connect(await openDb(key, user.profileId, { offline: true }));
+	onUnlock={async (key, onWait) => {
+		app.connect(await openDb(key, user.profileId, { offline: true, onWait }));
 	}}
 >
 	<main class="saved-workspace stack">
