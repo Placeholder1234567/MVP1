@@ -802,6 +802,13 @@ export const messages = pgTable(
     // The person supported this message is about, if any (frontend-audit.md
     // finding 19); shown on their page.
     client_id: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+    // A reply's thread: the first message of the thread, on the same board
+    // (frontend-audit.md finding 19). Replies to a reply join the same thread.
+    reply_to: uuid('reply_to').references((): AnyPgColumn => messages.id, {
+      onDelete: 'set null',
+    }),
+    // The incident a thread follows up on, from the same home.
+    incident_id: uuid('incident_id').references(() => incidents.id, { onDelete: 'set null' }),
     sent_at: timestamp('sent_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

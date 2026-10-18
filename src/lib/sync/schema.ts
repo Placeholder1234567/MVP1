@@ -247,6 +247,8 @@ const messages = new Table({
 	agency_id: column.text,
 	home_id: column.text,
 	client_id: column.text,
+	reply_to: column.text,
+	incident_id: column.text,
 	from_name: column.text,
 	body: column.text,
 	sent_at: column.text,

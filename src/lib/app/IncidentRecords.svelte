@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { onDestroy, untrack } from 'svelte';
 	import type { DraftData } from './care-drafts.ts';
 	import { useSession } from './session.svelte';
@@ -417,6 +418,8 @@
 						><b>{row.type}, {(row.severity ?? '').toLowerCase()} severity</b><span
 							>{dayTimeOf(row.occurred_at, tz)} · {row.author_name}</span
 						></span
+					><a class="textbtn" href="{resolve('/(app)/messages')}?incident={row.id}"
+						>Discuss<span class="visually-hidden"> this report with the team</span></a
 					><span class="pill" class:bad={row.status === 'open'} class:ok={row.status !== 'open'}
 						>{row.status === 'open' ? 'Open' : 'Reviewed'}</span
 					>

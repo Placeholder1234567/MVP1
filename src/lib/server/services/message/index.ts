@@ -4,13 +4,17 @@ import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { findVisibleClient } from '../charting/index.ts';
-import { findMessage, insertMessage, insertRead } from './message.queries';
+import { findIncidentHome, findMessage, insertMessage, insertRead } from './message.queries';
 
 export const NewMessage = z.object({
 	id: z.uuid(),
 	homeId: z.uuid(),
 	/** The person this message is about, if any; must live in this home */
 	clientId: z.uuid().nullish(),
+	/** The message this replies to; a reply to a reply joins the same thread */
+	replyTo: z.uuid().nullish(),
+	/** The incident this thread follows up on; must be from this home */
+	incidentId: z.uuid().nullish(),
 	body: z.string().trim().min(1, 'Write a message first').max(2000),
 	/** When the caregiver pressed send, possibly offline */
 	sentAt: z.coerce.date().optional()
@@ -32,11 +36,22 @@ export async function sendMessage(
 		if (!client || client.homeId !== m.homeId)
 			throw new ServiceError('VALIDATION_FAILED', 'That person is not at this home');
 	}
+	let replyTo: string | null = null;
+	if (m.replyTo) {
+		const parent = await findMessage(tx, agencyId, m.replyTo);
+		if (!parent || parent.homeId !== m.homeId)
+			throw new ServiceError('VALIDATION_FAILED', 'That message is not on this board');
+		replyTo = parent.replyTo ?? m.replyTo;
+	}
+	if (m.incidentId && (await findIncidentHome(tx, agencyId, m.incidentId)) !== m.homeId)
+		throw new ServiceError('VALIDATION_FAILED', 'That incident is not from this home');
 	const created = await insertMessage(tx, {
 		id: m.id,
 		agency_id: agencyId,
 		home_id: m.homeId,
 		client_id: m.clientId ?? null,
+		reply_to: replyTo,
+		incident_id: m.incidentId ?? null,
 		from_name: user.name,
 		body: m.body,
 		sent_at: m.sentAt ?? new Date(),

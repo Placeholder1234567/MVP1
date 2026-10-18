@@ -54,10 +54,25 @@ test('the author sees who has read a board message, and readers lose the new bad
 	await expect(sam.getByRole('link', { name: 'Team messages, 0 new', exact: true })).toBeVisible();
 	await expect(sam.getByTestId('sync-status')).toHaveText('All changes synced');
 
-	const seen = mine.getByText(/^Seen by .*Sam Supervisor/);
+	// Sam replies; the reply joins Cara's thread on both devices.
+	const thread = sam.getByTestId('board').locator('article', { hasText: text });
+	await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+	const answer = `Synthetic ${info.project.name} reply ${Date.now()}: maintenance booked.`;
+	await thread.getByLabel('Your reply', { exact: true }).fill(answer);
+	await thread.getByRole('button', { name: 'Save reply', exact: true }).click();
+	await expect(thread.getByRole('list', { name: 'Replies' }).getByText(answer)).toBeVisible();
+	await expect(sam.getByTestId('sync-status')).toHaveText('All changes synced');
+	await expect(mine.getByRole('list', { name: 'Replies' }).getByText(answer)).toBeVisible({
+		timeout: 30000
+	});
+	await expect(mine.getByRole('button', { name: 'Reply (1 reply)', exact: true })).toBeVisible();
+
+	// The first message's receipts (the reply has its own).
+	const receipts = mine.locator('details.seen').first();
+	const seen = receipts.getByText(/^Seen by .*Sam Supervisor/);
 	await expect(seen).toBeVisible({ timeout: 30000 });
 	await seen.click();
-	await expect(mine.getByRole('listitem').filter({ hasText: 'Sam Supervisor' })).toBeVisible();
+	await expect(receipts.getByRole('listitem').filter({ hasText: 'Sam Supervisor' })).toBeVisible();
 	const axe = await new AxeBuilder({ page: cara }).include('[data-testid="board"]').analyze();
 	expect(axe.violations).toEqual([]);
 	await cara.screenshot({ path: info.outputPath('read-receipts.png'), fullPage: true });

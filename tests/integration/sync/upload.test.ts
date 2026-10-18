@@ -2,7 +2,7 @@
 // (offline-sync.md §3, §5, Appendix B). Real router, real users, local Postgres.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 
@@ -394,6 +394,83 @@ describe('sync.upload: messages and everything else', () => {
 			t.select().from(s.messages).where(eq(s.messages.id, id))
 		);
 		expect(row.client_id).toBe(OAK_PERSON);
+	});
+
+	it('replies join the thread on the same board; incident follow-ups stay in the home', async () => {
+		const root = randomUUID();
+		const [oakIncident, mapleIncident] = [randomUUID(), randomUUID()];
+		await withService((t) =>
+			t.insert(s.incidents).values([
+				{
+					id: oakIncident,
+					agency_id: AGENCY,
+					client_id: OAK_PERSON,
+					home_id: OAK,
+					type: 'Fall',
+					description: 'Synthetic fall'
+				},
+				{
+					id: mapleIncident,
+					agency_id: AGENCY,
+					client_id: MAPLE_PERSON,
+					home_id: MAPLE,
+					type: 'Fall',
+					description: 'Synthetic fall'
+				}
+			])
+		);
+		const maple = randomUUID();
+		await upload(SAM, [
+			{ op: 'PUT', table: 'messages', id: maple, data: { home_id: MAPLE, body: 'Maple only' } }
+		]);
+		const [reply, nested, wrongBoard, wrongIncident] = Array.from({ length: 4 }, () =>
+			randomUUID()
+		);
+		const r = await upload(CARA, [
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: root,
+				data: { home_id: OAK, incident_id: oakIncident, body: 'Follow-up on the fall' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: reply,
+				data: { home_id: OAK, reply_to: root, body: 'OK' }
+			},
+			// A reply to a reply joins the same thread.
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: nested,
+				data: { home_id: OAK, reply_to: reply, body: 'Yes' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: wrongBoard,
+				data: { home_id: OAK, reply_to: maple, body: 'x' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: wrongIncident,
+				data: { home_id: OAK, incident_id: mapleIncident, body: 'x' }
+			}
+		]);
+		expect(r.applied).toEqual([root, reply, nested]);
+		expect(r.rejected.map((x) => x.code)).toEqual(['VALIDATION_FAILED', 'VALIDATION_FAILED']);
+		const rows = await withService((t) =>
+			t
+				.select()
+				.from(s.messages)
+				.where(inArray(s.messages.id, [root, reply, nested]))
+		);
+		const byId = new Map(rows.map((m) => [m.id, m]));
+		expect(byId.get(root)?.incident_id).toBe(oakIncident);
+		expect(byId.get(reply)?.reply_to).toBe(root);
+		expect(byId.get(nested)?.reply_to).toBe(root);
 	});
 
 	it("can't post to another home's board", async () => {
