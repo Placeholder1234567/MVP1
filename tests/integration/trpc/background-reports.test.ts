@@ -520,3 +520,104 @@ it('prevents an older cleanup from clearing a newer failure recovery pointer', a
 		pendingReleases.delete(releaseCleanup);
 	}
 });
+
+it('recovers only accessible own Care jobs with safe status fields for the current home and profile', async () => {
+	const { id } = await queue();
+	const colleagueJob = await (
+		await as(colleague)
+	).report.requestBackground({ ...input, expectedProfileId: colleague });
+	const [source] = await withService((tx) =>
+		tx
+			.select()
+			.from(s.reportJobs)
+			.where(and(eq(s.reportJobs.agency_id, agency), eq(s.reportJobs.id, id)))
+	);
+	const [apiJob, otherHomeJob, foreignJob] = Array.from({ length: 3 }, () => randomUUID());
+	const params = source.params as { kind: string; input: Record<string, unknown> };
+	await withService((tx) =>
+		tx.insert(s.reportJobs).values([
+			{
+				...source,
+				id: apiJob,
+				type: 'notes',
+				format: 'csv',
+				params: { from: '2026-03-01', to: '2026-03-01' }
+			},
+			{
+				...source,
+				id: otherHomeJob,
+				params: { ...params, input: { ...params.input, homeId: nextHome, clientId: undefined } }
+			},
+			{
+				...source,
+				id: foreignJob,
+				agency_id: foreignAgency,
+				requested_by: foreignOwner,
+				params: { ...params, input: { ...params.input, homeId: foreignHome, clientId: undefined } }
+			}
+		])
+	);
+	const request = { expectedProfileId: owner, homeId: home };
+	const jobs = await (await as()).report.recentBackground(request);
+	expect(jobs.some((job) => job.id === id)).toBe(true);
+	expect(jobs.length).toBeLessThanOrEqual(20);
+	for (const hidden of [colleagueJob.id, apiJob, otherHomeJob, foreignJob])
+		expect(jobs.some((job) => job.id === hidden)).toBe(false);
+	const allowed = new Set([
+		'id',
+		'type',
+		'format',
+		'status',
+		'createdAt',
+		'expiresAt',
+		'error',
+		'rows',
+		'homeId',
+		'clientId',
+		'fromDay',
+		'toDay',
+		'approvedOnly'
+	]);
+	for (const job of jobs) expect(Object.keys(job).every((key) => allowed.has(key))).toBe(true);
+	await expect(
+		(await as()).report.recentBackground({ ...request, expectedProfileId: colleague })
+	).rejects.toMatchObject({ code: 'NOT_FOUND' });
+	await expect(
+		(await as()).report.recentBackground({ ...request, homeId: foreignHome })
+	).rejects.toMatchObject({ code: 'NOT_FOUND' });
+	await expect(
+		(await as(caregiver)).report.recentBackground({ ...request, expectedProfileId: caregiver })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	const user = (await getCurrentUser(uid(owner)))!;
+	const withoutReports = caller({
+		user: { ...user, features: user.features.filter((feature) => feature !== 'reports') },
+		request: {}
+	});
+	await expect(withoutReports.report.recentBackground(request)).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
+	const withoutHealth = caller({
+		user: { ...user, features: user.features.filter((feature) => feature !== 'health') },
+		request: {}
+	});
+	const restricted = await withoutHealth.report.recentBackground(request);
+	expect(restricted.some((job) => job.id === id)).toBe(false);
+	await withService((tx) =>
+		tx
+			.update(s.profiles)
+			.set({ home_ids: [nextHome] })
+			.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, owner)))
+	);
+	try {
+		await expect((await as()).report.recentBackground(request)).rejects.toMatchObject({
+			code: 'NOT_FOUND'
+		});
+	} finally {
+		await withService((tx) =>
+			tx
+				.update(s.profiles)
+				.set({ home_ids: [home] })
+				.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, owner)))
+		);
+	}
+});
