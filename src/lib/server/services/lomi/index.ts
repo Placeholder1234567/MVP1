@@ -37,7 +37,7 @@ export async function reserve(
 		);
 		if (
 			rows.length >= 500 ||
-			own.length >= { draft: 10, transcribe: 20, edit: 60, route: 30, summary: 5 }[task]
+			own.length >= { draft: 10, transcribe: 60, edit: 60, route: 30, summary: 5 }[task]
 		)
 			throw new LomiRateLimitError(
 				'Lomi’s hourly limit has been reached. You can keep writing directly.'
