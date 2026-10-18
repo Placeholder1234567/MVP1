@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lte, or } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	coverageCandidates as candidates,
@@ -110,6 +110,25 @@ export function candidateRows(tx: Tx, agencyId: string, id: string) {
 		.select()
 		.from(candidates)
 		.where(and(eq(candidates.agency_id, agencyId), eq(candidates.coverage_request_id, id)));
+}
+/** Everyone checked for a request, with their name, eligibility and reply. */
+export function candidateDetail(tx: Tx, agencyId: string, id: string) {
+	return tx
+		.select({
+			profileId: candidates.profile_id,
+			name: profiles.name,
+			eligible: candidates.eligible,
+			reason: candidates.eligibility_reason,
+			reply: candidates.reply,
+			repliedAt: candidates.replied_at
+		})
+		.from(candidates)
+		.innerJoin(
+			profiles,
+			and(eq(profiles.id, candidates.profile_id), eq(profiles.agency_id, candidates.agency_id))
+		)
+		.where(and(eq(candidates.agency_id, agencyId), eq(candidates.coverage_request_id, id)))
+		.orderBy(desc(candidates.eligible), asc(profiles.name));
 }
 export async function addCandidates(tx: Tx, rows: (typeof candidates.$inferInsert)[]) {
 	if (rows.length) await tx.insert(candidates).values(rows);
