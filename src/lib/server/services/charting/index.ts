@@ -107,7 +107,7 @@ async function saveGoals(
 			reason: g.reason ?? null
 		};
 		const existing = await findNoteGoal(tx, agencyId, noteId, g.goalId);
-		if (existing) await updateNoteGoal(tx, existing.id, set);
+		if (existing) await updateNoteGoal(tx, agencyId, existing.id, set);
 		else
 			await insertNoteGoal(tx, {
 				id: rowIds[g.goalId],

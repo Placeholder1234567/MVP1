@@ -164,13 +164,14 @@ export async function insertNoteGoal(tx: Tx, row: typeof noteGoals.$inferInsert)
 
 export async function updateNoteGoal(
 	tx: Tx,
+	agencyId: string,
 	id: string,
 	set: Pick<typeof noteGoals.$inferInsert, 'trials' | 'not_attempted' | 'reason'>
 ) {
 	await tx
 		.update(noteGoals)
 		.set({ ...set, updated_at: new Date() })
-		.where(eq(noteGoals.id, id));
+		.where(and(eq(noteGoals.agency_id, agencyId), eq(noteGoals.id, id)));
 }
 
 export function selectNoteHistory(tx: Tx, agencyId: string, noteId: string) {
