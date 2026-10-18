@@ -927,6 +927,7 @@ npm run test:e2e -- --grep @offline
 | `coverage_candidates` | -- | Never synced | -- | -- | -- |
 | `case_notes` | -- | Never synced | -- | -- | -- |
 | `note_history` | -- | Never synced | -- | -- | -- |
+| `schedule_templates` | -- | Never synced (supervisors manage them online) | -- | -- | -- |
 
 ## Appendix B: Error Codes for Failed Writes
 

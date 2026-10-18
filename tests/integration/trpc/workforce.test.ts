@@ -425,3 +425,66 @@ it('copies last week into open slots, keeps assigned ones and skips double booki
 		(await supervisor.schedule.copyWeek({ homeId: oak, fromWeek: from, toWeek: to })).copied
 	).toBe(0);
 });
+
+it('saves a week as a template and applies it to the open slots of another week', async () => {
+	const supervisor = await as(sam);
+	const from = weekStart(addDays(day, 56));
+	const to = addDays(from, 14);
+	await supervisor.schedule.setSlot({
+		homeId: oak,
+		day: addDays(from, 0),
+		shift: 'am',
+		profileId: cara
+	});
+	await supervisor.schedule.setSlot({
+		homeId: oak,
+		day: addDays(from, 3),
+		shift: 'pm',
+		profileId: sam
+	});
+
+	await expect(
+		(await as(cara)).schedule.saveTemplate({ homeId: oak, name: 'Usual week', fromWeek: from })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	await expect(
+		supervisor.schedule.saveTemplate({ homeId: oak, name: 'Empty', fromWeek: addDays(from, 70) })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	const saved = await supervisor.schedule.saveTemplate({
+		homeId: oak,
+		name: 'Usual week',
+		fromWeek: from
+	});
+	expect(saved.shifts).toBe(2);
+	// Saving under the same name replaces it.
+	expect(
+		(await supervisor.schedule.saveTemplate({ homeId: oak, name: 'Usual week', fromWeek: from })).id
+	).toBe(saved.id);
+	expect(await supervisor.schedule.templates({ homeId: oak })).toEqual([
+		expect.objectContaining({ id: saved.id, name: 'Usual week', shifts: 2 })
+	]);
+	expect(await supervisor.schedule.templates({ homeId: maple })).toEqual([]);
+
+	// Thursday evening in the target week is already Cara's: it stays.
+	await supervisor.schedule.setSlot({
+		homeId: oak,
+		day: addDays(to, 3),
+		shift: 'pm',
+		profileId: cara
+	});
+	const result = await supervisor.schedule.applyTemplate({ id: saved.id, toWeek: to });
+	expect(result.copied).toBe(1);
+	expect(result.skipped).toEqual([
+		{ day: addDays(to, 3), shift: 'pm', reason: 'already-assigned' }
+	]);
+	const week = await supervisor.schedule.get({ homeId: oak, weekStart: to });
+	const by = (d: number, shift: string) =>
+		week.slots.find((s) => s.day === addDays(to, d) && s.shift === shift)?.assigned_to ?? null;
+	expect([by(0, 'am'), by(3, 'pm')]).toEqual([cara, cara]);
+
+	await expect(supervisor.schedule.deleteTemplate({ id: saved.id })).resolves.toEqual({
+		deleted: true
+	});
+	await expect(
+		supervisor.schedule.applyTemplate({ id: saved.id, toWeek: to })
+	).rejects.toMatchObject({ code: 'NOT_FOUND' });
+});

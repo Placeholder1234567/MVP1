@@ -1,19 +1,29 @@
 import {
 	addDays,
+	parseTemplateSlots,
 	planWeekCopy,
 	shiftAt,
 	shiftIsPast,
-	type CopySkip
+	templateFromWeek,
+	templateToWeek,
+	TEMPLATE_NAME_MAX,
+	TEMPLATES_PER_HOME_MAX,
+	type CopySkip,
+	type WeekSlot
 } from '../../../domain/index.ts';
 import { asService, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import {
 	conflictingSlot,
+	homeTemplates,
+	removeTemplate,
 	saveSlot,
 	scheduleHome,
 	scheduleStaff,
 	staffShifts,
+	templateById,
+	upsertTemplate,
 	weekSlots
 } from './schedule.queries';
 import { settleCoverage } from './coverage';
@@ -94,16 +104,34 @@ export async function copyScheduleWeek(
 		);
 	if (!(await scheduleHome(tx, user.agencyId, input.homeId)))
 		throw new ServiceError('NOT_FOUND', 'Home not found');
-	const week = (start: string) =>
-		weekSlots(tx, user.agencyId, input.homeId, start, addDays(start, 6)).then((rows) =>
-			rows.map((r) => ({ day: r.day, shift: r.shift, assignedTo: r.assigned_to, status: r.status }))
-		);
+	const source = await weekOf(tx, user.agencyId, input.homeId, input.fromWeek);
+	return fillOpenSlots(tx, user, input.homeId, source, input.fromWeek, input.toWeek);
+}
+
+function weekOf(tx: Tx, agencyId: string, homeId: string, start: string): Promise<WeekSlot[]> {
+	return weekSlots(tx, agencyId, homeId, start, addDays(start, 6)).then((rows) =>
+		rows.map((r) => ({ day: r.day, shift: r.shift, assignedTo: r.assigned_to, status: r.status }))
+	);
+}
+
+/**
+ * Fills the open slots of the week starting toWeek from source (a week's
+ * slots starting fromWeek). Each copy is checked like a manual assignment.
+ */
+async function fillOpenSlots(
+	tx: Tx,
+	user: CurrentUser,
+	homeId: string,
+	source: WeekSlot[],
+	fromWeek: string,
+	toWeek: string
+) {
 	const now = new Date();
 	const plan = planWeekCopy(
-		await week(input.fromWeek),
-		await week(input.toWeek),
-		input.fromWeek,
-		input.toWeek,
+		source,
+		await weekOf(tx, user.agencyId, homeId, toWeek),
+		fromWeek,
+		toWeek,
 		(day, shift) =>
 			shiftIsPast(day, shift, now, user.timeZone) || startedNow(day, shift, now, user.timeZone)
 	);
@@ -114,7 +142,7 @@ export async function copyScheduleWeek(
 	for (const slot of plan.copy) {
 		try {
 			// A savepoint per slot: one unavailable person doesn't undo the rest.
-			await tx.transaction((sp) => setScheduleSlot(sp, user, { homeId: input.homeId, ...slot }));
+			await tx.transaction((sp) => setScheduleSlot(sp, user, { homeId, ...slot }));
 			copied++;
 		} catch (e) {
 			if (!(e instanceof ServiceError)) throw e;
@@ -122,6 +150,75 @@ export async function copyScheduleWeek(
 		}
 	}
 	return { copied, skipped };
+}
+
+async function managedHome(tx: Tx, user: CurrentUser, homeId: string) {
+	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
+	if (!(await scheduleHome(tx, user.agencyId, homeId)))
+		throw new ServiceError('NOT_FOUND', 'Home not found');
+}
+
+/** The home's saved weeks (frontend-audit.md finding 17), by name. */
+export async function listScheduleTemplates(tx: Tx, user: CurrentUser, homeId: string) {
+	await managedHome(tx, user, homeId);
+	const rows = await homeTemplates(tx, user.agencyId, homeId);
+	return rows.map((r) => ({
+		id: r.id,
+		name: r.name,
+		shifts: parseTemplateSlots(r.slots).length,
+		updatedAt: r.updatedAt
+	}));
+}
+
+/** Saves a week's assignments as a template; the same name at this home is replaced. */
+export async function saveScheduleTemplate(
+	tx: Tx,
+	user: CurrentUser,
+	input: { homeId: string; name: string; fromWeek: string }
+) {
+	await managedHome(tx, user, input.homeId);
+	const name = input.name.trim().slice(0, TEMPLATE_NAME_MAX);
+	if (!name) throw new ServiceError('VALIDATION_FAILED', 'Give the template a name');
+	const slots = templateFromWeek(
+		await weekOf(tx, user.agencyId, input.homeId, input.fromWeek),
+		input.fromWeek
+	);
+	if (!slots.length)
+		throw new ServiceError('VALIDATION_FAILED', 'That week has no assignments to save');
+	const existing = await homeTemplates(tx, user.agencyId, input.homeId);
+	if (!existing.some((t) => t.name === name) && existing.length >= TEMPLATES_PER_HOME_MAX)
+		throw new ServiceError(
+			'VALIDATION_FAILED',
+			`A home can keep up to ${TEMPLATES_PER_HOME_MAX} templates. Delete one first.`
+		);
+	const saved = await upsertTemplate(tx, {
+		agency_id: user.agencyId,
+		home_id: input.homeId,
+		name,
+		slots,
+		created_by: user.profileId
+	});
+	return { ...saved, shifts: slots.length };
+}
+
+/** Fills a week's open slots from a template, like copying a week. */
+export async function applyScheduleTemplate(
+	tx: Tx,
+	user: CurrentUser,
+	input: { id: string; toWeek: string }
+) {
+	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
+	const template = await templateById(tx, user.agencyId, input.id);
+	if (!template) throw new ServiceError('NOT_FOUND', 'Template not found');
+	const source = templateToWeek(parseTemplateSlots(template.slots), input.toWeek);
+	return fillOpenSlots(tx, user, template.home_id, source, input.toWeek, input.toWeek);
+}
+
+export async function deleteScheduleTemplate(tx: Tx, user: CurrentUser, id: string) {
+	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
+	if (!(await removeTemplate(tx, user.agencyId, id)))
+		throw new ServiceError('NOT_FOUND', 'Template not found');
+	return { deleted: true };
 }
 
 /** The shift running right now has started; copying into it would rewrite who is on. */

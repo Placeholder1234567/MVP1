@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { localTime, weekStart } from '../../../domain/index.ts';
+import { localTime, TEMPLATE_NAME_MAX, weekStart } from '../../../domain/index.ts';
 import {
 	getSchedule,
 	myShifts,
 	setScheduleSlot,
 	copyScheduleWeek,
+	listScheduleTemplates,
+	saveScheduleTemplate,
+	applyScheduleTemplate,
+	deleteScheduleTemplate,
 	startCoverage,
 	respondCoverage,
 	coverageOffers
@@ -59,7 +63,25 @@ export const scheduleRouter = router({
 		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, { ...input, profileId: null })),
 	copyWeek: featureRoleProcedure('scheduling', 'supervisor')
 		.input(z.object({ homeId: z.uuid(), fromWeek: z.iso.date(), toWeek: z.iso.date() }))
-		.mutation(({ ctx, input }) => copyScheduleWeek(ctx.db, ctx.user, input))
+		.mutation(({ ctx, input }) => copyScheduleWeek(ctx.db, ctx.user, input)),
+	templates: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ homeId: z.uuid() }))
+		.query(({ ctx, input }) => listScheduleTemplates(ctx.db, ctx.user, input.homeId)),
+	saveTemplate: featureRoleProcedure('scheduling', 'supervisor')
+		.input(
+			z.object({
+				homeId: z.uuid(),
+				name: z.string().trim().min(1).max(TEMPLATE_NAME_MAX),
+				fromWeek: z.iso.date()
+			})
+		)
+		.mutation(({ ctx, input }) => saveScheduleTemplate(ctx.db, ctx.user, input)),
+	applyTemplate: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ id: z.uuid(), toWeek: z.iso.date() }))
+		.mutation(({ ctx, input }) => applyScheduleTemplate(ctx.db, ctx.user, input)),
+	deleteTemplate: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) => deleteScheduleTemplate(ctx.db, ctx.user, input.id))
 });
 export const coverageRouter = router({
 	callout: featureProcedure('coverage')

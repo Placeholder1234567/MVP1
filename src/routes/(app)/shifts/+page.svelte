@@ -82,6 +82,97 @@
 			busy = false;
 		}
 	}
+	// Saved weeks for this home (frontend-audit.md finding 17).
+	type Template = Awaited<ReturnType<typeof trpc.schedule.templates.query>>[number];
+	let templates = $state<Template[]>([]);
+	let templateId = $state('');
+	let templateName = $state('');
+	async function loadTemplates() {
+		if (!manager || !online || !app.homeId) return;
+		const homeId = app.homeId;
+		try {
+			const list = await trpc.schedule.templates.query({ homeId });
+			if (app.homeId !== homeId) return;
+			templates = list;
+			if (!list.some((t) => t.id === templateId)) templateId = list[0]?.id ?? '';
+		} catch {
+			templates = [];
+		}
+	}
+	$effect(() => {
+		void app.homeId;
+		void online;
+		void loadTemplates();
+	});
+	/** Runs a schedule change and reports it for the week on screen. */
+	async function run(work: () => Promise<string>, failure: string) {
+		if (!online || !app.homeId || busy) return;
+		const operationScope = context;
+		messageScope = operationScope;
+		busy = true;
+		message = '';
+		try {
+			const done = await work();
+			if (context === operationScope) message = done;
+		} catch (e) {
+			if (context === operationScope)
+				message = e instanceof Error && e.message ? e.message : failure;
+		} finally {
+			busy = false;
+		}
+	}
+	const saveTemplate = () =>
+		run(async () => {
+			const saved = await trpc.schedule.saveTemplate.mutate({
+				homeId: app.homeId!,
+				name: templateName,
+				fromWeek: start
+			});
+			templateName = '';
+			templateId = saved.id;
+			await loadTemplates();
+			return `Saved “${saved.name}” with ${saved.shifts} ${saved.shifts === 1 ? 'shift' : 'shifts'}.`;
+		}, 'Could not save the template. Reconnect and try again.');
+	const applyTemplate = () =>
+		run(async () => {
+			const name = templates.find((t) => t.id === templateId)?.name ?? 'the template';
+			const { copied, skipped } = await trpc.schedule.applyTemplate.mutate({
+				id: templateId,
+				toWeek: start
+			});
+			const unavailable = skipped.filter((x) => x.reason === 'unavailable').length;
+			return [
+				`Filled ${copied} open ${copied === 1 ? 'shift' : 'shifts'} from “${name}”. Updates will appear after sync.`,
+				skipped.length - unavailable
+					? `${skipped.length - unavailable} already assigned, being covered or started, left as they were.`
+					: '',
+				unavailable
+					? `${unavailable} left open: the staff member is no longer available for this home or that shift.`
+					: ''
+			]
+				.filter(Boolean)
+				.join(' ');
+		}, 'Could not apply the template. Reconnect and try again.');
+	const deleteTemplate = () => {
+		const name = templates.find((t) => t.id === templateId)?.name;
+		if (!name || !confirm(`Delete the template “${name}”? Schedules already filled stay.`)) return;
+		return run(async () => {
+			await trpc.schedule.deleteTemplate.mutate({ id: templateId });
+			await loadTemplates();
+			return `Deleted “${name}”.`;
+		}, 'Could not delete the template. Reconnect and try again.');
+	};
+
+	// Drag a staff name onto a shift (desktop); each shift's list does the same.
+	let dragging = $state<string | null>(null);
+	let dropTarget = $state('');
+	async function dropOn(day: string, shift: 'am' | 'pm' | 'on') {
+		const id = dragging;
+		dragging = null;
+		dropTarget = '';
+		if (id) await assign(day, shift, id);
+	}
+
 	async function cover(day: string, shift: 'am' | 'pm' | 'on') {
 		if (!online || !app.homeId || busy) return false;
 		const homeId = app.homeId;
@@ -124,7 +215,66 @@
 		</p>
 		<button class="btn sec" disabled={busy || !online || !app.homeId} onclick={copyLastWeek}
 			>Copy last week’s assignments</button
-		>{/if}
+		>
+		<section class="card pad stack" aria-labelledby="templates-h">
+			<h2 id="templates-h">Templates</h2>
+			<p class="muted s14">
+				Save a week your team usually works, then use it to fill the open shifts of any week.
+			</p>
+			{#if templates.length}<div class="template-row">
+					<label class="grow"
+						>Template<select class="input" bind:value={templateId} disabled={busy || !online}
+							>{#each templates as t (t.id)}<option value={t.id}
+									>{t.name} ({t.shifts} {t.shifts === 1 ? 'shift' : 'shifts'})</option
+								>{/each}</select
+						></label
+					><button class="btn sec" disabled={busy || !online || !templateId} onclick={applyTemplate}
+						>Fill open shifts from template</button
+					><button
+						class="textbtn"
+						disabled={busy || !online || !templateId}
+						onclick={deleteTemplate}>Delete template</button
+					>
+				</div>{/if}
+			<form
+				class="template-row"
+				onsubmit={(e) => {
+					e.preventDefault();
+					void saveTemplate();
+				}}
+			>
+				<label class="grow"
+					>Save this week as<input
+						class="input"
+						maxlength="60"
+						placeholder="Usual week"
+						bind:value={templateName}
+						disabled={busy || !online}
+					/></label
+				><button class="btn sec" disabled={busy || !online || !templateName.trim()}
+					>Save template</button
+				>
+			</form>
+		</section>
+		{#if staff.length && online}<div class="palette" aria-hidden="true">
+				<p class="muted s13">Drag a name onto a shift, or choose from each shift’s list.</p>
+				<ul>
+					{#each staff as person (person.id)}<li
+							class="chip"
+							draggable="true"
+							ondragstart={(e) => {
+								dragging = person.id;
+								e.dataTransfer?.setData('text/plain', person.id);
+							}}
+							ondragend={() => {
+								dragging = null;
+								dropTarget = '';
+							}}
+						>
+							{person.name}
+						</li>{/each}
+				</ul>
+			</div>{/if}{/if}
 	{#if !online}<p class="callout" role="status">
 			You’re offline. Read saved recent activity; reconnect to change assignments or request
 			coverage.
@@ -142,7 +292,25 @@
 				{#each SHIFTS as shift (shift.key)}{@const slot = slots.find(
 						(s) => s.day === day && s.shift === shift.key
 					)}
-					<div class="stack">
+					<div
+						class="stack cell"
+						class:drop={dropTarget === `${day}:${shift.key}`}
+						role="group"
+						aria-label="{day} {shift.label}"
+						ondragover={(e) => {
+							if (!manager || !dragging) return;
+							e.preventDefault();
+							dropTarget = `${day}:${shift.key}`;
+						}}
+						ondragleave={() => {
+							if (dropTarget === `${day}:${shift.key}`) dropTarget = '';
+						}}
+						ondrop={(e) => {
+							if (!manager || !dragging) return;
+							e.preventDefault();
+							void dropOn(day, shift.key);
+						}}
+					>
 						<div>
 							<b>{shift.label}</b>
 							<p class="muted">{shift.start}–{shift.end}</p>
@@ -191,6 +359,41 @@
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 18px;
+	}
+	.template-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		align-items: flex-end;
+	}
+	.palette ul {
+		list-style: none;
+		margin: 6px 0 0;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.chip {
+		cursor: grab;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: var(--sky);
+		font-size: 14px;
+		font-weight: 600;
+	}
+	.cell {
+		border-radius: 12px;
+		outline: 2px dashed transparent;
+		outline-offset: 4px;
+	}
+	.cell.drop {
+		outline-color: var(--blue);
+	}
+	@media (max-width: 600px), (pointer: coarse) {
+		.palette {
+			display: none;
+		}
 	}
 	@media (max-width: 600px) {
 		.shift-grid {
