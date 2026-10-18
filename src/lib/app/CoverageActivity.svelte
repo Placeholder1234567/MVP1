@@ -1,9 +1,32 @@
 <script lang="ts">
 	import { useSession } from './session.svelte';
 	import { recentCoverage, coverageLabel, coverageTimeline } from './coverage-activity';
-	import { SHIFTS } from '#lib/domain/index.ts';
+	import { ELIGIBILITY_REASON_LABEL, SHIFTS } from '#lib/domain/index.ts';
 	import type { Database } from '#lib/sync/schema.ts';
+	import { trpc } from '#lib/trpc.ts';
+	type Detail = Awaited<ReturnType<typeof trpc.coverage.get.query>>;
 	const app = useSession();
+	// Who each request was offered to; candidates aren't synced, so this loads online.
+	let details = $state<Record<string, Detail | 'loading' | 'failed'>>({});
+	async function loadDetail(id: string) {
+		if (details[id] && details[id] !== 'failed') return;
+		details[id] = 'loading';
+		try {
+			details[id] = await trpc.coverage.get.query({ id });
+		} catch {
+			details[id] = 'failed';
+		}
+	}
+	const reasonLabel = (reason: string | null) =>
+		(reason && ELIGIBILITY_REASON_LABEL[reason as keyof typeof ELIGIBILITY_REASON_LABEL]) ||
+		'Not eligible';
+	const repliedAt = (at: Date | string | null) => (at ? timestamp(new Date(at).toISOString()) : '');
+	const replyLabel = (c: Detail['candidates'][number]) =>
+		c.reply === 'accepted'
+			? `Accepted ${repliedAt(c.repliedAt)}`
+			: c.reply === 'declined'
+				? `Declined ${repliedAt(c.repliedAt)}`
+				: 'No reply';
 	let steps = $state<Database['coverage_steps'][]>([]);
 	let scope = $state('');
 	let failed = $state(false);
@@ -60,6 +83,7 @@
 	{#each requests as request (request.id)}
 		{@const shift = SHIFTS.find((s) => s.key === request.shift)}
 		{@const events = scope === app.homeId ? coverageTimeline(steps, app.homeId, request.id) : []}
+		{@const detail = details[request.id]}
 		<article class="card pad stack" aria-label="Coverage request">
 			<div class="spread">
 				<h3>
@@ -88,6 +112,24 @@
 				</ol>{:else}<p class="muted">
 					No timeline events saved on this device yet. Reconnect to receive available updates.
 				</p>{/if}
+			<details
+				ontoggle={(e) => {
+					if ((e.currentTarget as HTMLDetailsElement).open) void loadDetail(request.id);
+				}}
+			>
+				<summary>Who was offered</summary>
+				{#if detail === 'loading'}<p class="muted">Loading…</p>
+				{:else if detail === 'failed'}<p role="status">
+						Could not load who was offered. Check your connection and open this again.
+					</p>
+				{:else if detail}{#if detail.candidates.length}<ul class="candidates">
+							{#each detail.candidates as c (c.profileId)}<li>
+									<b>{c.name}</b><span class="muted"
+										>{c.eligible ? 'Offered' : reasonLabel(c.reason)}</span
+									>{#if c.eligible}<span>{replyLabel(c)}</span>{/if}
+								</li>{/each}
+						</ul>{:else}<p class="muted">Nobody has been checked for this shift yet.</p>{/if}{/if}
+			</details>
 		</article>
 	{:else}<p class="card pad">
 			No recent coverage requests saved for this home. Callouts and posted open shifts appear here
@@ -111,6 +153,18 @@
 	}
 	time {
 		color: var(--muted);
+	}
+	.candidates {
+		list-style: none;
+		padding: 0;
+		margin: 8px 0 0;
+	}
+	.candidates li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 12px;
+		border-top: 1px solid var(--line);
+		padding: 8px 0;
 	}
 	h3,
 	p {

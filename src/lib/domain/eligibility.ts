@@ -30,6 +30,16 @@ export type Reason =
 	| 'over_40_hours'
 	| 'not_med_certified';
 
+/** Why someone wasn't offered a shift, for the coverage activity log. */
+export const ELIGIBILITY_REASON_LABEL: Record<Reason, string> = {
+	called_out: 'Called out of this shift',
+	inactive: 'Not active',
+	not_trained_at_home: 'Not assigned to this home',
+	already_working: 'Already working that day',
+	over_40_hours: 'Would go over 40 hours that week',
+	not_med_certified: 'Medications due; not med-certified'
+};
+
 export interface Eligibility {
 	id: string;
 	eligible: boolean;

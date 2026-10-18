@@ -267,6 +267,16 @@ it('offers only eligible caregivers and the first acceptance wins atomically', a
 	expect([eli, bea]).toContain(
 		slots.slots.find((s) => s.day === day && s.shift === 'pm')?.assigned_to
 	);
+	// The activity log shows who was offered, why others weren't, and each reply.
+	const detail = await supervisor.coverage.get({ id: request.id });
+	const byId = new Map(detail.candidates.map((c) => [c.profileId, c]));
+	expect(byId.get(cara)).toMatchObject({ eligible: false, reason: 'called_out' });
+	expect(byId.get(dev)).toMatchObject({ eligible: false, reason: 'not_trained_at_home' });
+	expect([byId.get(eli)?.reply, byId.get(bea)?.reply]).toContain('accepted');
+	expect(detail.candidates.find((c) => c.reply === 'accepted')?.repliedAt).toBeInstanceOf(Date);
+	await expect(original.coverage.get({ id: request.id })).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
 });
 
 it('sends a reminder once and a timed-out request becomes a supervisor action', async () => {

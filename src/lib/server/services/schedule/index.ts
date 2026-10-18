@@ -35,6 +35,7 @@ export {
 	searchCoverage,
 	respondCoverage,
 	coverageOffers,
+	coverageDetail,
 	coverageTimer,
 	sweepCoverage
 } from './coverage';

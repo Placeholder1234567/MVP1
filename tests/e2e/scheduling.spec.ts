@@ -322,11 +322,15 @@ test('a caregiver gives a reason when they can’t make a shift, and the supervi
 	}
 
 	const activity = page.getByRole('region', { name: 'Coverage activity', exact: true });
+	const request = activity
+		.getByRole('article')
+		.filter({ hasText: `${day} · Evening` })
+		.first();
+	await expect(request).toContainText('Sick');
+	// Who was offered loads online: Cara called out, so she wasn't offered.
+	await request.getByText('Who was offered', { exact: true }).click();
 	await expect(
-		activity
-			.getByRole('article')
-			.filter({ hasText: `${day} · Evening` })
-			.first()
-	).toContainText('Sick');
+		request.getByRole('listitem').filter({ hasText: 'Cara Giver' }).first()
+	).toContainText('Called out of this shift');
 	await assignment.selectOption(original);
 });
