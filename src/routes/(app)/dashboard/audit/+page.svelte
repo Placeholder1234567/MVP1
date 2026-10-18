@@ -29,6 +29,8 @@
 		'api_access',
 		'api_keys',
 		'mfa_resets',
+		'message_photos',
+		'photo_views',
 		'audit_views'
 	];
 

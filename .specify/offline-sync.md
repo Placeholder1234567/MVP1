@@ -339,7 +339,7 @@ streams:
   messages:
     auto_subscribe: true
     query: >-
-      SELECT id, agency_id, home_id, client_id, reply_to, incident_id, from_name, body, sent_at, created_by, created_at, updated_at FROM messages
+      SELECT id, agency_id, home_id, client_id, reply_to, incident_id, photo_id, from_name, body, sent_at, created_by, created_at, updated_at FROM messages
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
   message_reads:
     auto_subscribe: true
@@ -928,6 +928,7 @@ npm run test:e2e -- --grep @offline
 | `case_notes` | -- | Never synced | -- | -- | -- |
 | `note_history` | -- | Never synced | -- | -- | -- |
 | `schedule_templates` | -- | Never synced (supervisors manage them online) | -- | -- | -- |
+| `message_photos` | -- | Never synced (photos are fetched when opened, `message.photo`) | -- | -- | -- |
 
 ## Appendix B: Error Codes for Failed Writes
 

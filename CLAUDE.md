@@ -64,7 +64,7 @@ Read `.specify/` for full specs. Key files:
 | `.specify/constitution.md` | Engineering principles -- read before writing any code |
 | `.specify/infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, DB session setup, jobs, local dev, cost |
 | `deploy/README.md` | Deploying to Google Cloud: bootstrap and release scripts, first-deploy checks |
-| `.specify/schema.ts` | Database schema (43 Drizzle pgTable definitions, source of truth) |
+| `.specify/schema.ts` | Database schema (44 Drizzle pgTable definitions, source of truth) |
 | `.specify/services.md` | Service boundaries, data ownership, dependencies |
 | `.specify/trpc-router.md` | tRPC procedure specification (26 routers, all input/output types) |
 | `.specify/charting-ux.md` | Screen specs, component catalog, UX flows, accessibility |
@@ -163,6 +163,8 @@ TASKS_QUEUE_PREFIX=              # Cloud Tasks queue location/prefix
 WORKER_URL=                      # worker service URL that Cloud Tasks calls
 WORKER_SERVICE_ACCOUNT=          # identity Cloud Tasks signs OIDC tokens as
 EXPORTS_BUCKET=                  # Cloud Storage bucket for report exports
+MEDIA_BUCKET=                    # Private Cloud Storage bucket for board photos (locally .data/media)
+BODY_SIZE_LIMIT=                 # adapter-node request limit; deploy.sh sets 4M for board photo uploads
 
 # Identity Platform
 PUBLIC_FIREBASE_API_KEY=         # Public web config (not a secret)

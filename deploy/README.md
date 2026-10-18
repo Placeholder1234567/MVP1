@@ -91,6 +91,19 @@ npm run maintenance:announce -- --start 2026-11-01T03:00:00Z --end 2026-11-01T05
 
 `--impact` is `unavailable`, `slow` or `sync_paused`. The window is at most 12 hours and at most 60 days ahead. The output prints an announcement ID; if some agencies fail, run again with `--id <that ID>`, and only the ones that didn't get it are sent to.
 
+## Board photos
+
+Photos shared on home boards go to a private Cloud Storage bucket. Create it once and let the web service write to it:
+
+```bash
+gcloud storage buckets create gs://$PROJECT-guad-media --location=$REGION \
+  --uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets add-iam-policy-binding gs://$PROJECT-guad-media \
+  --member=serviceAccount:guad-web@$PROJECT.iam.gserviceaccount.com --role=roles/storage.objectAdmin
+```
+
+Then set `MEDIA_BUCKET: "<project>-guad-media"` in `deploy/app.env.yaml` and deploy. Without it, photos are written to the container's disk and lost on the next deploy.
+
 ## 5. Messaging (when ready)
 
 Push (FCM) needs nothing beyond `PUSH_DRIVER=fcm`. Email and SMS need an AWS account with the AWS BAA accepted:

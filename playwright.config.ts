@@ -27,7 +27,8 @@ export default defineConfig({
 	webServer: {
 		command: 'node --env-file=.env build/index.js',
 		url: 'http://127.0.0.1:4175/login',
-		env: { HOST: '127.0.0.1', PORT: '4175' },
+		// BODY_SIZE_LIMIT as deployed (deploy.sh), for board photos.
+		env: { HOST: '127.0.0.1', PORT: '4175', BODY_SIZE_LIMIT: '4M' },
 		reuseExistingServer: false,
 		timeout: 120000
 	}

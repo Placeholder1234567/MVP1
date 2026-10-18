@@ -214,6 +214,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 |---|---|---|---|---|---|
 | `message.send` | mutation | `{ homeId: uuid, text: string }` | `{ id, homeId, fromName, body, sentAt }` | caregiver | Sends a message to the home's message board. The `from_name` is auto-populated from the caller's profile. Other devices in the same home receive the message through PowerSync sync. |
 | `message.list` | query | `{ homeId: uuid, limit?: number, before?: timestamp }` | `Array<{ id, fromName, body, sentAt }>` | caregiver | Returns messages for a home, ordered by `sent_at` descending. Cursor-based pagination using `before` timestamp. |
+| `message.uploadPhoto` | mutation | `{ id: uuid, homeId: uuid, data: base64 JPEG (≤ 1.5 MB), width?: number, height?: number }` | `{ id, bytes }` | caregiver (own homes) | Stores a photo for a home's board (`message_photos`, schema.ts table 44; the image in `MEDIA_BUCKET`, or `.data/media` locally). The device shrinks it to 1600 px and re-encodes it as JPEG; the server keeps only JPEGs and drops their metadata segments (EXIF, XMP, comments), so no camera location is stored. Idempotent by `id`. Online only; the message that shows it is a synced row with `photo_id`, which only the uploader can set, on the same board. `messaging` feature. |
+| `message.photo` | query | `{ id: uuid }` | `{ contentType: 'image/jpeg', data: base64 }` | caregiver (that board) | Returns a board photo to someone who can read that board; `NOT_FOUND` otherwise. Each view is recorded as a `photo_views` audit entry. Photos aren't synced to devices. |
 
 ### attendance
 

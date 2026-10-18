@@ -145,8 +145,26 @@ SELECT expect('cg cannot save a schedule template',
   $$INSERT INTO schedule_templates (agency_id, home_id, name, slots, created_by)
     VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Mine','[]','c1000000-0000-0000-0000-000000000000')$$, true);
 
+-- 13. Board photos: the uploader's own row, attached only by its uploader
+SELECT expect('cg records a photo for an Oak message',
+  $$INSERT INTO message_photos (id, agency_id, home_id, uploaded_by, content_type, bytes)
+    VALUES ('f6000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','c1000000-0000-0000-0000-000000000000','image/jpeg',100)$$, false);
+SELECT expect('cg cannot record a photo as someone else',
+  $$INSERT INTO message_photos (agency_id, home_id, uploaded_by, content_type, bytes)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','c2000000-0000-0000-0000-000000000000','image/jpeg',100)$$, true);
+SELECT expect('cg shares their photo on the Oak board',
+  $$INSERT INTO messages (agency_id, home_id, photo_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f6000000-0000-0000-0000-000000000000','Cara Giver','See photo','c1000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('nobody changes a photo row',
+  $$UPDATE message_photos SET bytes = 1 WHERE id = 'f6000000-0000-0000-0000-000000000000'$$, false);
+SELECT check_eq('the photo row is unchanged',
+  (SELECT count(*) FROM message_photos WHERE id = 'f6000000-0000-0000-0000-000000000000' AND bytes = 100), 1);
+
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
+SELECT expect('a photo is attached only by the person who uploaded it',
+  $$INSERT INTO messages (agency_id, home_id, photo_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f6000000-0000-0000-0000-000000000000','Sue Pervisor','Mine now','c2000000-0000-0000-0000-000000000000')$$, true);
 SELECT expect('sup saves a schedule template for a home in the agency',
   $$INSERT INTO schedule_templates (id, agency_id, home_id, name, slots, created_by)
     VALUES ('f7000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Usual week','[]','c2000000-0000-0000-0000-000000000000')$$, false);

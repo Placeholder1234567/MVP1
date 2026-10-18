@@ -809,6 +809,10 @@ export const messages = pgTable(
     }),
     // The incident a thread follows up on, from the same home.
     incident_id: uuid('incident_id').references(() => incidents.id, { onDelete: 'set null' }),
+    // A photo shared with the message (message_photos, uploaded online first).
+    photo_id: uuid('photo_id').references((): AnyPgColumn => messagePhotos.id, {
+      onDelete: 'set null',
+    }),
     sent_at: timestamp('sent_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1747,5 +1751,43 @@ export const scheduleTemplates = pgTable(
   (t) => [
     index('schedule_templates_agency_id_idx').on(t.agency_id),
     uniqueIndex('schedule_templates_home_name_idx').on(t.home_id, t.name),
+  ],
+);
+
+// ─── 44. message_photos ──────────────────────────────────────────────────────
+// A photo shared on a home's board (frontend-audit.md finding 19, fix 3),
+// e.g. a rash or a swollen ankle to show the nurse. The image is stored in a
+// private bucket (MEDIA_BUCKET, or .data/media locally) at
+// photos/<agency_id>/<id>.jpg, re-encoded on the device so it carries no
+// location data. Read through message.photo only, which checks access and
+// records the view. Not synced: devices fetch a photo when it is opened.
+
+export const messagePhotos = pgTable(
+  'message_photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id')
+      .notNull()
+      .references(() => homes.id, { onDelete: 'cascade' }),
+    uploaded_by: uuid('uploaded_by')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'restrict' }),
+    content_type: text('content_type').notNull(),
+    bytes: integer('bytes').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('message_photos_agency_id_idx').on(t.agency_id),
+    index('message_photos_home_id_idx').on(t.home_id),
   ],
 );

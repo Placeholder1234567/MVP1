@@ -13,6 +13,7 @@ const { appRouter } = await import('../../../src/lib/server/trpc/router');
 const { createCallerFactory } = await import('../../../src/lib/server/trpc/middleware');
 const { localTime } = await import('../../../src/lib/domain');
 
+const { setStorageForTests } = await import('../../../src/lib/server/storage');
 const createCaller = createCallerFactory(appRouter);
 const TODAY = localTime(new Date(), 'America/New_York').day;
 
@@ -471,6 +472,100 @@ describe('sync.upload: messages and everything else', () => {
 		expect(byId.get(root)?.incident_id).toBe(oakIncident);
 		expect(byId.get(reply)?.reply_to).toBe(root);
 		expect(byId.get(nested)?.reply_to).toBe(root);
+	});
+
+	it('photos: stored without metadata, attached by their uploader, read by board members only', async () => {
+		const files = new Map<string, Buffer>();
+		setStorageForTests(undefined, {
+			put: async (path, body) => void files.set(path, body),
+			get: async (path) => files.get(path) ?? null,
+			remove: async (path) => void files.delete(path)
+		});
+		try {
+			const seg = (marker: number, payload: number[]) => [
+				0xff,
+				marker,
+				(payload.length + 2) >> 8,
+				(payload.length + 2) & 0xff,
+				...payload
+			];
+			const gps = [...'Exif'].map((c) => c.charCodeAt(0)).concat([0, 0, 47, 47]);
+			const jpeg = Buffer.from([
+				0xff,
+				0xd8,
+				...seg(0xe1, gps),
+				...seg(0xdb, [1, 2, 3]),
+				0xff,
+				0xda,
+				0,
+				4,
+				9,
+				9,
+				0xff,
+				0xd9
+			]);
+			const cara = await as(CARA);
+			const photo = randomUUID();
+			await expect(
+				cara.message.uploadPhoto({ id: photo, homeId: OAK, data: jpeg.toString('base64') })
+			).resolves.toMatchObject({ id: photo });
+			const stored = files.get(`photos/${AGENCY}/${photo}.jpg`)!;
+			expect(stored.includes(Buffer.from('Exif'))).toBe(false);
+			await expect(
+				cara.message.uploadPhoto({ id: randomUUID(), homeId: MAPLE, data: jpeg.toString('base64') })
+			).rejects.toMatchObject({ code: 'FORBIDDEN' });
+			await expect(
+				cara.message.uploadPhoto({
+					id: randomUUID(),
+					homeId: OAK,
+					data: Buffer.from('not a photo').toString('base64')
+				})
+			).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+
+			const [mine, dev] = [randomUUID(), randomUUID()];
+			const r1 = await upload(CARA, [
+				{
+					op: 'PUT',
+					table: 'messages',
+					id: mine,
+					data: { home_id: OAK, photo_id: photo, body: 'Photo of the rash for the nurse' }
+				}
+			]);
+			expect(r1.applied).toEqual([mine]);
+			// Someone else can't attach Cara's photo.
+			const r2 = await upload(DEV, [
+				{
+					op: 'PUT',
+					table: 'messages',
+					id: dev,
+					data: { home_id: OAK, photo_id: photo, body: 'x' }
+				}
+			]);
+			expect(r2.rejected[0]).toMatchObject({ code: 'VALIDATION_FAILED' });
+
+			const seen = await (await as(SAM)).message.photo({ id: photo });
+			expect(Buffer.from(seen.data, 'base64').equals(stored)).toBe(true);
+			const views = await withService((t) =>
+				t
+					.select()
+					.from(s.auditLog)
+					.where(and(eq(s.auditLog.table_name, 'photo_views'), eq(s.auditLog.record_id, photo)))
+			);
+			expect(views).toEqual([expect.objectContaining({ performed_by: SAM })]);
+
+			// A Maple photo is invisible to an Oak caregiver.
+			const maple = randomUUID();
+			await (
+				await as(SAM)
+			).message.uploadPhoto({
+				id: maple,
+				homeId: MAPLE,
+				data: jpeg.toString('base64')
+			});
+			await expect(cara.message.photo({ id: maple })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+		} finally {
+			setStorageForTests(undefined);
+		}
 	});
 
 	it("can't post to another home's board", async () => {

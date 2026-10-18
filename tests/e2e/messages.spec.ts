@@ -82,3 +82,60 @@ test('the author sees who has read a board message, and readers lose the new bad
 	await expect(cara.getByRole('heading', { name: 'Team messages about Rosa' })).toBeVisible();
 	await expect(cara.getByText(text)).toBeVisible();
 });
+
+test('a photo shared on the board is shrunk, uploaded and opened by a teammate', async ({
+	browser,
+	page: first
+}, info) => {
+	test.setTimeout(180000);
+	const viewport = () => first.viewportSize();
+	const text = `Synthetic ${info.project.name} photo ${Date.now()}: see the shelf.`;
+	// A synthetic 2x2 PNG; the device re-encodes it as JPEG before upload.
+	const png = Buffer.from(
+		'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==',
+		'base64'
+	);
+	const cara = await signIn(browser, 'cara@guad.test', viewport);
+	await cara.getByRole('link', { name: /^Team messages/ }).click();
+	await cara.getByLabel('Message your team', { exact: true }).fill(text);
+	await cara
+		.getByLabel('Add a photo', { exact: true })
+		.setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: png });
+	await expect(cara.getByRole('img', { name: 'Ready to share with your message' })).toBeVisible();
+	// A realistically heavy photo (noise compresses badly): its upload must
+	// fit the server's request limit after the device shrinks it.
+	const noisy = await cara.evaluate(async () => {
+		const c = document.createElement('canvas');
+		c.width = 2400;
+		c.height = 1800;
+		const g = c.getContext('2d')!;
+		const img = g.createImageData(c.width, c.height);
+		for (let i = 0; i < img.data.length; i++) img.data[i] = (i * 2654435761) >>> 24;
+		g.putImageData(img, 0, 0);
+		const blob = await new Promise<Blob>((ok) => c.toBlob((b) => ok(b!), 'image/png'));
+		const bytes = new Uint8Array(await blob.arrayBuffer());
+		let s = '';
+		for (let i = 0; i < bytes.length; i += 0x8000)
+			s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+		return btoa(s);
+	});
+	await cara.getByRole('button', { name: 'Remove photo', exact: true }).click();
+	await cara.getByLabel('Add a photo', { exact: true }).setInputFiles({
+		name: 'synthetic-large.png',
+		mimeType: 'image/png',
+		buffer: Buffer.from(noisy, 'base64')
+	});
+	await expect(cara.getByRole('img', { name: 'Ready to share with your message' })).toBeVisible();
+	await cara.getByRole('button', { name: 'Save message', exact: true }).click();
+	await expect(cara.getByTestId('sync-status')).toHaveText('All changes synced');
+
+	const sam = await signIn(browser, 'supervisor@guad.test', viewport);
+	await sam.getByRole('link', { name: /^Team messages/ }).click();
+	const card = sam.getByTestId('board').locator('article', { hasText: text });
+	await card.getByRole('button', { name: 'Show photo', exact: true }).click();
+	const img = card.getByRole('img', { name: 'Shared by Cara Giver', exact: true });
+	await expect(img).toBeVisible();
+	expect(await img.getAttribute('src')).toMatch(/^data:image\/jpeg;base64,/);
+	const axe = await new AxeBuilder({ page: sam }).include('[data-testid="board"]').analyze();
+	expect(axe.violations).toEqual([]);
+});
