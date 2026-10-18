@@ -37,6 +37,8 @@ test('queued care reports require a connection and an explicit download, then fo
 	await page.getByRole('combobox', { name: 'Report', exact: true }).selectOption('health');
 	await page.getByRole('combobox', { name: 'Person', exact: true }).selectOption({ label: person });
 	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('json');
+	const reportFrom = await page.getByLabel('From', { exact: true }).inputValue();
+	const reportThrough = await page.getByLabel('Through', { exact: true }).inputValue();
 	const request = page.getByRole('button', { name: 'Request background report', exact: true });
 	await context.setOffline(true);
 	await expect(request).toBeDisabled();
@@ -49,6 +51,12 @@ test('queued care reports require a connection and an explicit download, then fo
 		timeout: 90000
 	});
 	expect(downloads).toBe(0);
+	await page.getByLabel('From', { exact: true }).fill('2000-01-01');
+	const currentReport = page.getByRole('region', { name: 'Current report', exact: true });
+	await expect(currentReport).toContainText(
+		`Report period: ${reportFrom} through ${reportThrough}`
+	);
+	await expect(currentReport).toContainText(person);
 	expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
 		true

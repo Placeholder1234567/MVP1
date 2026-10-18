@@ -45,6 +45,12 @@
 		attendance: 'Attendance',
 		goals: 'Goal progress and trial history'
 	};
+	function scopeLabel(item: Job) {
+		return item.clientId
+			? (app.people.find((person) => person.id === item.clientId && person.home_id === item.homeId)
+					?.name ?? 'Selected person')
+			: 'Everyone in this home';
+	}
 	// Locking forgets the local reference; it does not cancel a server job.
 	$effect(() => {
 		const next = JSON.stringify([
@@ -347,6 +353,12 @@
 	{#if job}<section class="card pad stack" aria-label="Current report">
 			<h2>Report {job.status}</h2>
 			<p>{labels[job.type]} · {job.format.toUpperCase()}</p>
+			<p>
+				Report period: {job.fromDay} through {job.toDay} ({app.user.timeZone}). {scopeLabel(job)}.
+			</p>
+			{#if job.type === 'notes' || job.type === 'goals'}<p>
+					{job.approvedOnly ? 'Approved notes only.' : 'Signed submitted and approved notes.'}
+				</p>{/if}
 			{#if job.status === 'ready'}<p>
 					{job.rows ?? 0} records ready. Files are retained for 24 hours after preparation.
 				</p>
@@ -384,6 +396,14 @@
 						item.createdAt
 					).toLocaleString(undefined, { timeZone: app.user.timeZone })}
 				</p>
+				<p>
+					Report period: {item.fromDay} through {item.toDay} ({app.user.timeZone}). {scopeLabel(
+						item
+					)}.
+				</p>
+				{#if item.type === 'notes' || item.type === 'goals'}<p>
+						{item.approvedOnly ? 'Approved notes only.' : 'Signed submitted and approved notes.'}
+					</p>{/if}
 				<button
 					class="textbtn"
 					disabled={busy || !canConnect || !allowedHome || job?.id === item.id}
