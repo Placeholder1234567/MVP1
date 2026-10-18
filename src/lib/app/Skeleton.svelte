@@ -10,7 +10,7 @@
 </script>
 
 <div class="skeleton {kind}" role="status" aria-label={label}>
-	{#each { length: count } as _, i (i)}
+	{#each { length: count }, i (i)}
 		{#if kind === 'rows'}
 			<div class="row" aria-hidden="true">
 				<span class="bone circle"></span>
