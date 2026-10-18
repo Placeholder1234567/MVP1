@@ -40,23 +40,28 @@
 	async function save(change: Partial<InstallState>) {
 		saved = (await updateInstallState(() => change)) ?? (saved && { ...saved, ...change });
 	}
+	// Each choice is saved before the banner goes, so a reload straight after
+	// can't bring it back.
+	let busy = false;
 	async function add() {
 		const offer = install.offer;
-		if (!offer) return;
-		install.offer = null;
+		if (!offer || busy) return;
+		busy = true;
 		await offer.prompt();
 		const { outcome } = await offer.userChoice;
-		install.closed = true;
 		await save(
 			outcome === 'accepted' ? { installed: true } : { dismissals: (saved?.dismissals ?? 0) + 1 }
 		);
+		install.offer = null;
+		install.closed = true;
 	}
 	async function dismiss() {
-		install.closed = true;
+		if (busy) return;
+		busy = true;
 		await save({ dismissals: (saved?.dismissals ?? 0) + 1 });
+		install.closed = true;
 	}
 	async function closeDialog(change: Partial<InstallState>) {
-		// Save first: closing and reloading straight away must not lose "Got it".
 		await save(change);
 		install.closed = true;
 		dialog?.close();
