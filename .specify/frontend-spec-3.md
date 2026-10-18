@@ -2064,6 +2064,25 @@ SHARED ROUTES
 /signin                   User selection (dev) / Auth (prod)
 ```
 
+**As built (SvelteKit routes under `src/routes/(app)`):** the screens above exist, but some live at other paths or as steps of one page:
+
+| Spec route | Built as |
+|---|---|
+| `/signin` | `/login` (the local sign-in page lists the demo accounts) |
+| `/setup` (first-run wizard) | `npm run agency:provision` (operator tool) plus `/dashboard/setup` |
+| `/clock` | `ClockPanel` on `/today` and `/shifts` |
+| `/shifts/coverage` | Coverage offers and activity on `/shifts` (`CoverageOffers`, `CoverageActivity`) |
+| `/people/:id/note/review`, `/note/done`, `/behavior/review` | Steps inside `/people/:id/note` and `/people/:id/behavior` (one `NoteEditor`, so drafts survive the step change) |
+| `/people/:id/mar` | `/people/:id/medications` |
+| `/people/:id/health/summary` | `/people/:id/summary` |
+| `/people/:id/incident/done` | Confirmation inside `/people/:id/incident` |
+| `/dashboard/schedule` | Week grid on `/shifts` (supervisors edit slots there) |
+| `/dashboard/incidents`, `/dashboard/health` | The grouped attention queue on `/dashboard` (`ClinicalAttention`: review incidents, acknowledge health entries) |
+| `/dashboard/messages` | `/messages` (current home from the app bar) |
+| `/dashboard/settings` | `/dashboard/setup` |
+
+Built routes not in the map: `/notes/:id`, `/notifications`, `/notifications/:id`, `/me/notifications`, `/people/:id/attendance`, `/dashboard/{mar,goals,imports,intake,timesheets,audit,api-keys}` and the public `/offline` page.
+
 ### 7.2 Navigation Patterns
 
 | Pattern | Caregiver | Supervisor |
