@@ -2,6 +2,7 @@ import { router } from './middleware.ts';
 import { agencyRouter } from './routers/agency.ts';
 import { analyticsRouter } from './routers/analytics.ts';
 import { auditRouter } from './routers/audit.ts';
+import { apiKeyRouter } from './routers/api-key.ts';
 import { authRouter } from './routers/auth.ts';
 import { caseNoteRouter } from './routers/case-note.ts';
 import { clientRouter } from './routers/client.ts';
@@ -25,6 +26,7 @@ export const appRouter = router({
 	agency: agencyRouter,
 	analytics: analyticsRouter,
 	audit: auditRouter,
+	apiKey: apiKeyRouter,
 	attendance: attendanceRouter,
 	caseNote: caseNoteRouter,
 	client: clientRouter,

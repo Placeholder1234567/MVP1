@@ -486,6 +486,25 @@ src/lib/server/services/
 
 **Jobs:** None. Audit writes are synchronous to guarantee they complete before the request returns.
 
+### 20. Integration Service
+
+**Responsibility:** The external API (openapi.yaml) for state EVV aggregators, data warehouses and other integrations: agency API keys, EVV visit records and bulk data export. Webhook subscriptions and API report generation belong here too (not built yet).
+
+**Owns tables:** `api_keys` (and later `webhooks`, `webhook_deliveries`)
+
+**Key functions:**
+- `createApiKey`, `listApiKeys`, `revokeApiKey` (admins, through tRPC `apiKey.*`, as app_user so RLS applies).
+- `authenticateKey(token)`: the key's agency, scope, time zone and plan features, or null. Updates `last_used_at` at most hourly.
+- `listEvvVisits`, `getEvvVisit`, `evvSummary`; `exportData` (12 types, explicit column lists, never auth IDs or plan data).
+- `logApiAccess`: one `audit_log` row per call (`table_name = 'api_access'`, `record_id` = key ID, operation, query parameters, status, record count, IP, user agent).
+
+An API key acts for its agency, not a person, so its reads run as app_service and every query filters on the key's `agency_id`. The routes live under `src/routes/api/v1/` and share `src/lib/server/external-api.ts` (auth, rate limits, plan and scope checks, error bodies).
+
+**Depends on:**
+- Audit (access log)
+
+**Jobs:** None yet (webhook delivery will add one).
+
 ---
 
 ## Data Ownership Matrix
