@@ -70,6 +70,8 @@ SECTION LABEL STYLE:
 | | Reports | file/download | -- |
 | | Setup | gear | -- |
 
+**As built:** the supervisor and admin sidebar is grouped under Today (Overview, Schedule, Messages), Care records (Review notes, Care records, MAR grid, Controlled meds, Goals) and Management (People, Staff, Timesheets, Intake, Analytics, Reports, and for admins Audit log, API keys, Setup), with Me last. Items outside the plan stay hidden. Review notes shows the count of notes to review at the current home and Messages the unread count, from the device; the count is the link's description ("3 to review"), so the link's name stays the label. Icons and the Overview/Schedule/incident/medication/health counts are not built; those items appear on the overview itself. The phone bar keeps Overview, Review notes, Schedule and Me.
+
 **Nav Item Styling:**
 ```
   border: 0

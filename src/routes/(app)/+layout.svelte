@@ -69,25 +69,61 @@
 					{ href: '/me', label: 'Me' }
 				]
 			: [
-					{ href: '/dashboard', label: 'Overview' },
-					{ href: '/dashboard/notes', label: 'Review notes', feature: 'note_review' },
-					{ href: '/today', label: 'Care records', feature: 'charting' },
-					{ href: '/dashboard/mar', label: 'MAR grid', feature: 'mar' },
-					{ href: '/controlled', label: 'Controlled meds', feature: 'mar' },
-					{ href: '/shifts', label: 'Schedule', feature: 'scheduling' },
-					{ href: '/dashboard/timesheets', label: 'Timesheets', feature: 'timekeeping' },
-					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake' },
-					{ href: '/dashboard/people', label: 'People' },
-					{ href: '/dashboard/goals', label: app.labels.goalsNav, feature: 'goals' },
-					{ href: '/dashboard/analytics', label: 'Analytics', feature: 'analytics' },
-					{ href: '/dashboard/reports', label: 'Reports', feature: ['reports', 'reports_basic'] },
-					{ href: '/dashboard/staff', label: 'Staff' },
-					{ href: '/messages', label: 'Messages', feature: 'messaging' },
+					// Grouped as in frontend-spec-3.md §3 "Sidebar Sections".
+					{ href: '/dashboard', label: 'Overview', section: 'Today' },
+					{ href: '/shifts', label: 'Schedule', feature: 'scheduling', section: 'Today' },
+					{ href: '/messages', label: 'Messages', feature: 'messaging', section: 'Today' },
+					{
+						href: '/dashboard/notes',
+						label: 'Review notes',
+						feature: 'note_review',
+						section: 'Care records'
+					},
+					{ href: '/today', label: 'Care records', feature: 'charting', section: 'Care records' },
+					{ href: '/dashboard/mar', label: 'MAR grid', feature: 'mar', section: 'Care records' },
+					{
+						href: '/controlled',
+						label: 'Controlled meds',
+						feature: 'mar',
+						section: 'Care records'
+					},
+					{
+						href: '/dashboard/goals',
+						label: app.labels.goalsNav,
+						feature: 'goals',
+						section: 'Care records'
+					},
+					{ href: '/dashboard/people', label: 'People', section: 'Management' },
+					{ href: '/dashboard/staff', label: 'Staff', section: 'Management' },
+					{
+						href: '/dashboard/timesheets',
+						label: 'Timesheets',
+						feature: 'timekeeping',
+						section: 'Management'
+					},
+					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake', section: 'Management' },
+					{
+						href: '/dashboard/analytics',
+						label: 'Analytics',
+						feature: 'analytics',
+						section: 'Management'
+					},
+					{
+						href: '/dashboard/reports',
+						label: 'Reports',
+						feature: ['reports', 'reports_basic'],
+						section: 'Management'
+					},
 					...(data.user.role === 'admin'
 						? [
-								{ href: '/dashboard/audit', label: 'Audit log', feature: 'audit_log' },
-								{ href: '/dashboard/api-keys', label: 'API keys' },
-								{ href: '/dashboard/setup', label: 'Setup' }
+								{
+									href: '/dashboard/audit',
+									label: 'Audit log',
+									feature: 'audit_log',
+									section: 'Management'
+								},
+								{ href: '/dashboard/api-keys', label: 'API keys', section: 'Management' },
+								{ href: '/dashboard/setup', label: 'Setup', section: 'Management' }
 							]
 						: []),
 					{ href: '/me', label: 'Me' }
@@ -126,6 +162,29 @@
 	const needsAttention = (href: string) =>
 		data.user.role === 'caregiver' &&
 		((href === '/notes' && returnedToday) || (href === '/shifts' && offersWaiting));
+
+	/** The sidebar's sections, in order; items without one (Me) come last, unlabelled. */
+	const navGroups = $derived.by(() => {
+		const groups: { label: string; items: typeof nav }[] = [];
+		for (const item of nav) {
+			const label = (item as { section?: string }).section ?? '';
+			const group = groups.find((g) => g.label === label);
+			if (group) group.items.push(item);
+			else groups.push({ label, items: [item] });
+		}
+		return groups.sort((a, b) => Number(!a.label) - Number(!b.label));
+	});
+	/** Counts beside supervisor links (frontend-spec-3.md §3), from the device. */
+	const count = (href: string) =>
+		data.user.role === 'caregiver'
+			? 0
+			: href === '/dashboard/notes'
+				? app.notes.filter((n) => n.home_id === app.homeId && n.status === 'submitted').length
+				: href === '/messages'
+					? app.unseenMessageCount
+					: 0;
+	const countWords = (href: string, n: number) =>
+		href === '/messages' ? `${n} unread` : `${n} to review`;
 
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
@@ -331,13 +390,25 @@
 				<a class="wordmark" href={resolve('/')}>Guad<span class="lemon-dot">●</span></a>
 				<p class="eyebrow">Your workspace</p>
 				<nav aria-label="Main navigation">
-					{#each nav as item (item.href)}<a
-							href={resolve(('/(app)' + item.href) as '/(app)/today')}
-							aria-current={page.url.pathname === item.href ? 'page' : undefined}
-							aria-label={needsAttention(item.href) ? `${item.label}, needs attention` : undefined}
-							>{item.label}{#if needsAttention(item.href)}<span class="dot" aria-hidden="true"
-								></span>{/if}</a
-						>{/each}
+					{#each navGroups as group (group.label)}<div
+							class="nav-group"
+							role={group.label ? 'group' : undefined}
+							aria-label={group.label || undefined}
+						>
+							{#if group.label}<p class="nav-section" aria-hidden="true">{group.label}</p>{/if}
+							{#each group.items as item (item.href)}{@const n = count(
+									item.href
+								)}{@const countId = `nav-count-${item.href.replace(/\W+/g, '-')}`}<a
+									href={resolve(('/(app)' + item.href) as '/(app)/today')}
+									aria-current={page.url.pathname === item.href ? 'page' : undefined}
+									aria-label={needsAttention(item.href)
+										? `${item.label}, needs attention`
+										: undefined}
+									aria-describedby={n ? countId : undefined}
+									>{item.label}{#if needsAttention(item.href)}<span class="dot" aria-hidden="true"
+										></span>{/if}{#if n}<span class="count" aria-hidden="true">{n}</span>{/if}</a
+								>{#if n}<span class="sr" id={countId}>{countWords(item.href, n)}</span>{/if}{/each}
+						</div>{/each}
 				</nav>
 				<div class="sidebar-bottom">
 					<b>{data.user.name}</b><span class="muted">{data.user.role}</span><button
@@ -394,7 +465,7 @@
 				</main>
 			</div>
 			<nav class="mobile-nav" aria-label="Mobile navigation">
-				{#each data.user.role === 'caregiver' ? nav : [...new Set( [nav[0], nav[1], nav.find((item) => item.href === '/shifts'), nav.find((item) => item.href === '/me')] )].filter((item) => item !== undefined) as item (item.href)}<a
+				{#each data.user.role === 'caregiver' ? nav : ['/dashboard', '/dashboard/notes', '/shifts', '/me'].flatMap( (href) => nav.filter((item) => item.href === href) ) as item (item.href)}<a
 						href={resolve(('/(app)' + item.href) as '/(app)/today')}
 						aria-current={page.url.pathname === item.href ? 'page' : undefined}
 						aria-label={needsAttention(item.href) ? `${item.label}, needs attention` : undefined}
