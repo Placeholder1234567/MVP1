@@ -4,6 +4,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	if (!locals.user || locals.user.role === 'caregiver') error(403, 'Supervisor access required');
 	return {
 		importFeatures: {
+			staff: locals.user.role === 'admin',
 			people: true,
 			goals: locals.user.features.includes('goals'),
 			medications: locals.user.features.includes('mar')

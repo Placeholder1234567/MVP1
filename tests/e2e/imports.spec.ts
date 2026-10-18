@@ -1,6 +1,81 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 const PIN = '654321';
+test('administrators review staff roles and assignments before inviting a synthetic account once', async ({
+	page
+}, info) => {
+	test.setTimeout(180000);
+	const email = `csv-${info.project.name}-${randomUUID()}@example.test`;
+	await page.goto('/login');
+	await page.getByLabel('Email', { exact: true }).fill('admin@guad.test');
+	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
+	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
+	await page.getByLabel('Confirm PIN', { exact: true }).fill(PIN);
+	await page.getByRole('button', { name: 'Save PIN and open', exact: true }).click();
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	await page.goto('/dashboard/imports');
+	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
+	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+	await page.getByLabel('Import type', { exact: true }).selectOption('staff');
+	await page.getByText('Accessible IDs for your template', { exact: true }).click();
+	const home = await page.getByLabel('Home ID for Oak House', { exact: true }).inputValue();
+	const file = page.getByLabel('Select CSV file', { exact: true });
+	await file.setInputFiles({
+		name: 'synthetic-staff.csv',
+		mimeType: 'text/csv',
+		buffer: Buffer.from(
+			`email,name,role,home_ids,med_certified\n${email},Synthetic CSV Staff,admin,${home},false`
+		)
+	});
+	await expect(
+		page.getByText('role must be caregiver or supervisor. Invite administrators individually.', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		page.getByRole('button', { name: 'Apply reviewed import', exact: true })
+	).toBeDisabled();
+	page.once('dialog', (dialog) => dialog.accept());
+	await file.setInputFiles({
+		name: 'synthetic-staff.csv',
+		mimeType: 'text/csv',
+		buffer: Buffer.from(
+			`email,name,role,home_ids,med_certified\n${email},Synthetic CSV Staff,caregiver,${home},false`
+		)
+	});
+	await expect(page.getByText('Preview ready.', { exact: false })).toBeVisible();
+	await page
+		.getByRole('checkbox', {
+			name: 'I reviewed every value and destination and checked for duplicate records.'
+		})
+		.check();
+	const confirmation = page.waitForEvent('dialog').then(async (dialog) => {
+		expect(dialog.message()).toContain('sends password-setup invitations');
+		await dialog.accept();
+	});
+	await page.getByRole('button', { name: 'Apply reviewed import', exact: true }).click();
+	await confirmation;
+	await expect(page.getByText('Import completed.', { exact: false })).toBeVisible();
+	await expect(page.getByTestId('created-import-id')).toHaveText(/^[0-9a-f-]{36}$/);
+	await expect(
+		page.getByRole('button', { name: 'Apply reviewed import', exact: true })
+	).toBeDisabled();
+	page.once('dialog', (dialog) => dialog.accept());
+	await file.setInputFiles({
+		name: 'synthetic-staff.csv',
+		mimeType: 'text/csv',
+		buffer: Buffer.from(
+			`email,name,role,home_ids,med_certified\n${email},Synthetic CSV Staff,caregiver,${home},false`
+		)
+	});
+	await expect(
+		page.getByText('Possible duplicate of an existing record.', { exact: true })
+	).toBeVisible();
+	await expect(
+		page.getByRole('button', { name: 'Apply reviewed import', exact: true })
+	).toBeDisabled();
+});
 test('CSV imports require valid review, preserve offline preview and create each supported definition once', async ({
 	page,
 	context
@@ -22,6 +97,9 @@ test('CSV imports require valid review, preserve offline preview and create each
 	await expect(
 		page.getByRole('heading', { name: 'Review CSV imports', exact: true })
 	).toBeVisible();
+	await expect(
+		page.getByLabel('Import type', { exact: true }).locator('option[value="staff"]')
+	).toHaveCount(0);
 	await page.getByText('Accessible IDs for your template', { exact: true }).click();
 	const home = await page.getByLabel('Home ID for Oak House', { exact: true }).inputValue();
 	const file = page.getByLabel('Select CSV file', { exact: true });
