@@ -260,6 +260,48 @@ describe('home.* and agency.update', () => {
 	});
 });
 
+describe('incident reporting rules', () => {
+	it('admins set who must be told; new reports and the device follow them', async () => {
+		const person = randomUUID();
+		await withService((t) =>
+			t.insert(s.clients).values({ id: person, agency_id: AGENCY, home_id: OAK, name: 'Synthetic' })
+		);
+		const admin = await as(ADMIN);
+		const incident_rules = {
+			guardianWhen: 'Within 12 hours',
+			nurseTypes: ['Seizure' as const],
+			nurseWhen: 'Within 1 hour',
+			stateSeverities: ['Medium' as const, 'High' as const],
+			stateTypes: [],
+			stateWhen: 'Within 24 hours'
+		};
+		await expect(
+			admin.agency.update({ settings: { incident_rules: { ...incident_rules, nurseWhen: '' } } })
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		await expect(
+			admin.agency.update({
+				settings: { incident_rules: { ...incident_rules, nurseTypes: ['Sneeze'] } }
+			})
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		const saved = await admin.agency.update({ settings: { incident_rules } });
+		expect(saved.settings).toMatchObject({ incident_rules });
+		const r = await (
+			await as(CARA)
+		).incident.create({
+			clientId: person,
+			type: 'Fall',
+			severity: 'Medium',
+			occurredAt: new Date(Date.now() - 60_000),
+			description: 'Synthetic fall'
+		});
+		expect(r.mustNotify).toEqual([
+			{ who: 'Supervisor', when: 'Right away' },
+			{ who: 'Family or guardian', when: 'Within 12 hours' },
+			{ who: 'State reporting system', when: 'Within 24 hours' }
+		]);
+	});
+});
+
 describe('staff.resetMfa', () => {
 	it('lets an admin reset someone else’s second factor, audited', async () => {
 		await withService((t) =>

@@ -1,5 +1,6 @@
 // Agency Service (services.md): the caller's agency and its configuration.
 import { z } from 'zod';
+import { INCIDENT_TYPES, RULE_WHEN_MAX } from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { createStaffAccount } from '../auth/index.ts';
@@ -29,7 +30,19 @@ export async function getAgency(tx: Tx, agencyId: string) {
  */
 export const AgencySettings = z
 	.object({
-		mfa_required_roles: z.array(z.enum(['caregiver', 'supervisor'])).optional()
+		mfa_required_roles: z.array(z.enum(['caregiver', 'supervisor'])).optional(),
+		/** Who must be told about which incidents, and by when (domain/charting.ts). */
+		incident_rules: z
+			.object({
+				guardianWhen: z.string().trim().min(1).max(RULE_WHEN_MAX),
+				nurseTypes: z.array(z.enum(INCIDENT_TYPES)),
+				nurseWhen: z.string().trim().min(1).max(RULE_WHEN_MAX),
+				stateSeverities: z.array(z.enum(['Low', 'Medium', 'High'])),
+				stateTypes: z.array(z.enum(INCIDENT_TYPES)),
+				stateWhen: z.string().trim().min(1).max(RULE_WHEN_MAX)
+			})
+			.strict()
+			.optional()
 	})
 	.passthrough();
 

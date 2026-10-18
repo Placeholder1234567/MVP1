@@ -4,6 +4,7 @@ import type { Database } from '#lib/sync/schema.ts';
 import { chartingLabels } from '#lib/config/charting-preset.ts';
 import { isTheme, type Theme } from '#lib/domain/theme.ts';
 import { unseenMessages } from '#lib/domain/message-reads.ts';
+import { parseIncidentRules } from '#lib/domain/charting.ts';
 import { UploadStatus } from '#lib/sync/upload-status.ts';
 
 export interface AppUser {
@@ -72,6 +73,8 @@ export class CareSession {
 	ready = $state(false);
 	error = $state('');
 	labels = $derived(chartingLabels(this.agencies[0]?.charting_preset));
+	/** The agency's incident reporting rules (frontend-audit.md finding 8). */
+	incidentRules = $derived(parseIncidentRules(this.agencies[0]?.settings));
 	currentPeople = $derived(this.people.filter((p) => p.active && p.home_id === this.homeId));
 	private stop: Array<() => void> = [];
 	private uploads: UploadStatus | undefined;

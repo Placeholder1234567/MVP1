@@ -473,6 +473,7 @@ When the AI is processing, the entire compose screen is replaced by:
   - Seizure, Medication error, Injury, or Fall: add Nurse (Within 2 hours).
   - High severity or "Left without staff" type: add State reporting system (Check your state's deadline).
   - *Note: These are simplified placeholder rules. Production deployment should implement state-specific regulatory notification timelines, which may include Program Director, prescribing doctor, and severity-graduated deadlines. See `notifications.md` for the full production notification architecture.*
+  - *As built:* the rules above are the defaults. Each agency replaces them on Setup ("Incident reporting rules": guardian deadline, nurse incident types and deadline, state-report severities, types and deadline), stored in `agencies.settings.incident_rules`.
 - Checkboxes indicate "already told." Unchecked items become action items on the supervisor dashboard.
 
 **Action bar (sticky bottom):**

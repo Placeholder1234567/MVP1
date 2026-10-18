@@ -1,6 +1,6 @@
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { clients, incidents } from '../../db/schema';
+import { agencies, clients, incidents } from '../../db/schema';
 
 export async function insertIncident(tx: Tx, row: typeof incidents.$inferInsert) {
 	const inserted = await tx
@@ -80,4 +80,13 @@ export async function addNotifiedParty(tx: Tx, agencyId: string, id: string, par
 		.where(and(eq(incidents.agency_id, agencyId), eq(incidents.id, id)))
 		.returning({ notifiedParties: incidents.notified_parties, updatedAt: incidents.updated_at });
 	return row ?? null;
+}
+
+/** The agency's settings, which hold its incident reporting rules. */
+export async function agencySettings(tx: Tx, agencyId: string) {
+	const [row] = await tx
+		.select({ settings: agencies.settings })
+		.from(agencies)
+		.where(eq(agencies.id, agencyId));
+	return row?.settings ?? {};
 }
