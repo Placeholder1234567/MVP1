@@ -29,6 +29,8 @@ export {
 export { escalate, type EscalationPayload } from './escalation';
 export { sweepDigests, sendDigest } from './digest';
 export { sweepMedReminders } from './med-reminders';
+export { noteSubmitted, noteReviewed, medRefused } from './care-events';
+export { sweepCareReminders } from './care-reminders';
 export { handleEmailEvent, handleSmsEvent, type EventOutcome } from './events';
 export {
 	getNotification,

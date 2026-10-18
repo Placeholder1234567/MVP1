@@ -16,7 +16,7 @@ import { doseNeedsReason } from '../../../domain/clinical.ts';
 import { asService, type Tx } from '../../db';
 import { pgConstraint, pgCode, ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
-import { notifyHomeSupervisors } from '../notification/index.ts';
+import { medRefused, notifyHomeSupervisors } from '../notification/index.ts';
 import {
 	findMarRecord,
 	findMedication,
@@ -131,6 +131,8 @@ export async function recordDose(
 	try {
 		// Savepoint, so a duplicate slot doesn't abort the caller's transaction.
 		const inserted = await tx.transaction((sp) => insertMarRecord(sp, row));
+		if (inserted && (dose.status === 'refused' || dose.status === 'held'))
+			await medRefused(tx, agencyId, med.homeId, dose.status, dose.id);
 		return { result: inserted ? 'recorded' : 'already-recorded' };
 	} catch (e) {
 		if (pgCode(e) !== '23505' || pgConstraint(e) !== SLOT_INDEX) throw e;
