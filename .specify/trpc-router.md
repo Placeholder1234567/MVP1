@@ -90,6 +90,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | `staff.get` | query | `{ id: uuid }` | `{ id, name, email, phone, initials, role, homeIds, medCertified, mfaEnabled, active, createdAt }` | supervisor | Returns a single staff profile with full details. |
 | `staff.invite` | mutation | `{ email: string, name: string, role: user_role, homeIds: uuid[], medCertified?: boolean }` | `{ id, email, name, role }` | admin | Creates an Identity Platform user and a profiles row. Sends an email invitation (password-setup link) via SES. |
 | `staff.update` | mutation | `{ id: uuid, role?: user_role, homeIds?: uuid[], medCertified?: boolean, active?: boolean }` | `{ id, role, homeIds, medCertified, active, updatedAt }` | admin | Updates staff role, home assignments, med certification, or active status. Deactivating a staff member does not delete their data. |
+| `staff.resetMfa` | mutation | `{ id: uuid }` | `{ id, mfaEnabled: false }` | admin | Lost authenticator: removes the person's second factors so they enroll again at next sign-in. Never on yourself (another admin must reset yours). Recorded in the audit log. |
 
 ### client
 
@@ -174,6 +175,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### coverage
 
+**As built:** the coverage screens read requests, candidates and steps from the synced local database (PowerSync: `coverage_requests`, `coverage_candidates`, `coverage_steps`, offline-sync.md §4), so `coverage.list` and `coverage.get` are not built. `coverage.offers` (query, no input, `coverage` feature) returns the caller's own open offers for the Today screen; accepting and declining still need a connection.
+
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
 | `coverage.callout` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on', reason?: string }` | `{ id, status: 'searching', createdAt }` | caregiver | Caregiver calls out from a shift. Only the assigned caregiver can call out from their own shift. Creates a `coverage_requests` row, clears the schedule slot, and enqueues Lomi's coverage search (Cloud Tasks job). Inserts `coverage_steps` entries as the search progresses. |
@@ -194,6 +197,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | `clock.timesheet` | query | `{ profileId?: uuid, homeId?: uuid, dateRange: { from: string, to: string } }` | `{ entries: Array<ClockRecord>, totalHours: number, verifiedHours: number, unverifiedHours: number, manualHours: number }` | supervisor | Aggregated timesheet view. Breaks down hours by verification status. Used for payroll export. |
 
 ### message
+
+**As built:** messages are synced rows, not tRPC calls. The home's messages arrive through PowerSync (`messages`, `messaging` feature) and a new message is written locally and uploaded through `sync.upload`, so it can be written offline. `message.send` and `message.list` are not built.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
@@ -218,6 +223,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
+| `lomi.capabilities` | query | none | `{ draft: boolean, voice: boolean }` | caregiver | Whether the AI model and Speech-to-Text are configured on this server, so the UI offers the rules-based draft and hides voice when they aren't. |
 | `lomi.draft` | mutation | `{ clientId: uuid, type: 'shift' \| 'behavior', prompt: string, goals?: Array<{ id: uuid, text: string }>, behaviors?: string[] }` | `{ content: jsonb, goals?: Array<{ goalId: uuid, trials: string[] }> }` | caregiver | Sends structured input to Claude on Vertex AI to generate a note draft. The prompt includes the client's active goals and known behaviors for context. The response is a `content` JSONB object matching the note schema. Output is always labeled as AI-generated. Rate-limited: 10 drafts/hour per user. |
 | `lomi.summarize` | mutation | `{ homeId: uuid, day?: string }` | `{ summary: string, highlights: Array<{ type: string, detail: string }> }` | supervisor | Generates a daily summary for a home: notes submitted, incidents reported, MAR completeness, missed clock-ins. Uses Claude on Vertex AI. Rate-limited: 5 summaries/hour per user. As built (ai-pipeline.md "Task: summary" shape): returns `{ summary, highlights: Array<{ text }>, recommendations: Array<{ text }>, fallback, snapshot: DaySnapshot }`; `day` must not be in the future; supervisors only for their homes. Without the model, `summary` is written by rules from the snapshot (`fallback: true`). |
 | `lomi.edit` | mutation | `{ clientId: uuid, section: 'activities' \| 'meals' \| 'mood' \| 'health' \| 'before' \| 'behavior' \| 'response' \| 'outcome' \| 'duration', current: string, input: string }` | `{ text: string, fallback: boolean }` | caregiver | Per-section proposal, explicitly reviewed before use. Current text max 6000, additional observations max 2000 characters. Rate-limited: 60/hour per user. |
@@ -236,6 +242,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | `analytics.care` | query | `{ homeId?: uuid, clientId?: uuid, dateRange?: { from: string, to: string } }` | `{ goalProgress: Array<{ goalId, text, trialsCount, completionRate }>, vitalsAlerts: number, seizureCount: number, incidentTrend: Array<{ week, count }> }` | supervisor | Clinical care metrics. Goal tracking progress, vitals alerts, and incident trends. |
 
 ### report
+
+**As built:** in-app reports are synchronous, audited mutations that return the file in the response: `report.exportClinical` (`{ type: 'notes' | 'mar' | 'health' | 'incidents' | 'attendance' | 'goals', homeId, clientId?, fromDay, toDay, format: 'csv' | 'json' | 'html' | 'pdf', approvedOnly? }`, supervisor, `reports` plus the record type's feature; at most 93 days, 1,000 records, 8 MB; PDF content is base64 with `encoding: 'base64'`) and `report.exportTimesheet` (`{ homeId?, profileId?, from, to, format: 'csv' | 'json' }`, supervisor, `reports` or `reports_basic` plus `timekeeping`). See docs/report-exports.md. The queued generate/status/download flow below is built for the external API only (openapi.yaml `/reports/{type}`); `report.generate`, `report.status` and `report.download` are not built.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
@@ -262,9 +270,15 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 |---|---|---|---|---|---|
 | `sync.upload` | mutation | `{ transactionId: number, ops: Array<{ op: 'PUT' \| 'PATCH' \| 'DELETE', table: string, id: uuid, data?: jsonb }> }` | `{ applied: uuid[], rejected: Array<{ id: uuid, table: string, code: string, message: string }>, notices: Array<{ id: uuid, table: string, code: 'MAR_CONFLICT', message: string }> }` | caregiver | The only path for offline writes (offline-sync.md §3). Each op runs in its own savepoint, so a rejected op is undone on its own; later ops still run (ones that depend on it then fail by themselves). Identity columns sent by the device (author, recorder, agency, home) are ignored; services set them from the session. Writable today: `notes` PUT/PATCH, `mar_records` PUT (corrections via `amends_id`), `messages` PUT; everything else is `NOT_ALLOWED_OFFLINE` until its service exists. `notices` are applied ops the user should hear about (a dose slot also recorded by someone else). Each op is dispatched, in order, to the same service function its online procedure uses, with the same Zod validation, role and feature checks, business rules, notifications and audit. Ops on tables that aren't writable offline are rejected. Idempotent: ops are keyed by record ID, so a retried transaction doesn't duplicate rows. A duplicate MAR dose slot is stored as a conflict record rather than rejected. `code` values are in offline-sync.md Appendix B. Messages never contain PHI. |
 
+### device
+
+| Procedure | Type | Input | Output | Min Role | Description |
+|---|---|---|---|---|---|
+| `device.key` | mutation | `{ deviceId: uuid }` | `{ key: string }` (base64url) | caregiver | Issues this device's local database encryption key (offline-sync.md "Local Database Encryption Key"); the same key for the same device until it is revoked, then `FORBIDDEN`. The client keeps it only wrapped with the PIN. |
+
 ### notification
 
-Implemented own-account settings procedures (all require the notifications entitlement): `quietHours` reads `{ start, end, timeZone }`, and `setQuietHours` saves `{ start: HH:MM, end: HH:MM }` after validating a 4–10 hour period. `pushDevices` returns only `{ id, platform, lastSeenAt, createdAt }`; `registerPushDevice` accepts `{ token, platform: 'web' | 'ios' | 'android' }` and returns `{ id }` only when FCM registration is configured; `removePushDevice` accepts `{ id: uuid }` and returns `{ removed: boolean }`. Every target profile comes from the authenticated caller. Registration is limited to ten devices, never transfers another profile's token, and does not call providers. Browser-side push provisioning remains separate work.
+Implemented own-account settings procedures (all require the notifications entitlement): `get` returns one of the caller's notifications `{ id: uuid }` for the inbox detail view; `pushConfiguration` returns `{ enabled }`, true only when the server sends real push (`PUSH_DRIVER=fcm`); `quietHours` reads `{ start, end, timeZone }`, and `setQuietHours` saves `{ start: HH:MM, end: HH:MM }` after validating a 4–10 hour period. `pushDevices` returns only `{ id, platform, lastSeenAt, createdAt }`; `registerPushDevice` accepts `{ token, platform: 'web' | 'ios' | 'android' }` and returns `{ id }` only when FCM registration is configured; `removePushDevice` accepts `{ id: uuid }` and returns `{ removed: boolean }`. Every target profile comes from the authenticated caller. Registration is limited to ten devices, never transfers another profile's token, and does not call providers. Browser-side push provisioning remains separate work.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
