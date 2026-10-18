@@ -10,6 +10,13 @@ export const REMINDER_LEAD_MINUTES = 30;
 export const OVERDUE_AFTER_MINUTES = 30;
 /** Past this, a missed sweep doesn't send a late overdue alert for an old dose. */
 export const OVERDUE_UNTIL_MINUTES = 120;
+/**
+ * An as-needed dose given this long ago with no effect recorded prompts the
+ * person who gave it to record the effect (charting-ux.md §4.5, US-08).
+ */
+export const PRN_FOLLOWUP_MINUTES = 30;
+/** Past this, a missed sweep doesn't send a late follow-up for an old dose. */
+export const PRN_FOLLOWUP_UNTIL_MINUTES = 240;
 
 export interface HomeMed extends ScheduledMed {
 	homeId: string;

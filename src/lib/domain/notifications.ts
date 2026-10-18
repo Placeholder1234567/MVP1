@@ -29,6 +29,8 @@ export const DEFAULT_CHANNELS = {
 	controlled_countersign: r(['push'], ['push'], ['push']),
 	// A scheduled dose still unrecorded 30 minutes after its time (§2.8 escalation).
 	med_overdue: r([], ['push'], ['push']),
+	// An as-needed dose given 30 minutes ago still has no effect recorded.
+	prn_followup: r(['push'], ['push'], ['push']),
 	health_alert: r([], ['push'], ['push']),
 	incident_reported: r([], ['push'], ['push']),
 	incident_high_severity: r([], ['push', 'sms'], ['push', 'sms']),
@@ -62,6 +64,7 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	med_possible_double_dose: 'Possible duplicate doses',
 	med_due_reminder: 'Medication reminders',
 	med_overdue: 'Overdue medications',
+	prn_followup: 'As-needed dose follow-ups',
 	health_alert: 'Health alerts',
 	incident_reported: 'New incidents',
 	incident_high_severity: 'Urgent incidents',

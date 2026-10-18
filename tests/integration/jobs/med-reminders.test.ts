@@ -8,6 +8,7 @@ import { closeDb, withService } from '../../../src/lib/server/db';
 import * as s from '../../../src/lib/server/db/schema';
 import {
 	doseAlertId,
+	prnFollowups,
 	remindAgency
 } from '../../../src/lib/server/services/notification/med-reminders';
 import { setProvidersForTests } from '../../../src/lib/server/messaging';
@@ -166,4 +167,52 @@ it('stays quiet once the dose is recorded', async () => {
 	);
 	expect(await sweep(at('11:40'))).toEqual({ due: 0, overdue: 0 });
 	expect(await sweep(at('12:40'))).toEqual({ due: 0, overdue: 0 });
+});
+
+it('asks whoever gave an as-needed dose to record its effect 30 minutes later, once', async () => {
+	const prnMed = randomUUID();
+	const [pending, withEffect, old] = [randomUUID(), randomUUID(), randomUUID()];
+	await withService(async (tx) => {
+		await tx.insert(s.medications).values({
+			id: prnMed,
+			agency_id: agency,
+			client_id: person,
+			home_id: oak,
+			name: 'Synthetic as-needed med'
+		});
+		const dose = (id: string, recordedAt: Date, effect: string | null = null) => ({
+			id,
+			agency_id: agency,
+			client_id: person,
+			home_id: oak,
+			medication_id: prnMed,
+			day: DAY,
+			status: 'given' as const,
+			is_prn: true,
+			reason: 'Synthetic reason',
+			effect,
+			recorded_at: recordedAt,
+			recorded_by: offCarer
+		});
+		await tx
+			.insert(s.marRecords)
+			.values([
+				dose(pending, at('15:00')),
+				dose(withEffect, at('15:00'), 'Effective'),
+				dose(old, at('10:00'))
+			]);
+	});
+	const followups = (now: Date) => withService((tx) => prnFollowups(tx, agency, now));
+	expect(await followups(at('15:20'))).toBe(0);
+	expect(await followups(at('15:30'))).toBe(1);
+	expect(await followups(at('15:35'))).toBe(0);
+	expect(await inbox('prn_followup')).toEqual([
+		{
+			profileId: offCarer,
+			title: 'A follow-up is due. Tap to record it.',
+			body: 'Record how an as-needed dose worked.',
+			priority: 3,
+			referenceId: pending
+		}
+	]);
 });
