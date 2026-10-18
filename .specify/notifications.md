@@ -178,6 +178,8 @@ Update `notifications.sent_at`
 | **Deep Link** | `/dashboard/controlled` |
 | **Escalation** | None (mandatory; the supervisor also files an incident report). |
 
+**Offline note:** the expected count is worked out when the count reaches the server, from the doses the server has by then. If another device recorded a dose offline before the count but uploads it later, the count can be flagged although it was right. The next count (made with every dose synced) clears it from the attention list; supervisors should recount before treating a mismatch as missing medication.
+
 ### 2.7c controlled_countersign
 
 | Field | Value |

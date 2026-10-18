@@ -64,6 +64,13 @@
       "when": 1792311065079,
       "tag": "0008_controlled_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792317690580,
+      "tag": "0009_witness_sign_in_once",
+      "breakpoints": true
     }
   ]
 }

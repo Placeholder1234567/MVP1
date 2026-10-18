@@ -111,10 +111,22 @@ describe('webhook URLs and addresses', () => {
 			'fe80::1',
 			'::ffff:10.0.0.1',
 			'::ffff:7f00:1',
+			'::127.0.0.1',
+			'::7f00:1',
+			'2002:a00:1::1',
+			'2001:0:4136:e378::1',
+			'2001:db8::1',
+			'100::1',
 			'nonsense'
 		])
 			expect(isPrivateAddress(ip), ip).toBe(true);
-		for (const ip of ['93.184.216.34', '8.8.8.8', '2606:4700:4700::1111', '172.32.0.1'])
+		for (const ip of [
+			'93.184.216.34',
+			'8.8.8.8',
+			'2606:4700:4700::1111',
+			'2001:4860:4860::8888',
+			'172.32.0.1'
+		])
 			expect(isPrivateAddress(ip), ip).toBe(false);
 	});
 });

@@ -1681,6 +1681,9 @@ export const controlledCounts = pgTable(
     // none | pending | verified
     witness_status: text('witness_status').notNull().default('none'),
     witnessed_at: timestamp('witnessed_at', { withTimezone: true }),
+    // SHA-256 of the witness's ID token when they signed in on this device.
+    // Unique, so one sign-in can witness one entry only.
+    witness_sign_in: text('witness_sign_in'),
     recorded_at: timestamp('recorded_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1698,5 +1701,6 @@ export const controlledCounts = pgTable(
     index('controlled_counts_home_id_idx').on(t.home_id),
     index('controlled_counts_medication_idx').on(t.medication_id, t.recorded_at),
     index('controlled_counts_witness_idx').on(t.witness_id, t.witness_status),
+    uniqueIndex('controlled_counts_witness_sign_in_idx').on(t.witness_sign_in),
   ],
 );
