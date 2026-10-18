@@ -63,3 +63,18 @@ it('rejects anything but light, dark and auto', async () => {
 		(await as(ME)).auth.setTheme({ theme: 'guad-dark-off' as 'dark' })
 	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 });
+
+it('hides and shows the getting-started tips, keeping other settings', async () => {
+	const caller = await as(ME);
+	await caller.auth.setTheme({ theme: 'dark' });
+	expect(await caller.auth.setDisclosure({ onboardingDone: true })).toEqual({
+		disclosure: { onboardingDone: true }
+	});
+	expect(await caller.auth.setDisclosure({ onboardingDone: false })).toEqual({
+		disclosure: { onboardingDone: false }
+	});
+	expect((await themeOf(ME)).theme).toBe('dark');
+	await expect(caller.auth.setDisclosure({ admin: true } as never)).rejects.toMatchObject({
+		code: 'BAD_REQUEST'
+	});
+});

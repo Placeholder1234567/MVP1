@@ -61,6 +61,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | `auth.me` | query | none | `{ id, agencyId, email, phone, name, initials, role, homeIds, medCertified, mfaEnabled, avatarUrl, active, createdAt }` | caregiver | Returns the authenticated user's profile. Used on app init to hydrate the client-side user store. |
 | `auth.updateProfile` | mutation | `{ name?: string, phone?: string, avatarUrl?: string }` | `{ id, name, phone, avatarUrl, updatedAt }` | caregiver | Updates the caller's own profile. Only the three listed fields are editable by the user. Role, homeIds, and medCertified are admin-only (see `staff` procedures). |
 | `auth.setTheme` | mutation | `{ theme: 'light' | 'dark' | 'auto' }` | `{ theme }` | caregiver | Saves the caller's display theme in `user_settings.theme` (frontend-spec-1.md §10.1). The app reads it back from the synced `user_settings` row. Added with dark mode. |
+| `auth.setDisclosure` | mutation | `{ onboardingDone?: boolean }` | `{ disclosure: { onboardingDone?: boolean } }` | caregiver | Saves progressive-disclosure flags in the caller's `user_settings.disclosure` (merged, other keys kept; unknown keys are rejected), so hiding the getting-started tips follows the person to other devices (frontend-spec-2.md §6.5). |
 
 ### agency
 
