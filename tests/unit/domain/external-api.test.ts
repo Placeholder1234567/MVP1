@@ -48,3 +48,32 @@ describe('query parameters', () => {
 		expect(() => instantParam('yesterday', 'since')).toThrow(ApiInputError);
 	});
 });
+
+describe('reportAllowed', () => {
+	it('follows the plan', async () => {
+		const { reportAllowed } = await import('../../../src/lib/domain/external-api');
+		const starter = new Set(['timekeeping', 'reports_basic']);
+		const complete = new Set([
+			'timekeeping',
+			'reports',
+			'charting',
+			'incidents',
+			'mar',
+			'goals',
+			'audit_log'
+		]);
+		expect(reportAllowed('timesheets', starter)).toBe(true);
+		expect(reportAllowed('incidents', starter)).toBe(false);
+		expect(reportAllowed('audit', starter)).toBe(false);
+		for (const t of [
+			'incidents',
+			'notes',
+			'mar',
+			'goals',
+			'attendance',
+			'timesheets',
+			'audit'
+		] as const)
+			expect(reportAllowed(t, complete)).toBe(true);
+	});
+});

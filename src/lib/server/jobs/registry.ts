@@ -13,7 +13,12 @@ import {
 import { applySyncWindows } from '../services/sync/index.ts';
 import { searchCoverage, coverageTimer, sweepCoverage } from '../services/schedule/index.ts';
 import { checkMissedPunches } from '../services/clock/index.ts';
-import { deliverWebhook, sweepWebhooks } from '../services/integration/index.ts';
+import {
+	cleanupReports,
+	deliverWebhook,
+	generateReport,
+	sweepWebhooks
+} from '../services/integration/index.ts';
 
 export interface RunContext {
 	/** Cloud Tasks retry count (0 on the first attempt) */
@@ -141,6 +146,19 @@ const JOBS = {
 		maxAttempts: 1,
 		run: (p) => deliverWebhook(p)
 	}),
+	// External API reports (openapi.yaml /reports): built in the background, kept 24 hours.
+	'report-generate': job({
+		queue: 'reports',
+		payload: z.object({ id: z.uuid() }),
+		maxAttempts: 1,
+		run: (p) => generateReport(p)
+	}),
+	'report-cleanup': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => cleanupReports()
+	}),
 	'sync-window': job({
 		queue: 'maintenance',
 		payload: z.object({}).passthrough(),
@@ -194,5 +212,6 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	// Doses due in 30 minutes, and doses 30 minutes late (med-reminders.ts).
 	{ job: 'med-reminder-sweep', cron: '*/5 * * * *' },
 	{ job: 'webhook-sweep', cron: '* * * * *' },
+	{ job: 'report-cleanup', cron: '17 * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' }
 ];

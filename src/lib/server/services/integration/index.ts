@@ -30,3 +30,10 @@ export {
 	WebhookUpdateInput,
 	type WebhookTransport
 } from './webhooks';
+export {
+	cleanupReports,
+	downloadReport,
+	generateReport,
+	reportStatus,
+	requestReport
+} from './reports';
