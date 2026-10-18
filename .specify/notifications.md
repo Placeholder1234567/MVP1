@@ -265,6 +265,19 @@ Update `notifications.sent_at`
 
 **As built:** the `care-reminder-sweep` (every 15 minutes) flags each incident still `open` 24 to 72 hours after it was reported, once (`reference_id` = incident ID), to the home's supervisors and the agency's admins. The date is the occurrence day (or report day) in the agency's time zone. The escalation chain repeats it at 24 and 48 hours unless someone reads it.
 
+### 2.12a incident_contact_overdue
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | care-reminder-sweep (every 15 minutes): an open incident has a required contact (family or guardian, nurse, state reporting system, per the agency's incident rules) that isn't marked as told once the agency's reminder hours for that contact have passed since the incident. `overdueContacts()` in `domain/clinical.ts`; hours in `agencies.settings.incident_rules` (`guardianHours` 24, `nurseHours` 2 and `stateHours` off by default). |
+| **Recipients** | Supervisors of the incident's home (admins when the home has none) |
+| **Channels** | Push |
+| **Priority** | High |
+| **Template (Push)** | `"Incident at {homeName} from {day}: {contact} not yet marked as told."` |
+| **PHI Safety** | Home, date and contact role only; no person, incident type or detail. |
+| **Deep Link** | `/dashboard` (incident review) |
+| **Escalation** | None. Sent once per incident and contact; marking the contact as told or closing the report stops further reminders. |
+
 ### 2.13 shift_reminder
 
 | Field | Value |
@@ -385,6 +398,7 @@ Update `notifications.sent_at`
 | `incident_reported` | High | Y | Y** | N | Y | Severity-based |
 | `incident_high_severity` | Urgent | Y | Y | N | Y | 15 min, 30 min SMS |
 | `incident_review_needed` | High | Y | Y | N | Y | Daily for 3 days |
+| `incident_contact_overdue` | High | Y | N | N | N | None (once per contact) |
 | `shift_reminder` | Normal | Y | N | N | N | None |
 | `clock_anomaly` | Normal | Y | N | N | N | None |
 | `clock_missed` | High | Y | Y | N | N | None |
@@ -576,6 +590,7 @@ type NotificationType =
   | 'incident_reported'
   | 'incident_high_severity'
   | 'incident_review_needed'
+  | 'incident_contact_overdue'
   | 'shift_reminder'
   | 'clock_anomaly'
   | 'clock_missed'
@@ -912,6 +927,7 @@ When a profile is created, default notification preferences are seeded based on 
 | `incident_reported` | N | N | N | Y | N | N | Y | N | N |
 | `incident_high_severity` | N | N | N | Y | Y | N | Y | Y | N |
 | `incident_review_needed` | N | N | N | Y | N | N | Y | N | N |
+| `incident_contact_overdue` | N | N | N | Y | N | N | Y | N | N |
 | `shift_reminder` | Y | N | N | N | N | N | N | N | N |
 | `clock_anomaly` | N | N | N | Y | N | N | N | N | N |
 | `clock_missed` | Y | N | N | Y | N | N | N | N | N |

@@ -8,6 +8,7 @@
 	import {
 		DEFAULT_INCIDENT_RULES,
 		INCIDENT_TYPES,
+		RULE_HOURS_MAX,
 		RULE_WHEN_MAX,
 		parseIncidentRules,
 		type IncidentRules,
@@ -60,6 +61,17 @@
 				bind:value={rules.guardianWhen}
 			/></label
 		>
+		<label
+			>Remind supervisors if family or guardian isn’t marked as told after (hours, blank for no
+			reminder)<input
+				class="input"
+				type="number"
+				min="1"
+				max={RULE_HOURS_MAX}
+				step="1"
+				bind:value={rules.guardianHours}
+			/></label
+		>
 		<fieldset class="stack">
 			<legend>Nurse: for these incidents</legend>
 			<div class="types">
@@ -73,6 +85,16 @@
 					required
 					maxlength={RULE_WHEN_MAX}
 					bind:value={rules.nurseWhen}
+				/></label
+			>
+			<label
+				>Remind supervisors if the nurse isn’t marked as told after (hours, blank for no reminder)<input
+					class="input"
+					type="number"
+					min="1"
+					max={RULE_HOURS_MAX}
+					step="1"
+					bind:value={rules.nurseHours}
 				/></label
 			>
 		</fieldset>
@@ -95,6 +117,16 @@
 					required
 					maxlength={RULE_WHEN_MAX}
 					bind:value={rules.stateWhen}
+				/></label
+			>
+			<label
+				>Remind supervisors if the state isn’t marked as told after (hours, blank for no reminder)<input
+					class="input"
+					type="number"
+					min="1"
+					max={RULE_HOURS_MAX}
+					step="1"
+					bind:value={rules.stateHours}
 				/></label
 			>
 		</fieldset>

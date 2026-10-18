@@ -438,6 +438,32 @@ export function missingNotifications(
 		.filter((who) => who !== 'Supervisor' && !notified.includes(who));
 }
 
+/**
+ * Required contacts not marked as told whose reminder time has passed: the
+ * agency's hours for that contact after the incident happened. Contacts
+ * without hours (written deadline only) are never overdue here.
+ */
+export function overdueContacts(
+	severity: string | null | undefined,
+	type: string | null | undefined,
+	notified: readonly string[],
+	occurredAt: Date,
+	now: Date,
+	rules?: IncidentRules
+): { who: string; when: string; dueAt: Date }[] {
+	const sev = (INCIDENT_SEVERITIES as readonly string[]).includes(severity ?? '')
+		? (severity as IncidentSeverity)
+		: 'Low';
+	const kind = (INCIDENT_TYPES as readonly string[]).includes(type ?? '')
+		? (type as IncidentType)
+		: 'Other';
+	return incidentNotifyRules(sev, kind, rules).flatMap((r) => {
+		if (r.who === 'Supervisor' || notified.includes(r.who) || !r.hours) return [];
+		const dueAt = new Date(occurredAt.getTime() + r.hours * 3_600_000);
+		return dueAt.getTime() <= now.getTime() ? [{ who: r.who, when: r.when, dueAt }] : [];
+	});
+}
+
 // ─── Supervisor attention queue ───────────────────────────────────────────
 
 export type Urgency = 'critical' | 'action' | 'info';

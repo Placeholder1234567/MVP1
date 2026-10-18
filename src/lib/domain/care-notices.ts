@@ -64,3 +64,7 @@ export const controlledDiscrepancyTitle = (home: string) =>
 
 export const controlledCountersignTitle = (recorder: string, home: string) =>
 	`${recorder} asked you to countersign a controlled medication entry at ${home}.`;
+
+/** Role names only ("Family or guardian"), never who the person is. */
+export const incidentContactOverdueTitle = (who: string, home: string, day: string) =>
+	`Incident at ${home} from ${dayLabel(day)}: ${who.toLowerCase()} not yet marked as told.`;

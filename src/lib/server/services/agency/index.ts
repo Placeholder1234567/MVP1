@@ -1,6 +1,11 @@
 // Agency Service (services.md): the caller's agency and its configuration.
 import { z } from 'zod';
-import { INCIDENT_TYPES, RULE_WHEN_MAX, STATE_CODES } from '../../../domain/index.ts';
+import {
+	INCIDENT_TYPES,
+	RULE_HOURS_MAX,
+	RULE_WHEN_MAX,
+	STATE_CODES
+} from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { createStaffAccount } from '../auth/index.ts';
@@ -57,7 +62,11 @@ export const AgencySettings = z
 				nurseWhen: z.string().trim().min(1).max(RULE_WHEN_MAX),
 				stateSeverities: z.array(z.enum(['Low', 'Medium', 'High'])),
 				stateTypes: z.array(z.enum(INCIDENT_TYPES)),
-				stateWhen: z.string().trim().min(1).max(RULE_WHEN_MAX)
+				stateWhen: z.string().trim().min(1).max(RULE_WHEN_MAX),
+				// Reminder hours; null switches a contact's reminder off.
+				guardianHours: z.number().int().min(1).max(RULE_HOURS_MAX).nullable().optional(),
+				nurseHours: z.number().int().min(1).max(RULE_HOURS_MAX).nullable().optional(),
+				stateHours: z.number().int().min(1).max(RULE_HOURS_MAX).nullable().optional()
 			})
 			.strict()
 			.optional()

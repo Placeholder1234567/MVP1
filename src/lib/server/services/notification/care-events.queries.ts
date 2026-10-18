@@ -1,6 +1,14 @@
 import { and, eq, gt, inArray, isNotNull, lte } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { homes, incidents, notes, profiles, scheduleSlots } from '../../db/schema';
+import {
+	agencies,
+	homes,
+	incidents,
+	notes,
+	notifications,
+	profiles,
+	scheduleSlots
+} from '../../db/schema';
 
 /** What a note notification says and who gets it; no note content. */
 export async function noteFacts(tx: Tx, agencyId: string, noteId: string) {
@@ -78,4 +86,59 @@ export function openIncidents(tx: Tx, agencyId: string, from: Date, to: Date) {
 				lte(incidents.created_at, to)
 			)
 		);
+}
+
+/** Open incidents since `from`, with what decides who must be told. */
+export function openIncidentContacts(tx: Tx, agencyId: string, from: Date) {
+	return tx
+		.select({
+			id: incidents.id,
+			homeId: incidents.home_id,
+			homeName: homes.name,
+			type: incidents.type,
+			severity: incidents.severity,
+			notifiedParties: incidents.notified_parties,
+			occurredAt: incidents.occurred_at,
+			createdAt: incidents.created_at
+		})
+		.from(incidents)
+		.leftJoin(homes, eq(homes.id, incidents.home_id))
+		.where(
+			and(
+				eq(incidents.agency_id, agencyId),
+				eq(incidents.status, 'open'),
+				gt(incidents.created_at, from)
+			)
+		);
+}
+
+export async function agencySettingsFor(tx: Tx, agencyId: string) {
+	const [row] = await tx
+		.select({ settings: agencies.settings })
+		.from(agencies)
+		.where(eq(agencies.id, agencyId));
+	return row?.settings ?? {};
+}
+
+/** Whether this exact notice (type, record and title) already went out. */
+export async function sentWithTitle(
+	tx: Tx,
+	agencyId: string,
+	type: string,
+	referenceId: string,
+	title: string
+) {
+	const [row] = await tx
+		.select({ id: notifications.id })
+		.from(notifications)
+		.where(
+			and(
+				eq(notifications.agency_id, agencyId),
+				eq(notifications.type, type),
+				eq(notifications.reference_id, referenceId),
+				eq(notifications.title, title)
+			)
+		)
+		.limit(1);
+	return Boolean(row);
 }
