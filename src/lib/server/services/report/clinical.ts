@@ -51,11 +51,11 @@ const CONTENT_TYPES = {
 	html: 'text/html;charset=utf-8',
 	pdf: 'application/pdf'
 } as const;
-export async function exportClinical(
+/** Validates the live role, features, period and RLS-scoped home/person without exporting. */
+export async function clinicalAccess(
 	tx: Tx,
 	user: CurrentUser,
-	input: z.input<typeof ClinicalExport>,
-	request: RequestInfo
+	input: z.input<typeof ClinicalExport>
 ) {
 	const p = ClinicalExport.parse(input);
 	if (
@@ -79,29 +79,51 @@ export async function exportClinical(
 	}
 	if (!(await clinicalScope(tx, user.agencyId, p.homeId, p.clientId)))
 		throw new ServiceError('NOT_FOUND', 'Report scope is unavailable');
+	return { p, period };
+}
+
+export async function exportClinical(
+	tx: Tx,
+	user: CurrentUser,
+	input: z.input<typeof ClinicalExport>,
+	request: RequestInfo,
+	options: { background?: boolean; onClients?: (ids: string[]) => void } = {}
+) {
+	const { p, period } = await clinicalAccess(tx, user, input);
+	const rowLimit = options.background ? (p.format === 'pdf' ? 2000 : 10000) : 1000;
+	const historyLimit = options.background ? 50000 : 5000;
 	const rows = await clinicalRows(tx, user.agencyId, {
 		...p,
 		toDayExclusive: addDays(p.toDay, 1),
-		...period
+		...period,
+		rowLimit
 	});
-	if (rows.length > 1000)
+	if (rows.length > rowLimit)
 		throw new ServiceError(
 			'VALIDATION_FAILED',
-			'Report exceeds 1,000 records. Choose a shorter period or one person.'
+			`Report exceeds ${rowLimit.toLocaleString('en-US')} records. Choose a shorter period or one person.`
 		);
+	options.onClients?.([...new Set(rows.map((r) => String(r.clientId)))]);
 	if ((p.type === 'notes' || p.type === 'goals') && rows.length) {
-		const events = await clinicalNoteHistory(tx, user.agencyId, [
-			...new Set(rows.map((r) => String(p.type === 'goals' ? r.noteId : r.id)))
-		]);
-		if (events.length > 5000)
+		const events = await clinicalNoteHistory(
+			tx,
+			user.agencyId,
+			[...new Set(rows.map((r) => String(p.type === 'goals' ? r.noteId : r.id)))],
+			historyLimit
+		);
+		if (events.length > historyLimit)
 			throw new ServiceError(
 				'VALIDATION_FAILED',
 				'Report has too many signature events. Choose a shorter period.'
 			);
+		const byNote = new Map<string, Array<Omit<(typeof events)[number], 'noteId'>>>();
+		for (const { noteId, ...event } of events) {
+			const group = byNote.get(noteId) ?? [];
+			group.push(event);
+			byNote.set(noteId, group);
+		}
 		for (const row of rows)
-			row.signatureEvents = events
-				.filter((e) => e.noteId === (p.type === 'goals' ? row.noteId : row.id))
-				.map(({ action, byName, occurredAt }) => ({ action, byName, occurredAt }));
+			row.signatureEvents = byNote.get(String(p.type === 'goals' ? row.noteId : row.id)) ?? [];
 	}
 	const report: ClinicalReport = {
 		version: 1,

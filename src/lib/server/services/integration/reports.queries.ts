@@ -3,7 +3,7 @@
 // attendance by their day, goal trials by their note's day, timesheets by
 // clock-in, the audit log by when it was written. Every query is scoped by
 // agency_id; columns reuse the bulk export lists so nothing internal leaves.
-import { and, asc, eq, gte, isNotNull, lt, lte, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, lt, lte, or, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	auditLog,
@@ -240,7 +240,13 @@ export function expiredJobs(tx: Tx, now: Date) {
 		.from(reportJobs)
 		.where(
 			and(
-				eq(reportJobs.status, 'ready'),
+				or(
+					eq(reportJobs.status, 'ready'),
+					and(
+						isNotNull(reportJobs.requested_by),
+						inArray(reportJobs.status, ['queued', 'processing', 'failed'])
+					)
+				),
 				lt(reportJobs.expires_at, now),
 				isNotNull(reportJobs.storage_path)
 			)
