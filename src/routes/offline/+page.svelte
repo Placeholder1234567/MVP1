@@ -19,6 +19,7 @@
 	let pin = $state('');
 	let error = $state('');
 	let busy = $state(false);
+	let waiting = $state(false);
 	let checked = $state(false);
 	let unsupported = $state(false);
 	let user = $state<AppUser | null>(null);
@@ -81,7 +82,7 @@
 			]);
 			dbLoaded = true;
 			Workspace = workspace.default;
-			database = await openDb(key, profileId, { offline: true });
+			database = await openDb(key, profileId, { offline: true, onWait: () => (waiting = true) });
 			const person = await database.getOptional<Database['profiles']>(
 				'SELECT * FROM profiles WHERE id = ?',
 				[profileId]
@@ -142,6 +143,7 @@
 			key?.fill(0);
 			pin = '';
 			busy = false;
+			waiting = false;
 		}
 	}
 	async function lock() {
@@ -191,6 +193,9 @@
 					><button class="btn" disabled={busy}>{busy ? 'Opening…' : 'Unlock saved records'}</button>
 				</form>{:else if checked}<p class="callout">
 					Connect and sign in to prepare or refresh this device for offline use.
+				</p>{/if}
+			{#if waiting}<p class="callout" role="status">
+					Guad is open in another tab. Lock or close it there and this tab opens by itself.
 				</p>{/if}
 			{#if error}<p class="callout bad" role="alert">{error}</p>{/if}<a
 				class="btn sec"

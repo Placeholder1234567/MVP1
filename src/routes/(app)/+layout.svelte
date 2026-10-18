@@ -54,6 +54,8 @@
 	let again = $state('');
 	let message = $state('');
 	let busy = $state(false);
+	/** Another tab has the device database open; this one opens when it's free. */
+	let waiting = $state(false);
 	let unsupported = $state(false);
 	let key: Uint8Array | undefined;
 	// Items outside the agency's plan are hidden, not greyed out (entitlements.md §7).
@@ -143,7 +145,9 @@
 		try {
 			const unlocked = step === 'set-pin' ? key! : await unwrapKey(pin, app.user.profileId);
 			if (step === 'set-pin') await wrapKey(unlocked, pin, app.user.profileId);
-			const database = await openDb(unlocked, app.user.profileId);
+			const database = await openDb(unlocked, app.user.profileId, {
+				onWait: () => (waiting = true)
+			});
 			app.connect(database);
 			// Only a fresh server response can renew saved access; an offline PIN unlock cannot.
 			void Promise.all([trpc.auth.me.query(), trpc.agency.get.query()])
@@ -182,6 +186,7 @@
 			pin = '';
 			again = '';
 			busy = false;
+			waiting = false;
 		}
 	}
 	async function lock() {
@@ -264,6 +269,9 @@
 						>{busy ? 'Opening…' : step === 'set-pin' ? 'Save PIN and open' : 'Unlock'}</button
 					>
 				</form>{/if}
+			{#if waiting}<p role="status" class="callout">
+					Guad is open in another tab. Lock or close it there and this tab opens by itself.
+				</p>{/if}
 			{#if message}<p role="alert" class="callout bad">{message}</p>
 				<button class="textbtn" onclick={() => location.reload()}>Try again</button>{/if}
 			<button class="textbtn" onclick={signOut}>Sign out</button>

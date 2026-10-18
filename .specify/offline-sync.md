@@ -882,6 +882,8 @@ Every feature that touches synced data must pass this checklist before shipping:
 | 11 | **PWA installed + offline** | Install PWA via "Add to Home Screen." Go offline. Open PWA. | App shell loads from service worker cache. PowerSync provides local data. Full offline functionality. |
 | 12 | **Dependent writes** | Create a note with goal trials offline (note + note_goals). Go online. | Note syncs first, then note_goals. FK constraint is satisfied. Both records appear on server. |
 
+**As built (test 10):** PowerSync runs with `enableMultiTabs: false`, so only one tab opens the OPFS file. `openDb` (`src/lib/sync/db.ts`) holds a Web Lock named after the database file while it is open. A second tab that unlocks sees the lock taken and shows "Guad is open in another tab. Lock or close it there and this tab opens by itself." instead of hanging on "Opening…"; it opens as soon as the first tab locks, signs out or closes (`tests/e2e/multi-tab.spec.ts`). Tab B does not mirror tab A's records live; it is one tab at a time.
+
 ### CI Integration
 
 Offline tests run in the Playwright CI pipeline using `context.setOffline(true)` and `page.route('**/*', route => route.abort())` for more granular network control. The test suite includes a dedicated "offline" test tag:
