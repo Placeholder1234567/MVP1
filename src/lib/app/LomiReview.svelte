@@ -133,7 +133,7 @@
 	}
 </script>
 
-<div class="stack" aria-label="Review Lomi draft">
+<div class="stack" role="group" aria-label="Review Lomi draft">
 	<p class="callout warn">
 		{usedAi
 			? 'AI-generated draft. Check every section against what actually happened.'

@@ -148,7 +148,7 @@
 		</form>
 		{#if message}<p class="callout" role="status">{message}</p>{/if}
 		{#if !loaded}<Skeleton count={2} label="Loading case notes" />{:else}
-			<div class="list card" aria-label="Case note history">
+			<div class="list card" role="group" aria-label="Case note history">
 				{#each notes as note (note.id)}
 					<div class="row">
 						<span class="grow"

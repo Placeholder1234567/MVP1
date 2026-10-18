@@ -158,7 +158,7 @@
 	{/if}
 
 	{#if loading && !entries.length}<Skeleton count={5} label="Loading audit entries" />{:else}
-		<div class="list card" aria-label="Audit entries">
+		<div class="list card" role="group" aria-label="Audit entries">
 			{#each entries as e (e.id)}
 				<button class="row" onclick={() => open(e.id)}>
 					<span class="grow"

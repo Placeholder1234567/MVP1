@@ -147,7 +147,9 @@
 	{:else if !rows.length}
 		<p class="muted">{person.name} has no medications in this week.</p>
 	{:else}
-		<div class="scroll">
+		<!-- Focusable so keyboard users can scroll the grid on narrow screens. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<div class="scroll" role="region" aria-label="Doses by day" tabindex="0">
 			<table class="mar-grid">
 				<caption class="visually-hidden"
 					>Medication record for {person.name}, week of {dayLabel(start)}</caption
@@ -176,6 +178,7 @@
 									<span
 										class="mark {cell.kind}"
 										class:zero={cell.kind === 'prn' && !cell.count}
+										role="img"
 										title={describe(cell)}
 										aria-label={describe(cell)}
 										>{#if cell.kind === 'given'}✓{:else if cell.kind === 'refused'}R{:else if cell.kind === 'held'}H{:else if cell.kind === 'prn'}{cell.count ||
