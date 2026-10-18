@@ -23,12 +23,10 @@
 	const clock = `${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')}`;
 	const notes = $derived(app.notes.filter((n) => n.home_id === app.homeId));
 	const pending = $derived(notes.filter((n) => n.status === 'submitted'));
+	/** Signed notes for today's shifts (the note's shift day), the same set the link opens. */
 	const signed = $derived(
 		notes.filter(
-			(n) =>
-				n.created_at &&
-				localTime(new Date(n.created_at), app.user.timeZone).day === today &&
-				['submitted', 'approved'].includes(n.status ?? '')
+			(n) => n.day === today && ['submitted', 'approved', 'returned'].includes(n.status ?? '')
 		)
 	);
 	const openIncidents = $derived(
@@ -117,14 +115,17 @@
 			<p class="muted">Notes to review</p>
 			<p class="stat-number">{pending.length}</p>
 		</a>
-		<div class="card pad">
+		<a
+			class="card pad stat"
+			href="{resolve('/(app)/dashboard/notes')}?show=all&from={today}&to={today}"
+		>
 			<p class="muted">Signed today</p>
 			<p class="stat-number">{signed.length}</p>
-		</div>
-		<div class="card pad">
+		</a>
+		<a class="card pad stat" href="#attention-h">
 			<p class="muted">Open incidents</p>
 			<p class="stat-number">{openIncidents}</p>
-		</div>
+		</a>
 		<div class="card pad">
 			<p class="muted">Doses not recorded</p>
 			<p class="stat-number">{notRecorded}</p>

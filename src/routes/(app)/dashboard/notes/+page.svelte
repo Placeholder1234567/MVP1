@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { useSession, parseJson } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import {
@@ -18,10 +19,15 @@
 	let busy = $state(false);
 	let message = $state('');
 	// Filter bar (frontend-spec-3.md §4.2): to review by default.
-	let filter = $state<ReviewFilter>('submitted');
+	// The overview links here with ?show=&from=&to= (a status and dates only, no PHI).
+	const params = page.url.searchParams;
+	const DAY = /^\d{4}-\d{2}-\d{2}$/;
+	const SHOW: ReviewFilter[] = ['submitted', 'all', 'approved', 'returned'];
+	const day = (v: string | null) => (v && DAY.test(v) ? v : '');
+	let filter = $state<ReviewFilter>(SHOW.find((f) => f === params.get('show')) ?? 'submitted');
 	let search = $state('');
-	let from = $state('');
-	let to = $state('');
+	let from = $state(day(params.get('from')));
+	let to = $state(day(params.get('to')));
 	let sort = $state<'newest' | 'oldest'>('newest');
 	/** On narrow screens the list and the note take turns (frontend-audit finding 20). */
 	let picked = $state(false);

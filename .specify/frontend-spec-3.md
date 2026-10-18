@@ -173,6 +173,8 @@ SECTION LABEL STYLE:
 | Open Incidents | 1 | Open incidents | Incidents tab, open filter |
 | Doses Due | 3 | Doses not recorded | Medications tab |
 
+**As built:** Notes to review opens note review; Signed today counts signed notes for today's shifts (the note's shift day) and opens note review with All and today's dates (`/dashboard/notes?show=all&from=…&to=…`); Open incidents jumps to "Needs your attention" on the same page, where incidents are reviewed; Doses not recorded links its 7-day "Given" line to the MAR grid (plans with `mar`).
+
 > *(Rebuild target -- not in MVP)* The following stat cards are planned enhancements requiring new computed properties in O.stats():
 >
 > | Card | Label | Requires |
