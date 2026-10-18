@@ -24,10 +24,12 @@ test('supervisor follows home-scoped coverage activity online and offline', asyn
 	date.setUTCDate(date.getUTCDate() + (info.project.name === 'phone' ? 3 : 2));
 	const day = date.toISOString().slice(0, 10);
 	const assignment = page.getByRole('combobox', { name: `${day} Morning assignment`, exact: true });
-	await expect(assignment.getByRole('option', { name: 'Cara Giver', exact: true })).toHaveCount(1);
+	await expect(
+		assignment.getByRole('option', { name: /^Cara Giver · \d+ shifts? this week$/ })
+	).toHaveCount(1);
 	const original = await assignment.inputValue();
 	const cara = await assignment
-		.getByRole('option', { name: 'Cara Giver', exact: true })
+		.getByRole('option', { name: /^Cara Giver · \d+ shifts? this week$/ })
 		.getAttribute('value');
 	expect(cara).toBeTruthy();
 	try {
@@ -113,7 +115,7 @@ test('supervisor copies last week’s assignments into the open slots of this we
 		return d.toISOString().slice(0, 10);
 	};
 	const cara = await slot(plus(lastWeek, 2))
-		.getByRole('option', { name: 'Cara Giver', exact: true })
+		.getByRole('option', { name: /^Cara Giver · \d+ shifts? this week$/ })
 		.getAttribute('value');
 	await slot(plus(lastWeek, 2)).selectOption(cara!);
 	await expect(
@@ -167,7 +169,7 @@ test('supervisor saves a week as a template, fills another week from it and drag
 	const first = await weekOf();
 	const name = `Synthetic ${info.project.name} week ${Date.now()}`;
 	const cara = await slot(plus(first, 1))
-		.getByRole('option', { name: 'Cara Giver', exact: true })
+		.getByRole('option', { name: /^Cara Giver · \d+ shifts? this week$/ })
 		.getAttribute('value');
 	try {
 		await slot(plus(first, 1)).selectOption(cara!);
@@ -252,10 +254,79 @@ test('supervisor reviews suggested staff for open shifts and assigns only the on
 
 	// Exactly that shift is now assigned; clear it again.
 	await expect(assigned).toHaveCount(1);
-	expect(first).toContain(await assigned.locator('option:checked').innerText());
+	expect(first).toContain((await assigned.locator('option:checked').innerText()).split(' · ')[0]);
 	const axe = await new AxeBuilder({ page }).analyze();
 	expect(axe.violations).toEqual([]);
 	await assigned.selectOption('');
 	await expect(saved).toBeVisible();
 	await expect(assigned).toHaveCount(0);
+});
+
+test('a caregiver gives a reason when they can’t make a shift, and the supervisor sees it', async ({
+	page,
+	browser
+}, info) => {
+	test.setTimeout(180000);
+	const signIn = async (tab: typeof page, email: string) => {
+		await tab.goto('/login');
+		await tab.getByLabel('Email', { exact: true }).fill(email);
+		await tab.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
+		await tab.getByRole('button', { name: 'Sign in', exact: true }).click();
+		await tab.getByLabel('Device PIN', { exact: true }).fill('654321');
+		const confirm = tab.getByLabel('Confirm PIN', { exact: true });
+		if (await confirm.isVisible()) await confirm.fill('654321');
+		await tab.getByRole('button', { name: /^(Save PIN and open|Unlock)$/ }).click();
+		await expect(tab.getByLabel('Device PIN', { exact: true })).toBeHidden();
+		await tab.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
+		await expect(tab.getByTestId('sync-status')).toHaveText('All changes synced');
+	};
+	await signIn(page, 'supervisor@guad.test');
+	await page.getByRole('link', { name: 'Schedule', exact: true }).first().click();
+	await page.getByRole('button', { name: 'Next week →', exact: true }).click();
+	const week = (await page.getByText(/^Week of /).innerText()).replace('Week of ', '').trim();
+	const date = new Date(`${week}T12:00:00Z`);
+	date.setUTCDate(date.getUTCDate() + (info.project.name === 'phone' ? 5 : 4));
+	const day = date.toISOString().slice(0, 10);
+	const assignment = page.getByRole('combobox', { name: `${day} Evening assignment`, exact: true });
+	const original = await assignment.inputValue();
+	// Each option shows how many shifts that person has this week.
+	const option = assignment.getByRole('option', { name: /^Cara Giver · \d+ shifts? this week$/ });
+	await assignment.selectOption((await option.getAttribute('value'))!);
+	await expect(
+		page.getByText('Schedule saved. Updates will appear after sync.', { exact: true })
+	).toBeVisible();
+
+	const caregiver = await browser.newContext({ viewport: page.viewportSize() });
+	try {
+		const cara = await caregiver.newPage();
+		await signIn(cara, 'cara@guad.test');
+		await cara
+			.getByRole('link', { name: /^Shifts/ })
+			.first()
+			.click();
+		await cara.getByRole('button', { name: 'Next week →', exact: true }).click();
+		// The assignment syncs to Cara's device.
+		const mine = cara
+			.getByRole('group', { name: `${day} Evening`, exact: true })
+			.getByRole('button', { name: 'I can’t make this shift', exact: true });
+		await expect(mine).toBeVisible();
+		await mine.click();
+		const form = cara.getByRole('form', { name: 'Why you can’t make this shift', exact: true });
+		await form.getByRole('combobox', { name: 'Reason', exact: true }).selectOption('Sick');
+		await form.getByRole('button', { name: 'Request cover', exact: true }).click();
+		await expect(
+			cara.getByText('Coverage requested. Eligible staff will receive an offer.')
+		).toBeVisible();
+	} finally {
+		await caregiver.close();
+	}
+
+	const activity = page.getByRole('region', { name: 'Coverage activity', exact: true });
+	await expect(
+		activity
+			.getByRole('article')
+			.filter({ hasText: `${day} · Evening` })
+			.first()
+	).toContainText('Sick');
+	await assignment.selectOption(original);
 });
