@@ -2188,6 +2188,8 @@ Built routes not in the map: `/notes/:id`, `/notifications`, `/notifications/:id
   Offline: searches local PowerSync SQLite database
 ```
 
+**As built:** `CommandPalette.svelte` in the app bar ("Search" button, or Cmd/Ctrl+K anywhere), rules in `src/lib/domain/search.ts`. It searches the records already synced to the device (people, staff for supervisors, notes including their text, active medications, incidents, active goals) plus the pages in the navigation, so it works offline and the query never leaves the device. Case and accents are ignored and every word must match; title-prefix matches come first. Categories follow the table's priorities for caregivers or supervisors, with pages first; each shows three results and says how many more match instead of a "View all" link. Arrow keys and Enter choose, Escape closes; on phones it is full screen.
+
 ---
 
 > *Sections 8, 9, 10 are in frontend-spec-2.md and frontend-spec-1.md respectively. See the section numbering note before section 7.*
@@ -2302,7 +2304,7 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 | 37 | ~~Family/guardian read-only portal~~ | Post-v1 | Out of scope for v1 (prd.md non-goal 5: no family portal). Revisit after launch. |
 | 38 | Cmd+K command palette (desktop) | P2 | Power-user differentiator. Quick actions and global search. |
 | 39 | Charting preset system (Therap terminology) | P1 | Agency-level toggle: Shift Note = T-Log, Incident = GER, Messages = SComm, etc. |
-| 40 | Celebration micro-animations for goal milestones | P2 | When all trials are Independent: card border flashes green, scale-up checkmark. Respect prefers-reduced-motion. |
+| 40 | Celebration micro-animations for goal milestones | P2 | When all trials are Independent: card border flashes green, scale-up checkmark. Respect prefers-reduced-motion. As built: two or more trials this shift, all Independent (`goalMilestone()` in domain/charting.ts); the card turns green with a spring checkmark and the status text "Independent on every trial this shift". Today shows "All notes done for this shift" with a Lomi bounce once every person's note is signed. Reduced motion keeps the colour and text without movement. |
 
 ---
 
