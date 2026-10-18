@@ -71,6 +71,10 @@
 <div class="stack">
 	<p class="eyebrow">Care records</p>
 	<h1>Records ready for review.</h1>
+	{#if page.data.user?.features?.includes('reports')}<a
+			class="textbtn"
+			href={resolve('/(app)/dashboard/reports/background')}>Prepare a larger care report →</a
+		>{/if}
 	<a class="textbtn" href={resolve('/(app)/dashboard/imports')}>Review CSV imports →</a>
 	<p class="muted">
 		Download an audited report from the server. Dates include both selected days in {app.user
