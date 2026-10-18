@@ -42,6 +42,36 @@ export function createReferral(
 		notes: input.notes
 	});
 }
+type Author = { profileId: string; name: string };
+
+/**
+ * Adds a note at the referral's current stage (US-29): a tour, a call, why
+ * it was declined. Notes are append-only.
+ */
+export async function addReferralNote(
+	tx: Tx,
+	agencyId: string,
+	author: Author,
+	input: { referralId: string; body: string }
+) {
+	const row = await getReferral(tx, agencyId, input.referralId);
+	return q.insertReferralNote(tx, {
+		agency_id: agencyId,
+		referral_id: row.id,
+		status: row.status,
+		body: input.body,
+		author_id: author.profileId,
+		author_name: author.name,
+		created_by: author.profileId
+	});
+}
+
+/** A referral's notes at each stage, oldest first. */
+export async function listReferralNotes(tx: Tx, agencyId: string, referralId: string) {
+	await getReferral(tx, agencyId, referralId);
+	return q.referralNoteRows(tx, agencyId, referralId);
+}
+
 export async function updateReferral(
 	tx: Tx,
 	agencyId: string,

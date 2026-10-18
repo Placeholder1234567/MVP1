@@ -1794,3 +1794,41 @@ export const messagePhotos = pgTable(
     index('message_photos_home_id_idx').on(t.home_id),
   ],
 );
+
+// ─── 45. referral_notes ──────────────────────────────────────────────────────
+// Notes at each intake stage (US-29): what happened at a referral's stage
+// (a tour, a call, why it was declined). Each note keeps the stage the
+// referral was at when it was written. Append-only; supervisors and admins
+// only, like referrals. Not synced: intake is online.
+
+export const referralNotes = pgTable(
+  'referral_notes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    referral_id: uuid('referral_id')
+      .notNull()
+      .references(() => referrals.id, { onDelete: 'cascade' }),
+    status: referralStatusEnum('status').notNull(),
+    body: text('body').notNull(),
+    author_id: uuid('author_id').references(() => profiles.id, {
+      onDelete: 'restrict',
+    }),
+    author_name: text('author_name'),
+    created_by: uuid('created_by').references(() => profiles.id, {
+      onDelete: 'restrict',
+    }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('referral_notes_agency_id_idx').on(t.agency_id),
+    index('referral_notes_referral_id_idx').on(t.referral_id),
+  ],
+);

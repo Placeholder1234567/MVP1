@@ -29,6 +29,10 @@
 	let admissionName = $state('');
 	let firstName = $state('');
 	let roomId = $state('');
+	// Notes at each stage (US-29), loaded with the referral.
+	let stageNotes = $state<Awaited<ReturnType<typeof trpc.intake.listReferralNotes.query>>>([]);
+	let stageNote = $state('');
+	const stageName = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 	const available = $derived(
 		rooms.filter((r) => r.homeId === homeId && r.status === 'available' && !r.occupiedBy)
 	);
@@ -64,8 +68,13 @@
 		busy = true;
 		message = '';
 		try {
-			const row = await trpc.intake.getReferral.query({ id });
+			const [row, history] = await Promise.all([
+				trpc.intake.getReferral.query({ id }),
+				trpc.intake.listReferralNotes.query({ referralId: id })
+			]);
 			selected = row;
+			stageNotes = history;
+			stageNote = '';
 			creating = false;
 			clientName = row.client_name ?? '';
 			source = row.source ?? '';
@@ -122,6 +131,26 @@
 			message = 'Referral saved.';
 		} catch {
 			message = 'Could not save. Connect and check the form. Placed referrals cannot be changed.';
+		} finally {
+			busy = false;
+		}
+	}
+	async function addStageNote(event: SubmitEvent) {
+		event.preventDefault();
+		if (!selected) return;
+		busy = true;
+		message = '';
+		try {
+			const note = await trpc.intake.addReferralNote.mutate({
+				referralId: selected.id,
+				body: stageNote
+			});
+			stageNotes = [...stageNotes, note];
+			stageNote = '';
+			message = 'Note added.';
+		} catch {
+			// Keep the text so nothing typed is lost.
+			message = 'Could not add the note. Connect and try again; your text is kept.';
 		} finally {
 			busy = false;
 		}
@@ -330,6 +359,32 @@
 							>{/if}
 					</fieldset>
 				</form>
+				{#if selected && !creating}<section class="card pad stack" aria-labelledby="stage-notes">
+						<h2 id="stage-notes">Notes by stage</h2>
+						{#if stageNotes.length}<ol class="stage-notes">
+								{#each stageNotes as note (note.id)}<li>
+										<span class="pill">{stageName(note.status)}</span>
+										<b>{note.authorName ?? 'Staff'} · {new Date(note.createdAt).toLocaleString()}</b
+										>
+										<p class="record-text">{note.body}</p>
+									</li>{/each}
+							</ol>{:else}<p class="muted">
+								No notes yet. Add one at each step: calls, tours, decisions.
+							</p>{/if}
+						<form class="stack" onsubmit={addStageNote}>
+							<label
+								>Note at {stageName(selected.status)}<textarea
+									class="input"
+									rows="3"
+									maxlength="4000"
+									required
+									bind:value={stageNote}></textarea></label
+							>
+							<div class="actions">
+								<button class="btn sec" disabled={busy || !stageNote.trim()}>Add note</button>
+							</div>
+						</form>
+					</section>{/if}
 				{#if selected?.status === 'accepted' && !creating}<form
 						class="card pad stack"
 						onsubmit={admit}
@@ -417,6 +472,22 @@
 </div>
 
 <style>
+	.stage-notes {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 12px;
+	}
+	.stage-notes li {
+		display: grid;
+		gap: 4px;
+		padding-bottom: 12px;
+		border-bottom: 1px solid var(--line);
+	}
+	.stage-notes .pill {
+		justify-self: start;
+	}
 	fieldset {
 		border: 0;
 		padding: 0;

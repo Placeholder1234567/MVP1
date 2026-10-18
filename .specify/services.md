@@ -275,7 +275,7 @@ src/lib/server/services/
 
 **Responsibility:** Referral pipeline management, room availability tracking, client-home-caregiver matching. Covers the flow from initial inquiry through placement in the right home.
 
-**Owns tables:** `referrals`, `rooms`
+**Owns tables:** `referrals`, `referral_notes`, `rooms`
 
 **Key functions:**
 - `createReferral(agencyId, data): Referral` — log a new referral/inquiry with contact info and source.

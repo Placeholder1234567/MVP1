@@ -201,8 +201,26 @@ SELECT expect('a countersigned entry is final',
 SELECT check_eq('countersigned once and still verified',
   (SELECT count(*) FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000' AND witness_status = 'verified'), 1);
 
+SELECT expect('sup records a referral',
+  $$INSERT INTO referrals (id, agency_id, client_name, created_by)
+    VALUES ('fd000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','Synthetic Referral','c2000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('sup adds a note at the referral''s stage',
+  $$INSERT INTO referral_notes (agency_id, referral_id, status, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','fd000000-0000-0000-0000-000000000000','inquiry','Called the family','c2000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('a stage note names its own author',
+  $$INSERT INTO referral_notes (agency_id, referral_id, status, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','fd000000-0000-0000-0000-000000000000','inquiry','Not mine','c1000000-0000-0000-0000-000000000000')$$, true);
+SELECT expect('nobody changes a stage note',
+  $$UPDATE referral_notes SET body = 'rewritten'$$, false);
+SELECT check_eq('the stage note is unchanged',
+  (SELECT count(*) FROM referral_notes WHERE body = 'Called the family'), 1);
+
 SELECT set_config('app.claims', :'cg', false);
 SELECT check_eq('caregivers see no schedule templates', (SELECT count(*) FROM schedule_templates), 0);
+SELECT check_eq('caregivers see no referral notes', (SELECT count(*) FROM referral_notes), 0);
+SELECT expect('caregivers cannot add a referral note',
+  $$INSERT INTO referral_notes (agency_id, referral_id, status, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','fd000000-0000-0000-0000-000000000000','inquiry','x','c1000000-0000-0000-0000-000000000000')$$, true);
 
 RESET ROLE;
 SELECT check_eq('note history written by trigger (created x2, signed, approved)', (SELECT count(*) FROM note_history), 4);
