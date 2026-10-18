@@ -197,6 +197,17 @@
 				message = 'This device is locked. Unlock and let your changes sync before signing out.';
 				return;
 			}
+			// Voice kept offline lives only on this device (LomiComposer transcribes it later).
+			const kept = await app.db
+				.get<{ n: number }>('SELECT count(*) AS n FROM pending_recordings')
+				.catch(() => ({ n: 0 }));
+			if (
+				kept.n &&
+				!confirm(
+					'A recording you made offline hasn’t been transcribed yet. Signing out deletes it from this device. Sign out anyway?'
+				)
+			)
+				return;
 			await app.db.disconnectAndClear();
 		}
 		await stopWebPush(app.user.profileId);

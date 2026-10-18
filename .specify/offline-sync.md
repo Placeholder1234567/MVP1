@@ -536,7 +536,7 @@ Non-retryable errors (constraint violations, RLS rejections, 4xx HTTP status) ar
 When a write permanently fails:
 
 1. The mutation is removed from the active queue to prevent blocking subsequent writes.
-2. The failed mutation metadata (table, operation, error reason) is stored in the local-only `failed_writes` table (`src/lib/sync/app-schema.ts`). Notices such as `MAR_CONFLICT` go to the local-only `sync_notices` table.
+2. The failed mutation metadata (table, operation, error reason) is stored in the local-only `failed_writes` table (`src/lib/sync/app-schema.ts`). Notices such as `MAR_CONFLICT` go to the local-only `sync_notices` table. Voice recorded offline waits in the local-only `pending_recordings` table until it is transcribed (frontend-spec-2.md "Offline voice behavior").
 3. The UI shows a persistent banner: "1 change could not be saved. Tap to review."
 4. The user can view the failed write details and either discard or retry manually.
 5. Failed writes are logged with enough context to diagnose the issue without exposing PHI in the error message.
