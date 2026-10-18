@@ -6,6 +6,7 @@
 	import {
 		boardThreads,
 		fitPhoto,
+		PHOTO_MAX_BYTES,
 		seenBy,
 		seenByLabel,
 		unseenMessages
@@ -85,9 +86,19 @@
 			canvas.height = size.height;
 			canvas.getContext('2d')!.drawImage(bitmap, 0, 0, size.width, size.height);
 			bitmap.close();
-			const blob = await new Promise<Blob>((ok, fail) =>
-				canvas.toBlob((b) => (b ? ok(b) : fail(new Error('Photo unavailable'))), 'image/jpeg', 0.8)
-			);
+			// A busy photo can still be large at 1600 px: step the quality down.
+			let blob: Blob | null = null;
+			for (const quality of [0.8, 0.65, 0.5, 0.35]) {
+				blob = await new Promise<Blob>((ok, fail) =>
+					canvas.toBlob(
+						(b) => (b ? ok(b) : fail(new Error('Photo unavailable'))),
+						'image/jpeg',
+						quality
+					)
+				);
+				if (blob.size <= PHOTO_MAX_BYTES) break;
+			}
+			if (!blob || blob.size > PHOTO_MAX_BYTES) throw new Error('Photo too large');
 			const bytes = new Uint8Array(await blob.arrayBuffer());
 			let binary = '';
 			for (let i = 0; i < bytes.length; i += 0x8000)

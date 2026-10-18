@@ -83,6 +83,9 @@ PROTOCOL_HEADER: "x-forwarded-proto"
 HOST_HEADER: "host"
 ADDRESS_HEADER: "x-forwarded-for"
 XFF_DEPTH: "1"
+# Board photos are uploaded through tRPC (up to 1.5 MB, about 2 MB as base64);
+# adapter-node's default request limit is 512K.
+BODY_SIZE_LIMIT: "4M"
 EOF
 	if [[ -f deploy/app.env.yaml ]]; then cat deploy/app.env.yaml; fi
 }

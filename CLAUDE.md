@@ -164,6 +164,7 @@ WORKER_URL=                      # worker service URL that Cloud Tasks calls
 WORKER_SERVICE_ACCOUNT=          # identity Cloud Tasks signs OIDC tokens as
 EXPORTS_BUCKET=                  # Cloud Storage bucket for report exports
 MEDIA_BUCKET=                    # Private Cloud Storage bucket for board photos (locally .data/media)
+BODY_SIZE_LIMIT=                 # adapter-node request limit; deploy.sh sets 4M for board photo uploads
 
 # Identity Platform
 PUBLIC_FIREBASE_API_KEY=         # Public web config (not a secret)
