@@ -29,6 +29,7 @@ import {
 	updateNoteRow,
 	type NoteFilter
 } from './charting.queries';
+import { noteReviewed, noteSubmitted } from '../notification/index.ts';
 
 /** Note content is a JSON object of sections; devices may send it as JSON text. */
 const Content = z.preprocess(
@@ -144,8 +145,10 @@ export async function createNote(
 	});
 	if (!created) return { id: note.id, created };
 	await saveGoals(tx, agencyId, note.id, note.clientId, note.goals);
-	if (note.status === 'submitted')
+	if (note.status === 'submitted') {
 		await updateNoteRow(tx, agencyId, note.id, { status: 'submitted' });
+		await noteSubmitted(tx, agencyId, note.id);
+	}
 	return { id: note.id, created };
 }
 
@@ -194,6 +197,7 @@ export async function updateNote(
 		lomi_drafted: set.lomiDrafted,
 		status: set.status
 	});
+	if (to === 'submitted' && from !== 'submitted') await noteSubmitted(tx, agencyId, id);
 	return { updatedAt };
 }
 
@@ -224,6 +228,7 @@ async function review(
 		status: to,
 		...(to === 'returned' ? { supervisor_comment: comment!.trim() } : {})
 	});
+	await noteReviewed(tx, agencyId, id, to);
 	return { updatedAt };
 }
 

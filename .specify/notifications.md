@@ -101,6 +101,8 @@ Update `notifications.sent_at`
 | **Deep Link** | `/notes/{noteId}/review` |
 | **Escalation** | If not read within 24 hours, push reminder to supervisor. |
 
+**As built:** `noteSubmitted()` (`services/notification/care-events.ts`) runs whenever a note becomes `submitted`: `note.sign`, a re-sign after send-back, or a note uploaded already signed through `sync.upload`. Recipients are the home's supervisors, or the admins if it has none. Text: `"{authorName} submitted a {noteType} for review ({homeName}, {Mon D})."`, where `{noteType}` is "shift note" or "behavior note" for every agency (the server never reads the charting preset). Wording lives in `domain/care-notices.ts`.
+
 ### 2.5 note_approved
 
 | Field | Value |
@@ -114,6 +116,8 @@ Update `notifications.sent_at`
 | **PHI Safety** | Safe. No clinical content. |
 | **Deep Link** | `/notes/{noteId}` |
 | **Escalation** | None |
+
+**As built:** sent by `noteReviewed()` after `note.approve`, to the author if their profile is still active.
 
 ### 2.6 note_sent_back
 
@@ -129,6 +133,8 @@ Update `notifications.sent_at`
 | **Deep Link** | `/notes/{noteId}/edit` |
 | **Escalation** | If not read within 8 hours, push reminder. If not read within 24 hours, second push reminder. |
 
+**As built:** sent by `noteReviewed()` after `note.sendBack`. The title is `"Your {noteType} for {Mon D} was sent back for revision. Open it to read your supervisor’s comment."`; the comment itself is never in the notification.
+
 ### 2.7 med_refusal
 
 | Field | Value |
@@ -142,6 +148,8 @@ Update `notifications.sent_at`
 | **PHI Safety** | CRITICAL: SMS and push must NEVER include client name, medication name, dose, or reason. Use only "a medication" generically. Push body may say "at {homeName}" but nothing more specific. Full details visible only after tapping deep link into authenticated app. |
 | **Deep Link** | `/mar/{marRecordId}` |
 | **Escalation** | Push at 0 min. If `acknowledged = false` after 1 hr, SMS to supervisor. If still unacknowledged after 2 hr, SMS to agency admin. |
+
+**As built:** `medRefused()` runs when `recordDose()` saves a new `refused` or `held` record, online or through `sync.upload`, including a correction that records a refusal. Text: `"Medication {refused|held} recorded at {homeName}. Open to review."`. A refusal that lands on an already-recorded dose slot is reported as `med_possible_double_dose` instead. Reading the in-app copy stops the SMS escalation.
 
 ### 2.7a med_possible_double_dose
 
@@ -229,6 +237,8 @@ Update `notifications.sent_at`
 | **Deep Link** | `/incidents/{incidentId}` |
 | **Escalation** | Repeats daily until incident status changes from `open`. Stops after 3 days -- marks `escalation_exhausted`. |
 
+**As built:** the `care-reminder-sweep` (every 15 minutes) flags each incident still `open` 24 to 72 hours after it was reported, once (`reference_id` = incident ID), to the home's supervisors and the agency's admins. The date is the occurrence day (or report day) in the agency's time zone. The escalation chain repeats it at 24 and 48 hours unless someone reads it.
+
 ### 2.13 shift_reminder
 
 | Field | Value |
@@ -242,6 +252,8 @@ Update `notifications.sent_at`
 | **PHI Safety** | Safe. Shift and home info only. |
 | **Deep Link** | `/schedule?home={homeId}&week={weekStart}` |
 | **Escalation** | None |
+
+**As built:** the `care-reminder-sweep` reminds the assignee of each `filled` slot once (`reference_id` = slot ID), when the sweep runs 20 to 60 minutes before the shift start in the agency's time zone. The text names the start time instead of "in 1 hour", since the sweep runs every 15 minutes: `"Reminder: your {shift} shift at {homeName} starts at {HH:MM}."`.
 
 ### 2.14 clock_anomaly
 
@@ -313,6 +325,8 @@ Update `notifications.sent_at`
 | **PHI Safety** | Safe. System info only. |
 | **Deep Link** | None |
 | **Escalation** | None |
+
+**Not built:** there is no admin tool to announce maintenance yet.
 
 ### 2.19 email_delivery_problem
 

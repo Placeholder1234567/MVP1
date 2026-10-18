@@ -7,6 +7,7 @@ import {
 	escalate,
 	sendDigest,
 	sweepDigests,
+	sweepCareReminders,
 	sweepMedReminders,
 	sweepNotifications
 } from '../services/notification/index.ts';
@@ -126,6 +127,12 @@ const JOBS = {
 		maxAttempts: 1,
 		run: () => sweepMedReminders()
 	}),
+	'care-reminder-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => sweepCareReminders()
+	}),
 	'notifications-sweep': job({
 		queue: 'maintenance',
 		payload: z.object({}).passthrough(),
@@ -211,6 +218,8 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	{ job: 'daily-digest-sweep', cron: '*/15 * * * *' },
 	// Doses due in 30 minutes, and doses 30 minutes late (med-reminders.ts).
 	{ job: 'med-reminder-sweep', cron: '*/5 * * * *' },
+	// Shift reminders an hour ahead, and incidents open 24 hours (care-reminders.ts).
+	{ job: 'care-reminder-sweep', cron: '*/15 * * * *' },
 	{ job: 'webhook-sweep', cron: '* * * * *' },
 	{ job: 'report-cleanup', cron: '17 * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' }
