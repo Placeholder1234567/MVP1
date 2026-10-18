@@ -258,7 +258,11 @@
 		</p>{/if}
 	<div class="card pad stack">
 		<label
-			>Import type<select class="input" bind:value={kind} disabled={busy || applying || dirty}
+			>Import type<select
+				class="input"
+				aria-label="Import type"
+				bind:value={kind}
+				disabled={busy || applying || dirty}
 				>{#each kinds as item (item)}<option value={item}
 						>{item === 'people' ? 'People' : item === 'goals' ? 'Goals' : 'Medications'}</option
 					>{/each}</select
