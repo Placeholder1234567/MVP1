@@ -74,10 +74,22 @@ Extra settings (Lomi models, messaging drivers, a custom domain) go in `deploy/a
 There is no in-app role above an agency's admin, so the operator creates agencies from a machine that can reach the database (Cloud SQL Auth Proxy, with `DATABASE_URL` pointing at it) and has Identity Platform credentials (`gcloud auth application-default login`, `GOOGLE_CLOUD_PROJECT` set):
 
 ```bash
-npm run agency:provision -- --name "Sunrise Care" --slug sunrise-care --tier professional \n  --admin-email admin@sunrise.example --admin-name "Ada Admin" --timezone America/Chicago
+npm run agency:provision -- --name "Sunrise Care" --slug sunrise-care --tier professional \
+  --admin-email admin@sunrise.example --admin-name "Ada Admin" --timezone America/Chicago
 ```
 
 It creates the agency with the default goal templates and emails the first admin a password-setup link. Add `--print-setup-link` to also print the link, for example before SES is set up.
+
+## Platform maintenance
+
+Before maintenance that affects every agency (a database upgrade, say), announce it from the same kind of machine. Everyone active in each agency gets a push, an email and an in-app notice with the window in their agency's time zone and a fixed impact line (no typed text, so nothing sensitive):
+
+```bash
+npm run maintenance:announce -- --start 2026-11-01T03:00:00Z --end 2026-11-01T05:00:00Z \
+  --impact unavailable --dry-run   # then again without --dry-run
+```
+
+`--impact` is `unavailable`, `slow` or `sync_paused`. The window is at most 12 hours and at most 60 days ahead. The output prints an announcement ID; if some agencies fail, run again with `--id <that ID>`, and only the ones that didn't get it are sent to.
 
 ## 5. Messaging (when ready)
 

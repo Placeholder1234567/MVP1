@@ -367,7 +367,7 @@ Update `notifications.sent_at`
 | **Deep Link** | None |
 | **Escalation** | None |
 
-**As built:** admins announce a window from Setup (`agency.announceMaintenance`). They choose the start, end (agency time zone, up to 12 hours, at most 60 days ahead) and one of three fixed impacts (unavailable, slow, sync paused). Nothing typed is sent, so the text is PHI-free by construction: push shows the window (title "Guad: Scheduled maintenance"), and the email subject is "Guad: Scheduled maintenance" with the window, the impact and a reminder to sync each device first. It goes to every active profile in the agency; the device sends an announcement ID, so a double submit sends it once. Platform-wide announcements (all agencies) are not built.
+**As built:** admins announce a window from Setup (`agency.announceMaintenance`). They choose the start, end (agency time zone, up to 12 hours, at most 60 days ahead) and one of three fixed impacts (unavailable, slow, sync paused). Nothing typed is sent, so the text is PHI-free by construction: push shows the window (title "Guad: Scheduled maintenance"), and the email subject is "Guad: Scheduled maintenance" with the window, the impact and a reminder to sync each device first. It goes to every active profile in the agency; the device sends an announcement ID, so a double submit sends it once. Platform-wide announcements: operators run `npm run maintenance:announce -- --start … --end … --impact … [--id …] [--dry-run]` (`scripts/announce-maintenance.ts`), which sends the same announcement to every agency in its own time zone, one transaction per agency. Each agency's announcement ID is derived from the run's `--id`, so repeating a run (after a failure, say) sends nothing twice.
 
 ### 2.19 email_delivery_problem
 

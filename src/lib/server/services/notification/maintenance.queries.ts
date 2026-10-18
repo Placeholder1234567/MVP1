@@ -10,6 +10,11 @@ export function agencyTimezone(tx: Tx, agencyId: string) {
 		.then((r) => r[0]?.timezone);
 }
 
+/** Every agency on the platform (operator announcements only). */
+export function allAgencies(tx: Tx) {
+	return tx.select({ id: agencies.id }).from(agencies).orderBy(agencies.created_at);
+}
+
 export function activeStaff(tx: Tx, agencyId: string) {
 	return tx
 		.select({ id: profiles.id, role: profiles.role })

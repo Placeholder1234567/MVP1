@@ -25,6 +25,7 @@ npm run dev                 # SvelteKit dev server at http://localhost:5173
 | `npm test` | Unit tests (vitest) |
 | `npm run test:integration` | Database and sign-in tests (local Docker Postgres; starts its own Auth emulator) |
 | `npm run agency:provision -- --name … --slug … --tier … --admin-email … --admin-name …` | Create a new agency with default goal templates and invite its first admin (operator tool; add `--print-setup-link` when email isn't set up) |
+| `npm run maintenance:announce -- --start … --end … --impact unavailable\|slow\|sync_paused [--id …] [--dry-run]` | Announce a maintenance window to every agency (operator tool; repeat with the same `--id` to retry without duplicates) |
 | `npm run dev:auth` / `db:seed` | Auth emulator / synthetic demo data with emulator-only accounts |
 | `npm run db:up` / `db:down` | Start / stop the local stack |
 | `npm run db:setup` | Apply migrations, RLS policies, triggers, `.specify/sql-patches/` and grants (`db:reset` drops everything first) |
