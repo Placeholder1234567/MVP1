@@ -17,7 +17,12 @@
 		onState?: (state: { recording: boolean; busy: boolean; message: string }) => void;
 	} = $props();
 	const app = useSession();
-	let voiceState = $state<VoiceState>({ recording: false, requesting: false, busy: false, message: '' });
+	let voiceState = $state<VoiceState>({
+		recording: false,
+		requesting: false,
+		busy: false,
+		message: ''
+	});
 	let capture = $state.raw<VoiceCapture>();
 	$effect(() => {
 		onState?.({
@@ -56,7 +61,24 @@
 					})
 				).text,
 			text: (text) => onText(text),
-			state: (value) => (voiceState = value)
+			state: (value) => (voiceState = value),
+			// Long recordings are cut into segments at a pause (voice-capture.ts).
+			listen: (stream) => {
+				const context = new AudioContext();
+				const analyser = context.createAnalyser();
+				analyser.fftSize = 1024;
+				context.createMediaStreamSource(stream).connect(analyser);
+				const samples = new Float32Array(analyser.fftSize);
+				return {
+					quiet: () => {
+						analyser.getFloatTimeDomainData(samples);
+						let sum = 0;
+						for (const v of samples) sum += v * v;
+						return Math.sqrt(sum / samples.length) < 0.02;
+					},
+					close: () => void context.close().catch(() => {})
+				};
+			}
 		});
 		const hide = () => {
 			if (document.hidden) capture?.cancel();
