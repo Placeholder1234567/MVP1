@@ -585,6 +585,11 @@ export const incidents = pgTable(
     medical_followup: text('medical_followup'),
     witnesses: text('witnesses'),
     notified_parties: text('notified_parties').array(),
+    // Optional details many state IDD reports ask for (frontend-audit.md
+    // finding 8): condition now, alone or with staff, restraint, self-injury,
+    // injury locations, medication and environmental factors, corrective plan.
+    // Shape and allowed values: src/lib/domain/incident-details.ts.
+    report_details: jsonb('report_details').notNull().default({}),
     status: incidentStatusEnum('status').notNull().default('open'),
     followup_notes: text('followup_notes'),
     created_by: uuid('created_by').references(() => profiles.id, {

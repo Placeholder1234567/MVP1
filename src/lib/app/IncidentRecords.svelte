@@ -11,6 +11,13 @@
 		MEDICAL_FOLLOWUP,
 		incidentNotifyRules,
 		incidentOccurredAt,
+		parseReportDetails,
+		reportDetailsError,
+		BODY_AREAS,
+		RESTRAINT,
+		WITH_STAFF,
+		YES_NO,
+		YES_NO_UNKNOWN,
 		roundedClock,
 		type IncidentSeverity,
 		type IncidentType
@@ -46,8 +53,23 @@
 		medical: 'None needed' as string,
 		witnesses: '',
 		severity: 'Low' as IncidentSeverity,
-		told: [] as string[]
+		told: [] as string[],
+		// Optional state-reporting details (domain/incident-details.ts)
+		withStaff: '',
+		restraint: '',
+		restraintDetail: '',
+		selfInjury: '',
+		injuryAreas: [] as string[],
+		medicationFactor: '',
+		environmentFactors: '',
+		conditionNow: '',
+		correctivePlan: ''
 	});
+	const details = () =>
+		parseReportDetails({
+			...form,
+			injuryAreas: form.injured === 'Yes' ? form.injuryAreas : []
+		});
 	const restored = untrack(() => initialDraft);
 	let form = $state(
 		restored?.form ? { ...blank(), ...(restored.form as ReturnType<typeof blank>) } : blank()
@@ -72,6 +94,13 @@
 		if (step === 2 && !form.staffAction.trim()) {
 			error = 'Add what you did.';
 			return;
+		}
+		if (step === 2) {
+			const problem = reportDetailsError(details());
+			if (problem) {
+				error = problem;
+				return;
+			}
 		}
 		error = '';
 		onDirty?.();
@@ -106,6 +135,7 @@
 				medical_followup: form.medical,
 				witnesses: form.witnesses.trim() || null,
 				notified_parties: JSON.stringify(told),
+				report_details: JSON.stringify(details()),
 				status: 'open',
 				author_id: app.user.profileId,
 				author_name: app.user.name
@@ -225,6 +255,78 @@
 					form.medical = v;
 				})}
 				<label>Witnesses<input class="input" maxlength="500" bind:value={form.witnesses} /></label>
+				<details class="state-details">
+					<summary>Details for state reporting (optional)</summary>
+					<p class="muted s13">Fill these in if your agency’s state report asks for them.</p>
+					<div class="stack">
+						{@render choice(
+							'Was the person alone or with staff?',
+							WITH_STAFF,
+							form.withStaff,
+							(v) => {
+								form.withStaff = v;
+							}
+						)}
+						{@render choice(
+							'Restraint or restrictive intervention used?',
+							RESTRAINT,
+							form.restraint,
+							(v) => (form.restraint = v)
+						)}
+						{#if form.restraint && form.restraint !== 'None'}<label
+								>Describe the intervention<textarea
+									class="input short"
+									maxlength="2000"
+									placeholder="What was used, for how long, and who did it"
+									bind:value={form.restraintDetail}></textarea></label
+							>{/if}
+						{@render choice('Self-injurious behavior?', YES_NO, form.selfInjury, (v) => {
+							form.selfInjury = v;
+						})}
+						{#if form.injured === 'Yes'}<div
+								class="field"
+								role="group"
+								aria-label="Where on the body"
+							>
+								<span class="fieldlabel">Where on the body</span>
+								<div class="areas">
+									{#each BODY_AREAS as area (area)}<label class="check"
+											><input type="checkbox" bind:group={form.injuryAreas} value={area} /><span
+												>{area}</span
+											></label
+										>{/each}
+								</div>
+							</div>{/if}
+						{@render choice(
+							'Was medication a factor?',
+							YES_NO_UNKNOWN,
+							form.medicationFactor,
+							(v) => {
+								form.medicationFactor = v;
+							}
+						)}
+						<label
+							>Environmental factors<textarea
+								class="input short"
+								maxlength="2000"
+								placeholder="Lighting, floor, noise, crowding, equipment"
+								bind:value={form.environmentFactors}></textarea></label
+						>
+						<label
+							>How the person is now<textarea
+								class="input short"
+								maxlength="2000"
+								bind:value={form.conditionNow}></textarea></label
+						>
+						<label
+							>Corrective action plan<textarea
+								class="input short"
+								maxlength="2000"
+								placeholder="What will change to prevent this happening again"
+								bind:value={form.correctivePlan}></textarea></label
+						>
+					</div>
+				</details>
 			{:else}
 				{@render choice('How serious was it?', INCIDENT_SEVERITIES, form.severity, (v) => {
 					form.severity = v as IncidentSeverity;
@@ -290,5 +392,17 @@
 	}
 	.tight {
 		gap: 8px;
+	}
+	.state-details summary {
+		font-weight: 600;
+		min-height: 44px;
+		display: flex;
+		align-items: center;
+		cursor: pointer;
+	}
+	.areas {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 4px 12px;
 	}
 </style>

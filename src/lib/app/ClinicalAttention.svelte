@@ -6,6 +6,8 @@
 		attentionItems,
 		localTime,
 		URGENCY_BANDS,
+		parseReportDetails,
+		reportDetailRows,
 		type AttentionItem
 	} from '#lib/domain/index.ts';
 	import { trpc } from '#lib/trpc.ts';
@@ -207,6 +209,12 @@
 						<b>{label}:</b>
 						{value}
 					</p>{/if}{/each}
+			{#each reportDetailRows(parseReportDetails(incident.report_details)) as [label, value] (label)}<p
+					class="record-text"
+				>
+					<b>{label}:</b>
+					{value}
+				</p>{/each}
 			<p>
 				<b>Told:</b>
 				{parseJson<string[]>(incident.notified_parties, []).join(', ') || 'No one recorded yet'}

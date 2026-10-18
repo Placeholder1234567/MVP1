@@ -217,6 +217,17 @@ test('incident requires a named signature and local Lomi changes require review 
 	await page
 		.getByLabel('What you did', { exact: true })
 		.fill('Recorded this synthetic workflow for interface verification.');
+	// State-reporting details are optional, but a restraint must be described.
+	await page.getByText('Details for state reporting (optional)', { exact: true }).click();
+	await page
+		.getByRole('group', { name: 'Restraint or restrictive intervention used?', exact: true })
+		.getByRole('button', { name: 'Physical hold', exact: true })
+		.click();
+	await page.getByRole('button', { name: 'Next', exact: true }).click();
+	await expect(page.getByText(/Describe the restraint or restrictive intervention/)).toBeVisible();
+	await page
+		.getByLabel('Describe the intervention', { exact: true })
+		.fill('Synthetic hold description for interface verification.');
 	await page.getByRole('button', { name: 'Next', exact: true }).click();
 	const submit = page.getByRole('button', { name: 'Sign and submit report', exact: true });
 	await expect(submit).toBeDisabled();

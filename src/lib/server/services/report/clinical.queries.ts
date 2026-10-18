@@ -204,6 +204,7 @@ export async function clinicalRows(
 					description: incidents.description,
 					staffAction: incidents.staff_action,
 					medicalFollowup: incidents.medical_followup,
+					reportDetails: incidents.report_details,
 					status: incidents.status,
 					followup: incidents.followup_notes,
 					authorId: incidents.author_id,
