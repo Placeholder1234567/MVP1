@@ -56,9 +56,10 @@
 		await save({ dismissals: (saved?.dismissals ?? 0) + 1 });
 	}
 	async function closeDialog(change: Partial<InstallState>) {
-		dialog?.close();
-		install.closed = true;
+		// Save first: closing and reloading straight away must not lose "Got it".
 		await save(change);
+		install.closed = true;
+		dialog?.close();
 	}
 </script>
 
