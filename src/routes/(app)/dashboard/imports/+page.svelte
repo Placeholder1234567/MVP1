@@ -21,7 +21,9 @@
 	let { data }: PageProps = $props();
 	const app = useSession();
 	const kinds = $derived(
-		(['people', 'goals', 'medications'] as const).filter((kind) => data.importFeatures[kind])
+		(['people', 'goals', 'medications', 'staff'] as const).filter(
+			(kind) => data.importFeatures[kind]
+		)
 	);
 	let kind = $state<ImportKind>('people');
 	let context = $state<ImportContext>({ homes: [], people: [] });
@@ -127,12 +129,15 @@
 			};
 			const preliminary = previewImport(kind, parsed, context);
 			const existingKeys: string[] = [];
-			if (kind !== 'people') {
+			if (kind === 'staff') {
+				const staff = await trpc.staff.list.query({});
+				for (const member of staff) existingKeys.push(importKey('staff', [member.email]));
+			} else if (kind !== 'people') {
 				const ids = [
 					...new Set(
 						preliminary
 							.filter((row) => !row.errors.length)
-							.map((row) => (row.payload.kind === 'people' ? '' : row.payload.input.clientId))
+							.map((row) => ('clientId' in row.payload.input ? row.payload.input.clientId : ''))
 					)
 				];
 				for (const clientId of ids) {
@@ -180,6 +185,7 @@
 		const timer = setTimeout(() => controller.abort(), 20000);
 		const options = { signal: controller.signal };
 		try {
+			if (payload.kind === 'staff') return await trpc.staff.invite.mutate(payload.input, options);
 			if (payload.kind === 'people') return await trpc.client.create.mutate(payload.input, options);
 			if (payload.kind === 'goals') return await trpc.goal.create.mutate(payload.input, options);
 			return await trpc.medication.create.mutate(payload.input, options);
@@ -201,7 +207,7 @@
 			return;
 		if (
 			!confirm(
-				`Create ${rows.length} ${kind} records using these reviewed values? This cannot undo earlier rows if a later row fails.`
+				`Create ${rows.length} ${kind} records using these reviewed values? ${kind === 'staff' ? 'This creates sign-in accounts and sends password-setup invitations. ' : ''}This cannot undo earlier rows if a later row fails.`
 			)
 		)
 			return;
@@ -251,7 +257,7 @@
 		Import creates definitions and people, not signed notes or medication administration records.
 		Review prescriptions and support plans with the responsible clinician. Duplicate checks are
 		conservative; concurrent imports or re-uploading after a lost response can still create
-		duplicates. Staff invitations are not imported here.
+		duplicates. Staff imports are admin-only and send invitations after each account is created.
 	</p>
 	{#if !online}<p class="callout warn" role="status">
 			Reconnect before preparing or applying an import. Your current preview remains in memory.
@@ -264,11 +270,24 @@
 				bind:value={kind}
 				disabled={busy || applying || dirty}
 				>{#each kinds as item (item)}<option value={item}
-						>{item === 'people' ? 'People' : item === 'goals' ? 'Goals' : 'Medications'}</option
+						>{item === 'staff'
+							? 'Staff invitations'
+							: item === 'people'
+								? 'People'
+								: item === 'goals'
+									? 'Goals'
+									: 'Medications'}</option
 					>{/each}</select
 			></label
 		>
 		<p>Required headers, in any order: <code>{IMPORT_HEADERS[kind].join(', ')}</code></p>
+		{#if kind === 'staff'}<p class="callout warn">
+				Each applied row creates a sign-in and sends a password-setup invitation. Use caregiver or
+				supervisor; invite administrators individually. Separate home IDs with semicolons.
+				Medication certification must explicitly be true or false. Confirm roles, assignments and
+				certification against agency records. A created account does not confirm invitation
+				delivery; check delivery separately.
+			</p>{/if}
 		{#if kind === 'medications'}<p class="muted">
 				Separate scheduled times with semicolons, for example 07:00;19:00. Use scheduled times or
 				as-needed instructions, never both.
@@ -293,7 +312,7 @@
 	<details class="card pad">
 		<summary>Accessible IDs for your template</summary>
 		<p class="muted">Copy the exact ID, not a name. Imports never guess a match.</p>
-		{#if kind === 'people'}{#each context.homes as home (home.id)}<label
+		{#if kind === 'people' || kind === 'staff'}{#each context.homes as home (home.id)}<label
 					>{home.name}<input
 						class="input"
 						readonly

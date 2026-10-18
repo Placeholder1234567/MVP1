@@ -13,6 +13,49 @@ const context = {
 	homes: [{ id: home, name: 'Synthetic House' }],
 	people: [{ id: client, name: 'Synthetic Person', homeId: home, active: true }]
 };
+it('requires explicit staff permissions, certification and accessible home assignments', () => {
+	const row = (values: string) =>
+		previewImport(
+			'staff',
+			parseImportCsv(IMPORT_HEADERS.staff.join(',') + '\n' + values),
+			context
+		)[0];
+	const valid = row(`NEW@example.test,New Staff,supervisor,${home},false`);
+	expect(valid.errors).toEqual([]);
+	expect(valid.payload).toEqual({
+		kind: 'staff',
+		input: {
+			email: 'new@example.test',
+			name: 'New Staff',
+			role: 'supervisor',
+			homeIds: [home],
+			medCertified: false
+		}
+	});
+	expect(valid.target).toBe('Synthetic House');
+	for (const values of [
+		`invalid,New Staff,caregiver,${home},true`,
+		`new@example.test,New Staff,admin,${home},true`,
+		`new@example.test,New Staff,caregiver,${home},`,
+		`new@example.test,New Staff,caregiver,,false`,
+		`new@example.test,New Staff,caregiver,unknown,false`,
+		`new@example.test,New Staff,caregiver,${home};${home},false`
+	])
+		expect(row(values).errors.length).toBeGreaterThan(0);
+	const csv = parseImportCsv(
+		IMPORT_HEADERS.staff.join(',') +
+			`\nnew@example.test,One,caregiver,${home},false\nNEW@example.test,Two,supervisor,${home},true`
+	);
+	expect(previewImport('staff', csv, context)[1].errors).toContain(
+		'Possible duplicate within this CSV.'
+	);
+	expect(
+		previewImport('staff', csv, {
+			...context,
+			existingKeys: [importKey('staff', ['new@example.test'])]
+		})[0].errors
+	).toContain('Possible duplicate of an existing record.');
+});
 it('enforces each management API field limit before allowing an import', () => {
 	const definitions: Array<{
 		kind: ImportKind;

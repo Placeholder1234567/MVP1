@@ -1,7 +1,8 @@
 export const CSV_LIMITS = { bytes: 262144, rows: 100, field: 4000, columns: 16 } as const;
 export class CsvImportError extends Error {}
-export type ImportKind = 'people' | 'goals' | 'medications';
+export type ImportKind = 'people' | 'goals' | 'medications' | 'staff';
 export const IMPORT_HEADERS = {
+	staff: ['email', 'name', 'role', 'home_ids', 'med_certified'],
 	people: ['home_id', 'name', 'first_name', 'info'],
 	goals: ['client_id', 'area', 'text', 'frequency', 'target'],
 	medications: [
@@ -94,6 +95,16 @@ export function parseImportCsv(input: string): ParsedCsv {
 	return { headers, rows: records };
 }
 export type ImportPayload =
+	| {
+			kind: 'staff';
+			input: {
+				email: string;
+				name: string;
+				role: 'caregiver' | 'supervisor';
+				homeIds: string[];
+				medCertified: boolean;
+			};
+	  }
 	| { kind: 'people'; input: { homeId: string; name: string; firstName?: string; info?: string } }
 	| {
 			kind: 'goals';
@@ -160,14 +171,60 @@ export function previewImport(
 		const id = value(kind === 'people' ? 'home_id' : 'client_id').toLowerCase();
 		const home = context.homes.find((item) => item.id === id);
 		const person = context.people.find((item) => item.id === id && item.active);
-		if (kind === 'people' ? !home : !person)
+		if (kind !== 'staff' && (kind === 'people' ? !home : !person))
 			errors.push(
 				kind === 'people'
 					? 'home_id must identify an accessible home.'
 					: 'client_id must identify an accessible active person.'
 			);
 		let payload: ImportPayload, key: string;
-		if (kind === 'people') {
+		let staffTarget = '';
+		if (kind === 'staff') {
+			const email = bounded('email', 254, true).toLowerCase();
+			const name = bounded('name', 100, true);
+			const role = value('role');
+			const certified = value('med_certified').toLowerCase();
+			const homeIds = value('home_ids')
+				? value('home_ids')
+						.toLowerCase()
+						.split(';')
+						.map((id) => id.trim())
+				: [];
+			// Match the existing invitation API's email format without a runtime dependency.
+			if (
+				!/^(?:[A-Za-z0-9_'+-]+\.)*[A-Za-z0-9_'+-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/.test(
+					email
+				)
+			)
+				errors.push('email must be a valid email address.');
+			if (role !== 'caregiver' && role !== 'supervisor')
+				errors.push('role must be caregiver or supervisor. Invite administrators individually.');
+			if (certified !== 'true' && certified !== 'false')
+				errors.push('med_certified must be true or false.');
+			if (
+				!homeIds.length ||
+				homeIds.length > 50 ||
+				new Set(homeIds).size !== homeIds.length ||
+				homeIds.some((id) => !context.homes.some((home) => home.id === id))
+			)
+				errors.push(
+					'home_ids must contain 1–50 distinct accessible home IDs separated by semicolons.'
+				);
+			staffTarget = homeIds
+				.map((id) => context.homes.find((home) => home.id === id)?.name ?? 'Unresolved home')
+				.join('; ');
+			payload = {
+				kind,
+				input: {
+					email,
+					name,
+					role: role === 'supervisor' ? 'supervisor' : 'caregiver',
+					homeIds,
+					medCertified: certified === 'true'
+				}
+			};
+			key = importKey(kind, [email]);
+		} else if (kind === 'people') {
 			const name = bounded('name', 100, true),
 				firstName = bounded('first_name', 50),
 				info = bounded('info', 4000);
@@ -234,11 +291,13 @@ export function previewImport(
 			line: record.line,
 			values: expected.map((header) => value(header)),
 			target:
-				kind === 'people'
-					? (home?.name ?? 'Unresolved home')
-					: person
-						? `${person.name} · ${context.homes.find((item) => item.id === person.homeId)?.name ?? 'Home'}`
-						: 'Unresolved person',
+				kind === 'staff'
+					? staffTarget
+					: kind === 'people'
+						? (home?.name ?? 'Unresolved home')
+						: person
+							? `${person.name} · ${context.homes.find((item) => item.id === person.homeId)?.name ?? 'Home'}`
+							: 'Unresolved person',
 			errors,
 			payload,
 			key
