@@ -205,36 +205,48 @@ export async function applyScheduleSuggestions(
 	const last = addDays(input.weekStart, 6);
 	if (input.picks.some((p) => p.day < input.weekStart || p.day > last))
 		throw new ServiceError('VALIDATION_FAILED', 'Suggestions must be for the week shown');
-	// The week may have changed since the suggestion: check the picks again.
+	// The week may have changed since the suggestion. Shifts taken, being
+	// covered or started since are skipped with their reason first; only the
+	// rest are checked again, so a pick that won't be applied never counts
+	// toward someone's day or week.
+	const now = new Date();
+	const plan = planWeekCopy(
+		input.picks.map((p) => ({
+			day: p.day,
+			shift: p.shift,
+			assignedTo: p.profileId,
+			status: 'filled'
+		})),
+		await weekOf(tx, user.agencyId, input.homeId, input.weekStart),
+		input.weekStart,
+		input.weekStart,
+		(day, shift) =>
+			shiftIsPast(day, shift, now, user.timeZone) || startedNow(day, shift, now, user.timeZone)
+	);
 	const data = await eligibilityData(tx, user.agencyId, {
 		homeId: input.homeId,
 		day: input.weekStart,
 		shift: 'am'
 	});
 	const { ok, refused } = checkPicks(
-		input.picks,
+		plan.copy,
 		data.staff,
 		data.scheduled,
 		input.homeId,
 		data.doseTimes
 	);
-	const source = ok.map((p) => ({
-		day: p.day,
-		shift: p.shift,
-		assignedTo: p.profileId,
-		status: 'filled'
-	}));
 	const result = await fillOpenSlots(
 		tx,
 		user,
 		input.homeId,
-		source,
+		ok.map((p) => ({ day: p.day, shift: p.shift, assignedTo: p.profileId, status: 'filled' })),
 		input.weekStart,
 		input.weekStart
 	);
 	return {
 		copied: result.copied,
 		skipped: [
+			...plan.skipped,
 			...result.skipped,
 			...refused.map((p) => ({ day: p.day, shift: p.shift, reason: 'unavailable' as const }))
 		]
