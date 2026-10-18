@@ -142,3 +142,33 @@ it('does not acknowledge an old write as durable while a newer revision waits', 
 	expect(await store.load()).toEqual({ ...health, fields: { pulse: 99 } });
 	store.dispose();
 });
+
+it('flushes through the closing encrypted database after the session reference is disposed', async () => {
+	const { db } = database();
+	let connected: DraftDatabase | undefined = db;
+	const status = vi.fn();
+	const store = new CareDraftStore(() => connected, 'profile', 'client', 'health', status);
+	store.queue(health);
+	connected = undefined;
+	await flushCareDrafts(db);
+	expect(status).toHaveBeenLastCalledWith(false);
+	connected = db;
+	expect(await store.load()).toEqual(health);
+	store.dispose();
+});
+
+it('never follows a replaced session getter or writes another profile database during close', async () => {
+	const original = database();
+	const foreign = database();
+	let current = original.db;
+	const store = new CareDraftStore(() => current, 'original-profile', 'client', 'health', vi.fn());
+	store.queue(health);
+	current = foreign.db;
+	await flushCareDrafts(foreign.db);
+	expect(original.execute).not.toHaveBeenCalled();
+	expect(foreign.execute).not.toHaveBeenCalled();
+	await store.flush();
+	expect(original.execute).toHaveBeenCalledTimes(1);
+	expect(foreign.execute).not.toHaveBeenCalled();
+	store.dispose();
+});

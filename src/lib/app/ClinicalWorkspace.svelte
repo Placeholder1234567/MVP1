@@ -43,6 +43,8 @@
 	let cleanupNeeded = $state(false);
 	let draftSaved = $state(false);
 	let generation = $state(0);
+	let latestDraft = $state.raw<DraftData | null>(null);
+	let latestScope = $state('');
 	const olderDay = $derived(
 		recovery &&
 			current !== 'medications' &&
@@ -52,19 +54,22 @@
 		const section = current;
 		const personId = clientId;
 		const profileId = app.user.profileId;
+		const db = app.db;
+		const scope = `${profileId}:${personId}:${section}`;
+		const preserved = untrack(() => (dirty && latestScope === scope ? latestDraft : null));
 		let alive = true;
 		recovery = null;
-		initialDraft = null;
-		draftReady = section === 'medications';
+		initialDraft = preserved;
+		draftReady = section === 'medications' || !!preserved;
 		cleanupNeeded = false;
 		draftError = false;
 		draftSaved = false;
-		if (section === 'medications') {
+		if (section === 'medications' || !db) {
 			draftStore = undefined;
 			return;
 		}
 		const store = new CareDraftStore(
-			() => app.db,
+			() => db,
 			profileId,
 			personId,
 			section as DraftSection,
@@ -77,16 +82,20 @@
 			}
 		);
 		draftStore = store;
-		void untrack(() => store.load())
-			.then((data) => {
-				if (alive) recovery = data;
-			})
-			.catch(() => {
-				if (alive) draftError = true;
-			})
-			.finally(() => {
-				if (alive) draftReady = true;
-			});
+		untrack(() => generation++);
+		if (preserved) store.queue(preserved);
+		else
+			void store
+				.load()
+				.then((data) => {
+					if (alive) recovery = data;
+				})
+				.catch(() => {
+					if (alive) draftError = true;
+				})
+				.finally(() => {
+					if (alive) draftReady = true;
+				});
 		return () => {
 			alive = false;
 			store.dispose();
@@ -94,6 +103,8 @@
 	});
 	function draftChanged(data: DraftData) {
 		if (!dirty) return;
+		latestDraft = data;
+		latestScope = `${app.user.profileId}:${clientId}:${current}`;
 		draftSaved = false;
 		draftStore?.queue(data);
 	}
@@ -105,6 +116,7 @@
 		draftAction = false;
 		if (draftError) return false;
 		dirty = false;
+		latestDraft = null;
 		recovery = null;
 		initialDraft = null;
 		draftSaved = false;
@@ -142,6 +154,7 @@
 		return confirm('Discard the unsaved changes in this form?') && (await discardDraft());
 	}
 	const saved = () => {
+		latestDraft = null;
 		cleanupNeeded = current !== 'medications';
 		dirty = false;
 		void draftStore?.clear();
