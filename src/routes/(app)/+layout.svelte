@@ -56,6 +56,7 @@
 					...(data.user.role === 'admin'
 						? [
 								{ href: '/dashboard/audit', label: 'Audit log', feature: 'audit_log' },
+								{ href: '/dashboard/api-keys', label: 'API keys' },
 								{ href: '/dashboard/setup', label: 'Setup' }
 							]
 						: []),

@@ -25,6 +25,8 @@
 		'referrals',
 		'report_exports',
 		'ai_invocations',
+		'api_access',
+		'api_keys',
 		'mfa_resets',
 		'audit_views'
 	];
