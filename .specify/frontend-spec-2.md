@@ -1658,6 +1658,8 @@ Each feature's visibility is gated by a threshold check. No server-side feature 
 
 Total time: 3 minutes. Lomi appears as a 40px lemon in the corner of each step with a one-sentence instruction. After completing, DSP has clocked in, written one note, and signed it.
 
+**As built:** a "Getting started" card on Today for caregivers (`GettingStarted.svelte`, rules in `src/lib/domain/onboarding.ts`) lists the four steps with the next one highlighted. Each step ticks itself off from the synced records (a clock record, a note by them, a signed note), so nothing has to be clicked through. The card goes once all are done, or when "Hide these tips" saves `onboardingDone` in `user_settings.disclosure` (`auth.setDisclosure`), which follows the person to other devices. Me has a Help section with short answers and the Guad/Therap terms side by side, and "Show getting-started tips again". The usage-threshold reveals in the table above are not built; voice and Lomi stay available from the start, as in the MVP.
+
 ---
 
 ### 6.6 Offline AI Degradation

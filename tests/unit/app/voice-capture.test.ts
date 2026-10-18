@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
+	MISSING_PART,
 	VoiceCapture,
 	type VoiceDependencies,
 	type VoiceState
@@ -7,9 +8,7 @@ import {
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
-function fixture() {
-	const track = { stop: vi.fn() };
-	const stream = { getTracks: () => [track] } as unknown as MediaStream;
+function fakeRecorder() {
 	const recorder = {
 		state: 'inactive',
 		mimeType: 'audio/webm;codecs=opus',
@@ -24,37 +23,128 @@ function fixture() {
 			recorder.onstop?.();
 		})
 	};
+	return recorder;
+}
+function fixture(listener?: { quiet: () => boolean; close: () => void }) {
+	const track = { stop: vi.fn() };
+	const stream = { getTracks: () => [track] } as unknown as MediaStream;
+	const recorders: ReturnType<typeof fakeRecorder>[] = [];
 	const deps = {
 		allowed: vi.fn(() => true),
 		capture: vi.fn(async () => stream),
-		recorder: vi.fn(() => recorder as unknown as MediaRecorder),
+		recorder: vi.fn(() => {
+			const r = fakeRecorder();
+			recorders.push(r);
+			return r as unknown as MediaRecorder;
+		}),
 		encode: vi.fn<VoiceDependencies['encode']>(async () => 'synthetic-audio'),
 		transcribe: vi.fn<VoiceDependencies['transcribe']>(async () => ' Synthetic observation. '),
 		text: vi.fn(),
-		state: vi.fn<(state: VoiceState) => void>()
+		state: vi.fn<(state: VoiceState) => void>(),
+		...(listener ? { listen: vi.fn(() => listener) } : {})
 	};
 	const capture = new VoiceCapture(deps);
 	return {
 		capture,
 		deps,
-		recorder,
+		recorders,
+		/** The segment being recorded now. */
+		get recorder() {
+			return recorders[recorders.length - 1];
+		},
 		stream,
 		track,
-		data: (size = 8) => recorder.ondataavailable?.({ data: new Blob([new Uint8Array(size)]) })
+		data: (size = 8) =>
+			recorders[recorders.length - 1].ondataavailable?.({ data: new Blob([new Uint8Array(size)]) })
 	};
 }
-it('bounds recording, releases the microphone, and returns only reviewed text to the parent', async () => {
+it('records one clip, releases the microphone, and returns only reviewed text to the parent', async () => {
 	const f = fixture();
-	await f.capture.start(300);
+	await f.capture.start(30);
 	f.data();
-	await vi.advanceTimersByTimeAsync(55_000);
+	await vi.advanceTimersByTimeAsync(30_000);
 	expect(f.recorder.start).toHaveBeenCalledWith(1000);
+	expect(f.recorders).toHaveLength(1);
 	expect(f.track.stop).toHaveBeenCalled();
 	expect(f.deps.transcribe).toHaveBeenCalledWith('synthetic-audio', 'audio/webm');
 	expect(f.deps.text).toHaveBeenCalledExactlyOnceWith('Synthetic observation.');
 	expect(f.deps.state).toHaveBeenLastCalledWith(
 		expect.objectContaining({ busy: false, recording: false })
 	);
+	f.capture.dispose();
+});
+it('splits a long recording into segments of at most 55 s and joins the text in order', async () => {
+	const f = fixture();
+	let n = 0;
+	f.deps.transcribe.mockImplementation(async () => `Part ${++n}.`);
+	await f.capture.start(400);
+	for (let second = 0; second < 300; second += 5) {
+		f.data();
+		await vi.advanceTimersByTimeAsync(5_000);
+	}
+	// Five minutes at most: 55 s segments, the last one cut by the total limit.
+	expect(f.recorders).toHaveLength(6);
+	expect(f.track.stop).toHaveBeenCalledTimes(1);
+	expect(f.deps.text).toHaveBeenCalledExactlyOnceWith(
+		'Part 1. Part 2. Part 3. Part 4. Part 5. Part 6.'
+	);
+	// The next segment starts before the previous one stops: no gap.
+	expect(f.recorders[1].start.mock.invocationCallOrder[0]).toBeLessThan(
+		f.recorders[0].stop.mock.invocationCallOrder[0]
+	);
+	expect(vi.getTimerCount()).toBe(0);
+	f.capture.dispose();
+});
+it('cuts a segment at the first pause after 40 s', async () => {
+	let quiet = false;
+	const close = vi.fn();
+	const f = fixture({ quiet: () => quiet, close });
+	await f.capture.start(300);
+	f.data();
+	await vi.advanceTimersByTimeAsync(42_000);
+	expect(f.recorders).toHaveLength(1);
+	quiet = true;
+	await vi.advanceTimersByTimeAsync(250);
+	expect(f.recorders).toHaveLength(2);
+	quiet = false;
+	f.data();
+	f.capture.stop();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(close).toHaveBeenCalled();
+	expect(f.deps.transcribe).toHaveBeenCalledTimes(2);
+	expect(vi.getTimerCount()).toBe(0);
+	f.capture.dispose();
+});
+it('marks a part that could not be transcribed instead of dropping it silently', async () => {
+	const f = fixture();
+	f.deps.transcribe
+		.mockResolvedValueOnce('First part.')
+		.mockRejectedValueOnce(new Error('provider'))
+		.mockResolvedValueOnce('Last part.');
+	await f.capture.start(300);
+	for (let i = 0; i < 3; i++) {
+		f.data();
+		if (i < 2) await vi.advanceTimersByTimeAsync(55_000);
+	}
+	f.capture.stop();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(f.deps.text).toHaveBeenCalledExactlyOnceWith(`First part. ${MISSING_PART} Last part.`);
+	expect(f.deps.state).toHaveBeenLastCalledWith(
+		expect.objectContaining({ busy: false, message: expect.stringContaining('marked in the text') })
+	);
+	f.capture.dispose();
+});
+it('cancelling a long recording mid-segment leaves no timers and sends no text', async () => {
+	const f = fixture({ quiet: () => false, close: vi.fn() });
+	await f.capture.start(300);
+	f.data();
+	await vi.advanceTimersByTimeAsync(60_000);
+	f.data();
+	f.capture.cancel();
+	await vi.runAllTimersAsync();
+	expect(vi.getTimerCount()).toBe(0);
+	expect(f.deps.text).not.toHaveBeenCalled();
+	expect(f.track.stop).toHaveBeenCalled();
 	f.capture.dispose();
 });
 it('does not capture while locked and releases permission grants arriving after cancellation', async () => {

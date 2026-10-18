@@ -6,6 +6,7 @@
 	import ClockPanel from '#lib/app/ClockPanel.svelte';
 	import CoverageOffers from '#lib/app/CoverageOffers.svelte';
 	import InstallPrompt from '#lib/app/InstallPrompt.svelte';
+	import GettingStarted from '#lib/app/GettingStarted.svelte';
 	const app = useSession();
 	let now = $state(new Date());
 	onMount(() => {
@@ -59,6 +60,7 @@
 		</div>
 		<span class="pill">{clock ? 'Clocked in' : 'Not clocked in'}</span>
 	</div>
+	<GettingStarted />
 	<ClockPanel />
 	<CoverageOffers />
 	<div class="card pad stack">

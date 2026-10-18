@@ -4,6 +4,8 @@ import {
 	OwnProfileInput,
 	saveTheme,
 	ThemeInput,
+	saveDisclosure,
+	DisclosureInput,
 	updateOwnProfile
 } from '../../services/auth/index.ts';
 import { router, userProcedure } from '../middleware.ts';
@@ -24,5 +26,10 @@ export const authRouter = router({
 	/** Light, dark or auto (frontend-spec-1.md §10.1); read back from the synced user_settings row. */
 	setTheme: userProcedure
 		.input(ThemeInput)
-		.mutation(({ ctx, input }) => saveTheme(ctx.db, ctx.user, input))
+		.mutation(({ ctx, input }) => saveTheme(ctx.db, ctx.user, input)),
+
+	/** Getting-started tips hidden or shown again (frontend-spec-2.md §6.5). */
+	setDisclosure: userProcedure
+		.input(DisclosureInput)
+		.mutation(({ ctx, input }) => saveDisclosure(ctx.db, ctx.user, input))
 });
