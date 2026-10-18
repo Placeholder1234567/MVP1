@@ -2,6 +2,7 @@ import { getContext, setContext } from 'svelte';
 import type { PowerSyncDatabase } from '@powersync/web';
 import type { Database } from '#lib/sync/schema.ts';
 import { chartingLabels } from '#lib/config/charting-preset.ts';
+import { isTheme, type Theme } from '#lib/domain/theme.ts';
 import { UploadStatus } from '#lib/sync/upload-status.ts';
 
 export interface AppUser {
@@ -48,6 +49,12 @@ export class CareSession {
 	agencies = $state<Database['agencies'][]>([]);
 	notifications = $state<Database['notifications'][]>([]);
 	notificationPreferences = $state<Database['notification_preferences'][]>([]);
+	settings = $state<Database['user_settings'] | null>(null);
+	/** A theme just chosen on this device, shown before the saved row syncs back. */
+	themeChoice = $state<Theme | null>(null);
+	theme = $derived<Theme>(
+		this.themeChoice ?? (isTheme(this.settings?.theme) ? this.settings.theme : 'auto')
+	);
 	unreadAlerts = $derived(
 		this.notifications.filter((n) => n.channel === 'in_app' && !n.read_at).length
 	);
@@ -134,6 +141,10 @@ export class CareSession {
 		watch<Database['notification_preferences']>(
 			'SELECT * FROM notification_preferences',
 			(r) => (this.notificationPreferences = r)
+		);
+		watch<Database['user_settings']>(
+			'SELECT * FROM user_settings LIMIT 1',
+			(r) => (this.settings = r[0] ?? null)
 		);
 		watch<Database['profiles']>('SELECT * FROM profiles ORDER BY name', (r) => (this.staff = r));
 		watch<{ id: string; message: string }>(

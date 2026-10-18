@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import PushNotice from '#lib/app/PushNotice.svelte';
+	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
 	import { stopWebPush } from '#lib/pwa/web-push.ts';
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	import { inspectDevice, deviceIssue } from '#lib/pwa/readiness.ts';
@@ -281,6 +282,7 @@
 					<span class="sync-label" role="status" data-testid="sync-status"
 						>{app.pending ? `${app.pending} changes waiting to sync` : app.status}</span
 					>
+					<ThemeToggle />
 					<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
 					<a
 						class="textbtn"

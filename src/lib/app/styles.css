@@ -19,7 +19,71 @@
 	--shadow: 0 1px 2px rgba(28, 27, 75, 0.05), 0 8px 24px -16px rgba(28, 27, 75, 0.25);
 	--serif: Georgia, 'Times New Roman', serif;
 	--sans: Figtree, 'Segoe UI', system-ui, sans-serif;
+	--warn: #8f5f00;
+	--warn-bg: #fff3cd;
+	/* Vague-word highlights in Lomi review */
+	--flag-bg: #ffe9a8;
+	--flag-line: #b45a14;
+	/* Text on a --blue background (frontend-spec-1.md --ink-inverse) */
+	--ink-inverse: #fff;
 	color-scheme: light;
+}
+/* Dark mode (frontend-spec-1.md §10): the navy palette from mvp/styles.css.
+   The app bar sets data-theme to 'light' or 'dark'; without one ('auto') the
+   system setting decides. The choice is saved in user_settings.theme. */
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--bg: #12122e;
+		--card: #1c1c42;
+		--ink: #f2f1ff;
+		--muted: #b7b6da;
+		--faint: #8c8bb4;
+		--line: #2b2b5a;
+		--line2: #3a3a70;
+		--blue: #8590ff;
+		--blue-d: #a2aaff;
+		--sky: #24255a;
+		--lemon: #ffd66b;
+		--lemon-2: #3a3320;
+		--lemon-line: #6a5a26;
+		--ok: #7fd8a8;
+		--ok-bg: #1b3a2c;
+		--bad: #ff9c94;
+		--bad-bg: #3d1f25;
+		--warn: #e8b84a;
+		--warn-bg: #2a2418;
+		--flag-bg: #4a4022;
+		--flag-line: #e8b84a;
+		--ink-inverse: #1c1b4b;
+		--shadow: none;
+		color-scheme: dark;
+	}
+}
+:root[data-theme='dark'] {
+	--bg: #12122e;
+	--card: #1c1c42;
+	--ink: #f2f1ff;
+	--muted: #b7b6da;
+	--faint: #8c8bb4;
+	--line: #2b2b5a;
+	--line2: #3a3a70;
+	--blue: #8590ff;
+	--blue-d: #a2aaff;
+	--sky: #24255a;
+	--lemon: #ffd66b;
+	--lemon-2: #3a3320;
+	--lemon-line: #6a5a26;
+	--ok: #7fd8a8;
+	--ok-bg: #1b3a2c;
+	--bad: #ff9c94;
+	--bad-bg: #3d1f25;
+	--warn: #e8b84a;
+	--warn-bg: #2a2418;
+	--flag-bg: #4a4022;
+	--flag-line: #e8b84a;
+	--ink-inverse: #1c1b4b;
+	--shadow: none;
+	color-scheme: dark;
 }
 * {
 	box-sizing: border-box;
@@ -157,7 +221,7 @@ label > .input {
 	padding: 12px 22px;
 	font-weight: 600;
 	background: var(--blue);
-	color: #fff;
+	color: var(--ink-inverse);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -195,8 +259,8 @@ label > .input {
 	color: var(--bad);
 }
 .callout.warn {
-	background: #fff4cc;
-	border: 1px solid #f2d27a;
+	background: var(--lemon-2);
+	border: 1px solid var(--lemon-line);
 }
 .pill {
 	font-size: 12px;
@@ -467,8 +531,8 @@ label > .input {
 }
 /* Care-record screens: ported from mvp/styles.css (.list, .row, .seg, .choice, .unit, .grid2, .check) */
 .pill.warn {
-	background: #fff3cd;
-	color: #8f5f00;
+	background: var(--warn-bg);
+	color: var(--warn);
 }
 .list {
 	display: flex;

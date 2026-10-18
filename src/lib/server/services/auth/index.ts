@@ -16,6 +16,7 @@ import {
 import { ROLE_RANK, type CurrentUser, type Role } from './auth.types';
 
 export type { CurrentUser, Role } from './auth.types';
+export { saveTheme, ThemeInput } from './settings';
 export {
 	getStaff,
 	inviteStaff,

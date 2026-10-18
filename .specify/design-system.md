@@ -44,6 +44,8 @@ Base: `font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased`.
 
 Applied via `[data-theme="guad-dark-off"]`. (The `prefers-color-scheme: dark` media query in styles.css is intentionally disabled with a `max-width:0px` guard.)
 
+**As built (src/lib/app/styles.css):** the same navy values, applied by `:root[data-theme="dark"]` (the Light / Dark / Auto toggle in the app bar) and by `prefers-color-scheme: dark` unless the person chose Light. Three tokens were added for colours that were hard-coded: `--warn` / `--warn-bg` (warning pills; dark `#E8B84A` / `#2A2418`, as the MVP's dark `.pill.warn`), `--flag-bg` / `--flag-line` (Lomi vague-word highlights; dark `#4A4022` as the MVP's `.cv-text.flagged`), and `--ink-inverse` for text on `--blue` (white in light mode, `#1C1B4B` in dark, per frontend-spec-1.md §10.2.4, because white on `#8590FF` fails AA).
+
 | Token | Hex |
 |-------|-----|
 | `--bg` | `#12122E` |
