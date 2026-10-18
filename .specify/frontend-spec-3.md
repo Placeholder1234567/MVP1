@@ -2169,6 +2169,8 @@ SHARED ROUTES
   Offline: searches local PowerSync SQLite database
 ```
 
+**As built:** `CommandPalette.svelte` in the app bar ("Search" button, or Cmd/Ctrl+K anywhere), rules in `src/lib/domain/search.ts`. It searches the records already synced to the device (people, staff for supervisors, notes including their text, active medications, incidents, active goals) plus the pages in the navigation, so it works offline and the query never leaves the device. Case and accents are ignored and every word must match; title-prefix matches come first. Categories follow the table's priorities for caregivers or supervisors, with pages first; each shows three results and says how many more match instead of a "View all" link. Arrow keys and Enter choose, Escape closes; on phones it is full screen.
+
 ---
 
 > *Sections 8, 9, 10 are in frontend-spec-2.md and frontend-spec-1.md respectively. See the section numbering note before section 7.*
