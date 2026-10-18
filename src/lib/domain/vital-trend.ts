@@ -104,3 +104,23 @@ export function trendDomain(points: TrendPoint[], band: TrendSeries['band']): [n
 	const pad = (hi - lo) * 0.1;
 	return [lo - pad, hi + pad];
 }
+
+/**
+ * The most recent reading of each measurement (frontend-spec-2.md §6
+ * "Last weight"), for the "Last: …" hint under each vitals field.
+ */
+export function lastReadings(
+	entries: TrendEntry[],
+	keys: readonly string[]
+): Record<string, { value: number; at: string }> {
+	const out: Record<string, { value: number; at: string }> = {};
+	for (const e of entries) {
+		if (!e.recorded_at) continue;
+		for (const key of keys) {
+			const value = reading(e.data[key]);
+			if (value !== null && (!out[key] || e.recorded_at > out[key].at))
+				out[key] = { value, at: e.recorded_at };
+		}
+	}
+	return out;
+}
