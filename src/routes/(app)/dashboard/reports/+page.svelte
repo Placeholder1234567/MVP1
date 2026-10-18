@@ -10,7 +10,7 @@
 	let fromDay = $state(addDays(today, -6));
 	let toDay = $state(today);
 	let type = $state<ClinicalType>('notes');
-	let format = $state<'csv' | 'json' | 'html'>('csv');
+	let format = $state<'csv' | 'json' | 'html' | 'pdf'>('csv');
 	let clientId = $state('');
 	let approvedOnly = $state(false);
 	let busy = $state(false);
@@ -44,16 +44,23 @@
 				toDay,
 				approvedOnly
 			});
-			const url = URL.createObjectURL(new Blob([file.content], { type: file.contentType }));
+			const body =
+				file.encoding === 'base64'
+					? Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0))
+					: file.content;
+			const url = URL.createObjectURL(new Blob([body], { type: file.contentType }));
 			const link = document.createElement('a');
 			link.href = url;
 			link.download = file.filename;
 			link.click();
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
 			message = `Downloaded ${file.rows} records. ${format === 'html' ? 'Open the HTML file and use your browser’s Print command to print or save as PDF. ' : ''}Keep exports in approved agency storage.`;
-		} catch {
+		} catch (e) {
+			// Limit and PDF-font messages come from the report service and carry no client data.
 			message =
-				'Could not export. Connect and check your report permissions, selected home and person. Use at most 93 days and a smaller period if the report exceeds 1,000 records or 8 MB.';
+				(e as { data?: { code?: string } })?.data?.code === 'BAD_REQUEST' && e instanceof Error
+					? e.message
+					: 'Could not export. Connect and check your report permissions, selected home and person. Use at most 93 days and a smaller period if the report exceeds 1,000 records or 8 MB.';
 		} finally {
 			busy = false;
 		}
@@ -71,8 +78,14 @@
 		permissions.
 	</p>
 	<a class="textbtn" href={resolve('/(app)/dashboard/timesheets')}>Payroll and timesheets →</a>
-	{#if page.data.user?.features?.includes('mar')}<a class="textbtn" href={resolve('/(app)/dashboard/medications')}>Manage medication definitions →</a>{/if}
-	{#if page.data.user?.features?.includes('goals')}<a class="textbtn" href={resolve('/(app)/dashboard/goals')}>Manage goals and templates →</a>{/if}
+	{#if page.data.user?.features?.includes('mar')}<a
+			class="textbtn"
+			href={resolve('/(app)/dashboard/medications')}>Manage medication definitions →</a
+		>{/if}
+	{#if page.data.user?.features?.includes('goals')}<a
+			class="textbtn"
+			href={resolve('/(app)/dashboard/goals')}>Manage goals and templates →</a
+		>{/if}
 	<form class="card pad stack" onsubmit={download}>
 		<label
 			>Report<select class="input" bind:value={type}
@@ -100,7 +113,9 @@
 		<label
 			>Format<select class="input" bind:value={format}
 				><option value="csv">CSV spreadsheet</option><option value="json">Structured JSON</option
-				><option value="html">Print-ready HTML / save as PDF</option></select
+				><option value="pdf">PDF for printing and sharing</option><option value="html"
+					>Print-ready HTML</option
+				></select
 			></label
 		>
 		{#if type === 'notes' || type === 'goals'}<label

@@ -449,7 +449,7 @@ src/lib/server/services/
 **Key functions:**
 - `generateReport(agencyId, reportType, params): ReportResult` — generate a report (MAR sheet, incident summary, attendance log, timesheet, goal progress, etc.).
 - `exportCsv(agencyId, reportType, params): Buffer` — CSV export of any report.
-- `exportPdf(agencyId, reportType, params): Buffer` — PDF export with agency branding.
+- `exportPdf(agencyId, reportType, params): Buffer` — PDF export. As built: care reports (`report.exportClinical` with `format: 'pdf'`) and API reports render through `src/lib/server/pdf.ts` (pdfkit, Figtree embedded, Letter size, one labelled block per record, page footer). Latin-script text only: a report needing other characters is refused with a message pointing to CSV or HTML rather than printing blank boxes. Agency branding is not added yet.
 - `computeAnalytics(agencyId, dateRange): AnalyticsDashboard` — aggregate metrics for the dashboard (notes submitted, incidents by severity, coverage fill rate, clock accuracy).
 - `generateEvvExport(agencyId, dateRange): EvvPayload` — Electronic Visit Verification export formatted for state submission.
 - `generateStateReport(agencyId, reportType, dateRange): StateReportPayload` — formatted data for state regulatory submissions.

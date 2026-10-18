@@ -3,7 +3,7 @@
 // Synthetic data only; storage is in memory.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 
@@ -24,7 +24,12 @@ const [AGENCY, OTHER, STARTER] = [randomUUID(), randomUUID(), randomUUID()];
 const [HOME, OTHER_HOME] = [randomUUID(), randomUUID()];
 const [PERSON, OTHER_PERSON] = [randomUUID(), randomUUID()];
 const [ADMIN, STARTER_ADMIN] = [randomUUID(), randomUUID()];
-const [IN_RANGE, OUT_OF_RANGE, FOREIGN] = [randomUUID(), randomUUID(), randomUUID()];
+const [IN_RANGE, OUT_OF_RANGE, FOREIGN, CYRILLIC] = [
+	randomUUID(),
+	randomUUID(),
+	randomUUID(),
+	randomUUID()
+];
 const uid = (id: string) => `reports-${id}`;
 const files = new Map<string, Buffer>();
 let writeKey = '';
@@ -118,13 +123,15 @@ beforeAll(async () => {
 			occurred_at: new Date(at),
 			description: 'Synthetic'
 		});
-		await t
-			.insert(s.incidents)
-			.values([
-				incident(IN_RANGE, AGENCY, HOME, PERSON, '2026-03-02T10:00:00Z'),
-				incident(OUT_OF_RANGE, AGENCY, HOME, PERSON, '2026-04-02T10:00:00Z'),
-				incident(FOREIGN, OTHER, OTHER_HOME, OTHER_PERSON, '2026-03-02T10:00:00Z')
-			]);
+		await t.insert(s.incidents).values([
+			incident(IN_RANGE, AGENCY, HOME, PERSON, '2026-03-02T10:00:00Z'),
+			incident(OUT_OF_RANGE, AGENCY, HOME, PERSON, '2026-04-02T10:00:00Z'),
+			incident(FOREIGN, OTHER, OTHER_HOME, OTHER_PERSON, '2026-03-02T10:00:00Z'),
+			{
+				...incident(CYRILLIC, AGENCY, HOME, PERSON, '2026-05-02T10:00:00Z'),
+				description: 'Синтетический'
+			}
+		]);
 	});
 	const admin = createCaller({ user: await getCurrentUser(uid(ADMIN)), request: {} });
 	writeKey = (await admin.apiKey.create({ name: 'Writer', scope: 'write' })).key;
@@ -177,6 +184,51 @@ it('queues a report and builds a CSV of the agency’s records in the period', a
 	expect(csv).not.toContain(FOREIGN);
 });
 
+it('builds a PDF, and fails one whose text the PDF font cannot show', async () => {
+	const res = await call(
+		create.POST,
+		'/api/v1/reports/incidents',
+		writeKey,
+		{ type: 'incidents' },
+		{ from: '2026-03-01', to: '2026-03-31', format: 'pdf' }
+	);
+	expect(res.status).toBe(202);
+	const id = (await res.json()).report_id;
+	expect(await ready(id)).toMatchObject({ status: 'ready', format: 'pdf' });
+	const file = await call(download.GET, `/api/v1/reports/incidents/${id}/download`, readKey, {
+		type: 'incidents',
+		reportId: id
+	});
+	expect(file.status).toBe(200);
+	expect(file.headers.get('content-type')).toBe('application/pdf');
+	expect(file.headers.get('content-disposition')).toMatch(
+		/^attachment; filename="report-incidents-\d{4}-\d{2}-\d{2}\.pdf"$/
+	);
+	const bytes = Buffer.from(await file.arrayBuffer());
+	expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+	const audits = await withService((t) =>
+		t
+			.select({ values: s.auditLog.new_values })
+			.from(s.auditLog)
+			.where(and(eq(s.auditLog.agency_id, AGENCY), eq(s.auditLog.table_name, 'api_access')))
+	);
+	const downloads = audits
+		.map((r) => r.values as { operation: string; params?: unknown; records?: number })
+		.filter((v) => v.operation === 'downloadReport' && JSON.stringify(v).includes(id));
+	expect(downloads.map((v) => v.records)).toEqual([1]);
+
+	const bad = await call(
+		create.POST,
+		'/api/v1/reports/incidents',
+		writeKey,
+		{ type: 'incidents' },
+		{ from: '2026-05-01', to: '2026-05-31', format: 'pdf' }
+	);
+	const failed = await ready((await bad.json()).report_id);
+	expect(failed).toMatchObject({ status: 'failed' });
+	expect(failed.error).toContain('Use format csv');
+});
+
 it('checks scope, plan, format and input', async () => {
 	const body = { from: '2026-03-01', to: '2026-03-31' };
 	expect(
@@ -197,15 +249,17 @@ it('checks scope, plan, format and input', async () => {
 			)
 		).status
 	).toBe(202);
-	const pdf = await call(
-		create.POST,
-		'/api/v1/reports/incidents',
-		writeKey,
-		{ type: 'incidents' },
-		{ ...body, format: 'pdf' }
-	);
-	expect(pdf.status).toBe(400);
-	expect((await pdf.json()).message).toContain('PDF');
+	expect(
+		(
+			await call(
+				create.POST,
+				'/api/v1/reports/incidents',
+				writeKey,
+				{ type: 'incidents' },
+				{ ...body, format: 'xlsx' }
+			)
+		).status
+	).toBe(400);
 	expect(
 		(
 			await call(

@@ -128,7 +128,7 @@ export async function handleApi(
 		const status = result.status ?? 200;
 		await audit(status, result.records);
 		if (result.contentType) {
-			return new Response(result.body as string, {
+			return new Response(result.body as BodyInit, {
 				status,
 				headers: {
 					...headers,
