@@ -1205,6 +1205,8 @@ On blur: if value is out of range, field border turns `var(--bad)`, helper text 
 | Shifts | Clock | "Shifts" | Red dot if shift coverage offers are pending |
 | Me | Person silhouette | "Me" | Never |
 
+**As built (badges):** for caregivers, Notes shows a red dot while one of their notes was sent back today (from the notes on the device), and Shifts while a coverage offer waits for them (`coverage.offers`, checked every minute online, since offers are not synced). The dot is decorative; the link's accessible name becomes "Notes, needs attention" or "Shifts, needs attention".
+
 **Tab styling:**
 
 - Inactive: color `var(--faint)` (#8B89AA -> darken to #706E96 for WCAG AA, 4.70:1), 12px/600

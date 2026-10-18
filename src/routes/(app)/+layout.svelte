@@ -26,6 +26,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import { clearShellCaches } from '#lib/pwa/cache.ts';
 	import { provideSession } from '#lib/app/session.svelte.ts';
+	import { localTime } from '#lib/domain/time.ts';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
 	const app = provideSession(untrack(() => data.user));
@@ -97,6 +98,35 @@
 			return [item.feature].flat().some((f) => has.includes(f));
 		})
 	);
+	// Tab badges (frontend-spec-2.md §3.10): a red dot on Notes when one of
+	// the caregiver's notes was sent back today, and on Shifts while a coverage
+	// offer is waiting for them. Offers aren't synced, so they are polled.
+	const returnedToday = $derived.by(() => {
+		const today = localTime(new Date(), app.user.timeZone).day;
+		return app.notes.some(
+			(n) =>
+				n.author_id === app.user.profileId &&
+				n.status === 'returned' &&
+				!!n.updated_at &&
+				localTime(new Date(n.updated_at), app.user.timeZone).day === today
+		);
+	});
+	let offersWaiting = $state(false);
+	$effect(() => {
+		if (data.user.role !== 'caregiver' || !nav.some((item) => item.href === '/shifts')) return;
+		const check = () =>
+			trpc.coverage.offers
+				.query()
+				.then((offers) => (offersWaiting = offers.length > 0))
+				.catch(() => {});
+		void check();
+		const timer = setInterval(check, 60000);
+		return () => clearInterval(timer);
+	});
+	const needsAttention = (href: string) =>
+		data.user.role === 'caregiver' &&
+		((href === '/notes' && returnedToday) || (href === '/shifts' && offersWaiting));
+
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
 		key = Uint8Array.from(atob(result.key.replace(/-/g, '+').replace(/_/g, '/')), (c) =>
@@ -303,7 +333,10 @@
 				<nav aria-label="Main navigation">
 					{#each nav as item (item.href)}<a
 							href={resolve(('/(app)' + item.href) as '/(app)/today')}
-							aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
+							aria-current={page.url.pathname === item.href ? 'page' : undefined}
+							aria-label={needsAttention(item.href) ? `${item.label}, needs attention` : undefined}
+							>{item.label}{#if needsAttention(item.href)}<span class="dot" aria-hidden="true"
+								></span>{/if}</a
 						>{/each}
 				</nav>
 				<div class="sidebar-bottom">
@@ -363,7 +396,10 @@
 			<nav class="mobile-nav" aria-label="Mobile navigation">
 				{#each data.user.role === 'caregiver' ? nav : [...new Set( [nav[0], nav[1], nav.find((item) => item.href === '/shifts'), nav.find((item) => item.href === '/me')] )].filter((item) => item !== undefined) as item (item.href)}<a
 						href={resolve(('/(app)' + item.href) as '/(app)/today')}
-						aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
+						aria-current={page.url.pathname === item.href ? 'page' : undefined}
+						aria-label={needsAttention(item.href) ? `${item.label}, needs attention` : undefined}
+						>{item.label}{#if needsAttention(item.href)}<span class="dot" aria-hidden="true"
+							></span>{/if}</a
 					>{/each}
 			</nav>
 		</div>

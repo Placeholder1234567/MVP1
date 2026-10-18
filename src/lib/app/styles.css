@@ -447,6 +447,16 @@ label > .input {
 	font-weight: 600;
 	text-decoration: none;
 }
+/* Tab badge (frontend-spec-2.md §3.10): the text says it for screen readers. */
+nav a .dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	margin-left: 6px;
+	border-radius: 50%;
+	background: var(--bad);
+	vertical-align: middle;
+}
 .sidebar nav a[aria-current] {
 	background: var(--sky);
 	color: var(--blue);
