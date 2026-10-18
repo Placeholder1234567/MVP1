@@ -13,7 +13,8 @@ import {
 	parseControlledRules,
 	type StaffRole
 } from '../../../domain/index.ts';
-import type { Tx } from '../../db';
+import { asService, type Tx } from '../../db';
+import { mfaEnforced, verifyWitnessSignIn } from '../../identity';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { controlledCountDiscrepancy, controlledCountersignRequest } from '../notification/index.ts';
@@ -23,6 +24,7 @@ import {
 	countersignEntry,
 	insertCountEntry,
 	ledgerBefore,
+	markWitnessedInPerson,
 	witnessProfile
 } from './controlled.queries';
 
@@ -33,6 +35,11 @@ export const NewCountEntry = z.object({
 	quantity: z.coerce.number(),
 	reason: z.string().trim().max(500).nullish(),
 	witnessId: z.uuid().nullish(),
+	/**
+	 * The witness's ID token from signing in on this device just now. Online
+	 * only; verified, used once and never stored.
+	 */
+	witnessToken: z.string().min(1).max(4096).nullish(),
 	/** When it was counted, possibly offline */
 	recordedAt: z.coerce.date().optional()
 });
@@ -42,7 +49,12 @@ export async function recordCountEntry(
 	agencyId: string,
 	user: CurrentUser,
 	input: z.input<typeof NewCountEntry>
-): Promise<{ created: boolean; expected: number | null; discrepancy: boolean }> {
+): Promise<{
+	created: boolean;
+	expected: number | null;
+	discrepancy: boolean;
+	witnessed: boolean;
+}> {
 	const e = NewCountEntry.parse(input);
 	if (user.role === 'caregiver' && !user.medCertified)
 		throw new ServiceError(
@@ -86,6 +98,24 @@ export async function recordCountEntry(
 			);
 	}
 
+	// Signed in on this device: the account must be the named witness's, and
+	// pass its second factor when it has one.
+	let inPerson = false;
+	if (e.witnessToken) {
+		if (!witness) throw new ServiceError('VALIDATION_FAILED', 'Choose who witnessed this.');
+		const signIn = await verifyWitnessSignIn(e.witnessToken);
+		if (
+			!signIn ||
+			signIn.uid !== witness.authUid ||
+			(mfaEnforced() && witness.mfaEnabled && !signIn.secondFactor)
+		)
+			throw new ServiceError(
+				'VALIDATION_FAILED',
+				'The witness sign-in could not be confirmed. Sign in again or have them confirm later.'
+			);
+		inPerson = true;
+	}
+
 	let expected: number | null = null;
 	let discrepancy = false;
 	if (e.kind === 'count') {
@@ -127,8 +157,10 @@ export async function recordCountEntry(
 		recorded_at: recordedAt
 	});
 	if (row) {
+		// RLS lets staff add only pending witnesses; the verified sign-in is the server's call.
+		if (inPerson) await asService(tx, (t) => markWitnessedInPerson(t, agencyId, row.id));
 		if (discrepancy) await controlledCountDiscrepancy(tx, agencyId, med.homeId, row.id);
-		if (witness)
+		if (witness && !inPerson)
 			await controlledCountersignRequest(
 				tx,
 				agencyId,
@@ -138,7 +170,7 @@ export async function recordCountEntry(
 				row.id
 			);
 	}
-	return { created: !!row, expected, discrepancy };
+	return { created: !!row, expected, discrepancy, witnessed: inPerson && !!row };
 }
 
 export const Countersign = z.object({ id: z.uuid() });

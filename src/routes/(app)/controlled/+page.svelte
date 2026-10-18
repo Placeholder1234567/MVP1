@@ -8,6 +8,8 @@
 	import { trpc } from '#lib/trpc.ts';
 	import { canReachServer, dayTimeOf } from '#lib/app/clinical-write.ts';
 	import { insertCountEntry, medicationLedger } from '#lib/app/controlled-write.ts';
+	import { WitnessSignIn } from '#lib/auth/witness.ts';
+	import { onDestroy } from 'svelte';
 	import {
 		COUNT_KINDS,
 		COUNT_KIND_LABELS,
@@ -62,6 +64,13 @@
 	let quantity = $state<number | null>(null);
 	let reason = $state('');
 	let witnessId = $state('');
+	// The witness signs in on this device (online), or confirms later on theirs.
+	let witnessHere = $state(true);
+	let witnessPassword = $state('');
+	let witnessCode = $state('');
+	let needCode = $state(false);
+	const witnessSignIn = new WitnessSignIn();
+	onDestroy(() => void witnessSignIn.dispose());
 	let busy = $state(false);
 	let error = $state('');
 	let message = $state('');
@@ -81,9 +90,34 @@
 		quantity = null;
 		reason = '';
 		witnessId = '';
+		witnessHere = canReachServer(app);
+		forgetWitness();
 		error = '';
 		message = '';
 		incidentFor = null;
+	}
+	function forgetWitness() {
+		witnessPassword = '';
+		witnessCode = '';
+		needCode = false;
+		void witnessSignIn.dispose();
+	}
+	const witnessEmail = $derived(app.staff.find((s) => s.id === witnessId)?.email ?? '');
+	/** Signs the witness in on this device; null while their authenticator code is needed. */
+	async function witnessToken(): Promise<string | null> {
+		if (needCode) {
+			if (!/^\d{6}$/.test(witnessCode.trim())) throw new Error('Enter the 6-digit code.');
+			return (await witnessSignIn.finish(witnessCode.trim())).token;
+		}
+		if (!witnessEmail || !witnessPassword)
+			throw new Error('The witness enters their password, or chooses to confirm later.');
+		const r = await witnessSignIn.start(witnessEmail, witnessPassword);
+		witnessPassword = '';
+		if (r === 'code') {
+			needCode = true;
+			return null;
+		}
+		return r.token;
 	}
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
@@ -101,28 +135,64 @@
 			error = problem;
 			return;
 		}
+		const inPerson = !!witnessId && witnessHere;
+		if (inPerson && !canReachServer(app)) {
+			error =
+				'Signing in a witness needs a connection. Choose “Confirms later” to save it on this device.';
+			return;
+		}
 		busy = true;
 		error = '';
 		try {
 			const medicationId = open.medicationId;
-			const r = await insertCountEntry(app, medicationId, {
-				kind,
-				quantity: amount,
-				reason: reason.trim() || null,
-				witnessId: witnessId || null
-			});
+			let r: { discrepancy: boolean; expected: number | null };
+			if (inPerson) {
+				let token: string | null;
+				try {
+					token = await witnessToken();
+				} catch (e) {
+					error = e instanceof Error ? e.message : 'The witness sign-in didn’t work.';
+					return;
+				}
+				if (!token) {
+					error = '';
+					return;
+				}
+				r = await trpc.medication.countEntry.mutate({
+					id: crypto.randomUUID(),
+					medicationId,
+					kind,
+					quantity: amount,
+					reason: reason.trim() || null,
+					witnessId,
+					witnessToken: token
+				});
+				forgetWitness();
+			} else {
+				r = await insertCountEntry(app, medicationId, {
+					kind,
+					quantity: amount,
+					reason: reason.trim() || null,
+					witnessId: witnessId || null
+				});
+			}
 			const med = app.medications.find((m) => m.id === medicationId);
 			open = null;
 			if (r.discrepancy) {
 				incidentFor = med?.client_id ?? null;
 				message = `Counted ${amount}, but ${r.expected} should be on hand. Your supervisor has been alerted. Recount with your witness, then report it as a medication error incident.`;
 			} else {
-				message = witnessId
-					? 'Saved. Your witness confirms it from their own device.'
-					: 'Saved to the count book.';
+				message = inPerson
+					? 'Saved and witnessed.'
+					: witnessId
+						? 'Saved. Your witness confirms it from their own device.'
+						: 'Saved to the count book.';
 			}
-		} catch {
-			error = 'Could not save this entry. Your entries are still here.';
+		} catch (e) {
+			error =
+				e instanceof Error && e.message.startsWith('The witness')
+					? e.message
+					: 'Could not save this entry. Your entries are still here.';
 		} finally {
 			busy = false;
 		}
@@ -277,9 +347,47 @@
 								>{/each}</select
 						></label
 					>
-					<p class="muted">
-						Your witness confirms it from their own device within {rules.countersignHours} hours.
-					</p>
+					{#if witnessId}<fieldset class="stack">
+							<legend>How {app.staff.find((s) => s.id === witnessId)?.name} signs</legend>
+							<label class="check"
+								><input
+									type="radio"
+									name="witness-how"
+									value={true}
+									bind:group={witnessHere}
+									onchange={forgetWitness}
+								/> Signs in here now</label
+							><label class="check"
+								><input
+									type="radio"
+									name="witness-how"
+									value={false}
+									bind:group={witnessHere}
+									onchange={forgetWitness}
+								/>
+								Confirms later on their own device (within {rules.countersignHours} hours)</label
+							>
+						</fieldset>
+						{#if witnessHere}{#if needCode}<label
+									>Code from the witness’s authenticator app<input
+										class="input"
+										inputmode="numeric"
+										autocomplete="one-time-code"
+										maxlength="6"
+										bind:value={witnessCode}
+									/></label
+								>{:else}<label
+									>Witness password ({witnessEmail})<input
+										class="input"
+										type="password"
+										autocomplete="off"
+										bind:value={witnessPassword}
+									/></label
+								>{/if}
+							<p class="muted">
+								Hand the device to your witness. Their sign-in is used once to confirm this entry
+								and is not kept.
+							</p>{/if}{/if}
 					{#if error}<p class="callout bad" role="alert">{error}</p>{/if}
 					<div class="actions">
 						<button class="btn" disabled={busy}>Save to count book</button><button
