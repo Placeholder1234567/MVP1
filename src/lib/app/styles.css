@@ -276,6 +276,34 @@ label > .input {
 	background: var(--lemon-2);
 	border: 1px solid var(--lemon-line);
 }
+.callout.info {
+	border: 1px solid var(--line2);
+	border-radius: 18px;
+}
+/* Small button (frontend-spec-1.md: still a 44px touch target) */
+.btn.sm {
+	min-height: 44px;
+	padding: 8px 16px;
+	font-size: 14px;
+}
+/* Icon-only button: 44x44 tap target (frontend-spec-1.md §9) */
+.iconbtn {
+	width: 44px;
+	height: 44px;
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	border: 0;
+	border-radius: 999px;
+	background: none;
+	color: var(--muted);
+	font-size: 22px;
+	line-height: 1;
+}
+.iconbtn:hover {
+	background: var(--line);
+	color: var(--ink);
+}
 .pill {
 	font-size: 12px;
 	font-weight: 700;
