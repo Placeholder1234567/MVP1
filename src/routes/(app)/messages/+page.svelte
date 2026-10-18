@@ -3,7 +3,14 @@
 	import { page } from '$app/state';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { dayTimeOf } from '#lib/app/clinical-write.ts';
-	import { boardThreads, seenBy, seenByLabel, unseenMessages } from '#lib/domain/index.ts';
+	import {
+		boardThreads,
+		fitPhoto,
+		seenBy,
+		seenByLabel,
+		unseenMessages
+	} from '#lib/domain/index.ts';
+	import { trpc } from '#lib/trpc.ts';
 	const app = useSession();
 	const tz = app.user.timeZone;
 	let draft = $state('');
@@ -49,19 +56,91 @@
 			})
 			.finally(() => (marking = false));
 	});
+	// A photo for the next message (frontend-audit.md finding 19, fix 3): shrunk
+	// and re-encoded as JPEG here, which also drops the camera's location
+	// data, then uploaded at once. Photos need a connection; the message
+	// itself can still be saved offline after.
+	let photo = $state<{ id: string; preview: string } | null>(null);
+	let photoBusy = $state(false);
+	function clearPhoto() {
+		if (photo) URL.revokeObjectURL(photo.preview);
+		photo = null;
+	}
+	async function choosePhoto(event: Event & { currentTarget: HTMLInputElement }) {
+		const input = event.currentTarget;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file || !app.homeId) return;
+		error = '';
+		if (!navigator.onLine) {
+			error = 'Photos need a connection. Your message can still be saved now.';
+			return;
+		}
+		photoBusy = true;
+		try {
+			const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+			const size = fitPhoto(bitmap.width, bitmap.height);
+			const canvas = document.createElement('canvas');
+			canvas.width = size.width;
+			canvas.height = size.height;
+			canvas.getContext('2d')!.drawImage(bitmap, 0, 0, size.width, size.height);
+			bitmap.close();
+			const blob = await new Promise<Blob>((ok, fail) =>
+				canvas.toBlob((b) => (b ? ok(b) : fail(new Error('Photo unavailable'))), 'image/jpeg', 0.8)
+			);
+			const bytes = new Uint8Array(await blob.arrayBuffer());
+			let binary = '';
+			for (let i = 0; i < bytes.length; i += 0x8000)
+				binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+			const id = crypto.randomUUID();
+			await trpc.message.uploadPhoto.mutate({
+				id,
+				homeId: app.homeId,
+				data: btoa(binary),
+				...size
+			});
+			clearPhoto();
+			photo = { id, preview: URL.createObjectURL(blob) };
+		} catch {
+			error = 'Could not add that photo. Check your connection and try again.';
+		} finally {
+			photoBusy = false;
+		}
+	}
+	// Photos on the board are fetched when opened (each view is recorded).
+	let shown = $state<Record<string, string>>({});
+	let photoError = $state<Record<string, string>>({});
+	async function showPhoto(id: string) {
+		photoError[id] = '';
+		try {
+			const p = await trpc.message.photo.query({ id });
+			shown[id] = `data:${p.contentType};base64,${p.data}`;
+		} catch {
+			photoError[id] = navigator.onLine
+				? 'Could not open this photo.'
+				: 'Connect to see this photo.';
+		}
+	}
+
 	/** Saves a message locally; it uploads through sync.upload, offline or not. */
 	async function post(
 		body: string,
-		links: { clientId?: string | null; replyTo?: string | null; incidentId?: string | null }
+		links: {
+			clientId?: string | null;
+			replyTo?: string | null;
+			incidentId?: string | null;
+			photoId?: string | null;
+		}
 	) {
 		const now = new Date().toISOString();
 		await app.db!.execute(
-			'INSERT INTO messages (id, home_id, client_id, reply_to, incident_id, from_name, body, sent_at, created_by, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+			'INSERT INTO messages (id, home_id, client_id, reply_to, incident_id, photo_id, from_name, body, sent_at, created_by, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 			[
 				app.homeId,
 				links.clientId ?? null,
 				links.replyTo ?? null,
 				links.incidentId ?? null,
+				links.photoId ?? null,
 				app.user.name,
 				body,
 				now,
@@ -83,11 +162,13 @@
 					: !dropIncident && incident
 						? incident.client_id
 						: null,
-				incidentId: !dropIncident && incident ? incident.id : null
+				incidentId: !dropIncident && incident ? incident.id : null,
+				photoId: photo?.id ?? null
 			});
 			draft = '';
 			about = '';
 			dropIncident = true;
+			clearPhoto();
 		} catch {
 			error = 'Could not save your message. Your text is still here.';
 		} finally {
@@ -131,7 +212,24 @@
 				<button type="button" class="textbtn" onclick={() => (dropIncident = true)}
 					>Not about this incident</button
 				>
-			</p>{/if}<button class="btn" disabled={busy || !app.homeId}>Save message</button>
+			</p>{/if}
+		<div class="photo-pick">
+			{#if photo}<img
+					src={photo.preview}
+					alt="Ready to share with your message"
+					class="thumb"
+				/><button type="button" class="textbtn" onclick={clearPhoto}>Remove photo</button
+				>{:else}<label class="btn sec file"
+					>{photoBusy ? 'Adding photo…' : 'Add a photo'}<input
+						type="file"
+						accept="image/*"
+						class="sr"
+						disabled={photoBusy || busy}
+						onchange={choosePhoto}
+					/></label
+				>{/if}
+		</div>
+		<button class="btn" disabled={busy || photoBusy || !app.homeId}>Save message</button>
 		<p class="muted">Messages saved offline are sent when you reconnect.</p>
 		{#if error}<p role="alert">{error}</p>{/if}
 	</form>
@@ -196,6 +294,15 @@
 		>
 	</div>
 	<p class="record-text">{message.body}</p>
+	{#if message.photo_id}{#if shown[message.photo_id]}<img
+				class="photo"
+				src={shown[message.photo_id]}
+				alt="Shared by {message.from_name}"
+			/>{:else}<button type="button" class="textbtn" onclick={() => showPhoto(message.photo_id!)}
+				>Show photo</button
+			>{#if photoError[message.photo_id]}<p class="muted s13" role="status">
+					{photoError[message.photo_id]}
+				</p>{/if}{/if}{/if}
 	{#if message.created_by === app.user.profileId || readers.length}<details class="seen">
 			<summary class="muted s13">{seenByLabel(readers.map((r) => r.name))}</summary>
 			{#if readers.length}<ul>
@@ -223,6 +330,25 @@
 		border-left: 3px solid var(--line2);
 		display: grid;
 		gap: 12px;
+	}
+	.photo-pick {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.file {
+		cursor: pointer;
+	}
+	.thumb {
+		width: 72px;
+		height: 72px;
+		object-fit: cover;
+		border-radius: 12px;
+	}
+	.photo {
+		max-width: 100%;
+		max-height: 420px;
+		border-radius: 12px;
 	}
 	.seen ul {
 		margin: 4px 0 0;

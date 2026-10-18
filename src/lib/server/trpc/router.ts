@@ -14,6 +14,7 @@ import { lomiRouter } from './routers/lomi.ts';
 import { intakeRouter } from './routers/intake.ts';
 import { notificationRouter } from './routers/notification.ts';
 import { marRouter, medicationRouter } from './routers/mar.ts';
+import { messageRouter } from './routers/message.ts';
 import { noteRouter } from './routers/note.ts';
 import { syncRouter } from './routers/sync.ts';
 import { reportRouter } from './routers/report.ts';
@@ -42,6 +43,7 @@ export const appRouter = router({
 	incident: incidentRouter,
 	mar: marRouter,
 	medication: medicationRouter,
+	message: messageRouter,
 	note: noteRouter,
 	report: reportRouter,
 	schedule: scheduleRouter,

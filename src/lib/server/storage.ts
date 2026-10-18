@@ -97,7 +97,21 @@ export function fileStorage(): Storage {
 	return storage;
 }
 
+let media: Storage | undefined;
+/**
+ * Photos shared on home boards (schema.ts message_photos): a separate private
+ * bucket, MEDIA_BUCKET, so report-export lifecycle rules never touch them;
+ * locally .data/media.
+ */
+export function mediaStorage(): Storage {
+	media ??= process.env.MEDIA_BUCKET
+		? bucketStorage(process.env.MEDIA_BUCKET)
+		: localFileStorage(join(process.cwd(), '.data', 'media'));
+	return media;
+}
+
 /** Tests use a temporary folder or memory. */
-export function setStorageForTests(s: Storage | undefined) {
+export function setStorageForTests(s: Storage | undefined, m: Storage | undefined = s) {
 	storage = s;
+	media = m;
 }
