@@ -136,7 +136,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
-| `health.create` | mutation | `{ clientId: uuid, kind: 'vitals' \| 'seizure' \| 'illness' \| 'appointment', data: jsonb, recordedAt?: timestamp }` | `{ id, clientId, kind, data, recordedAt, createdAt }` | caregiver | Records a health entry. `data` shape varies by kind: vitals = `{ temp, pulse, systolic, diastolic, respiration, oxygen, weight }`, seizure = `{ duration, type, triggers, postIctal }`, illness = `{ symptoms, onset, actions }`, appointment = `{ provider, reason, outcome, nextVisit }`. Vitals outside thresholds (temp >= 100.4 or < 95, pulse < 50 or > 100, systolic >= 140 or < 90, diastolic >= 90 or < 60; same operators as `vitalFlags()` in the MVP) auto-populate the `flags` array with the out-of-range metric names. |
+| `health.create` | mutation | `{ clientId: uuid, kind: 'vitals' \| 'seizure' \| 'illness' \| 'appointment' \| 'bowel', data: jsonb, recordedAt?: timestamp }` | `{ id, clientId, kind, data, recordedAt, createdAt }` | caregiver | Records a health entry. `data` shape varies by kind: vitals = `{ temp, pulse, systolic, diastolic, respiration, oxygen, glucose, weight }`, seizure = `{ duration, type, triggers, postIctal }`, illness = `{ symptoms, onset, actions }`, appointment = `{ provider, reason, outcome, nextVisit }`, bowel = `{ status: 'Observed' \| 'Not observed' \| 'Declined', time?: 'HH:mm', consistency?: string, notes?: string }` (consistency only when observed). Respiration is breaths/min, oxygen is SpO2 percent, glucose is mg/dL; no automatic alert thresholds are configured for these additional metrics or bowel tracking. Blanks are absent, never inferred zero. Vitals outside existing thresholds (temp >= 100.4 or < 95, pulse < 50 or > 100, systolic >= 140 or < 90, diastolic >= 90 or < 60; same operators as `vitalFlags()` in the MVP) auto-populate the `flags` array with the out-of-range metric names. |
 | `health.list` | query | `{ clientId?: uuid, homeId?: uuid, kind?: health_entry_kind, dateRange?: { from: string, to: string }, limit?: number, offset?: number }` | `Array<{ id, clientId, clientName, kind, data, recordedAt, recordedByName, flags, acknowledged }>` | caregiver | Paginated health entries. Entries with non-empty `flags` are surfaced first. |
 | `health.acknowledge` | mutation | `{ id: uuid }` | `{ id, acknowledged: true, updatedAt }` | supervisor | Supervisor acknowledgment of a flagged health entry. |
 
@@ -281,6 +281,16 @@ Implemented own-account settings procedures (all require the notifications entit
 |---|---|---|---|---|---|---|
 | `audit.list` | query | `{ dateRange?: { from: string, to: string }, tableName?: string, recordId?: uuid, performedBy?: uuid, action?: 'INSERT' \| 'UPDATE' \| 'DELETE', limit?: number, offset?: number }` | `Array<{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }>` | admin | audit_log | Returns paginated audit log entries. Filterable by date range, entity (table + record), actor, and action type. |
 | `audit.get` | query | `{ id: uuid }` | `{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }` | admin | audit_log | Returns a single audit log entry by ID. |
+
+### apiKey
+
+API keys for the external API (openapi.yaml). Not in the original router list; added with the Integration Service (services.md §20). The screen is `/dashboard/api-keys`.
+
+| Procedure | Type | Input | Output | Min Role | Feature Gate | Description |
+|---|---|---|---|---|---|---|
+| `apiKey.list` | query | none | `Array<{ id, name, prefix, scope, lastUsedAt, revokedAt, createdAt }>` | admin | none | The agency's keys, newest first. Never returns the key or its hash. |
+| `apiKey.create` | mutation | `{ name: string (1-80), scope?: 'read' | 'write' }` | `{ id, name, prefix, scope, createdAt, key }` | admin | none | Creates a key. `key` (`guad_` + 43 base64url characters) is returned only here; only its SHA-256 is stored. |
+| `apiKey.revoke` | mutation | `{ id: uuid }` | `{ revoked: true }` | admin | none | Revokes a key at once. Keys are never deleted, so access history stays auditable. |
 
 ---
 

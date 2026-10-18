@@ -39,6 +39,21 @@ export class RateLimiter {
 		return Math.ceil((1 - b.tokens) / refillPerSecond);
 	}
 
+	/** Whole tokens left for a key, and seconds until its bucket is full again. */
+	status(key: string): { remaining: number; resetSeconds: number } {
+		const { capacity, refillPerSecond } = this.options;
+		const b = this.buckets.get(key);
+		if (!b) return { remaining: capacity, resetSeconds: 0 };
+		const tokens = Math.min(
+			capacity,
+			b.tokens + ((this.now() - b.updated) / 1000) * refillPerSecond
+		);
+		return {
+			remaining: Math.floor(tokens),
+			resetSeconds: Math.ceil((capacity - tokens) / refillPerSecond)
+		};
+	}
+
 	/** Forgets keys whose bucket has refilled, so memory stays bounded. */
 	private sweep(t: number) {
 		const { capacity, refillPerSecond } = this.options;
@@ -54,3 +69,10 @@ export const userRequests = new RateLimiter({ capacity: 100, refillPerSecond: 10
 
 /** Session sign-ins per client IP; Identity Platform also throttles password guesses. */
 export const signInsByIp = new RateLimiter({ capacity: 20, refillPerSecond: 20 / 60 });
+
+/** openapi.yaml "Rate Limits": 30 a minute per API key, 60 an hour for bulk export. */
+export const apiRequests = new RateLimiter({ capacity: 30, refillPerSecond: 30 / 60 });
+export const apiExports = new RateLimiter({ capacity: 60, refillPerSecond: 60 / 3600 });
+
+/** Requests with a missing or wrong API key, per client IP, to slow key guessing. */
+export const apiFailuresByIp = new RateLimiter({ capacity: 20, refillPerSecond: 20 / 60 });

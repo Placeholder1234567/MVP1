@@ -22,6 +22,21 @@ info:
     Default: 30 requests per minute per API key. Bulk export (`/export/{type}`): 60 requests per hour, up to 1,000 records per page.
     Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) are
     included in every response.
+
+    ## As built
+    Served by the web service at `/api/v1` (src/routes/api/v1). Built so far: EVV (`/evv/*`) and
+    bulk export (`/export/{type}`); reports and webhooks are not built yet.
+    - Keys are created and revoked by agency admins in the app (Admin, API keys). A key is
+      `guad_` plus 43 base64url characters; only its SHA-256 is stored and it is shown once.
+      `read` keys can use every GET operation; `write` is for reports and webhooks.
+    - Each operation needs the plan feature for its data: EVV and `clock_records` need
+      `timekeeping`, `notes`/`attendance` need `charting`, `incidents` `incidents`, `mar`/`medications`
+      `mar`, `health` and `include_health=true` need `health`, `schedule` `scheduling`, `goals` `goals`,
+      `referrals` `intake`; `clients` and `staff` are on every plan. Otherwise 403.
+    - `from`/`to` are the agency's local days, at most 366 days apart. Export date filters and
+      `since` apply to `updated_at`, and pages are ordered by `updated_at`, then `id`.
+    - Requests without a valid key are limited to 20 a minute per IP (to slow key guessing).
+    - Every call, allowed or not, writes an `audit_log` row (`table_name = 'api_access'`).
   contact:
     name: Guad API Support
     email: api@guad.care
@@ -393,7 +408,7 @@ paths:
         - `incidents` — Incident reports
         - `mar` — Medication administration records
         - `medications` — Medication list per client
-        - `health` — Vitals, seizures, illness, appointments
+        - `health` — Vitals, seizures, illness, appointments, bowel observations
         - `attendance` — Daily attendance/services
         - `clock_records` — Clock-in/out with GPS data
         - `schedule` — Schedule slots

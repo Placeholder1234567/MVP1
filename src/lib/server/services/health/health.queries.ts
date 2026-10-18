@@ -14,7 +14,7 @@ export async function insertHealthEntry(tx: Tx, row: typeof healthEntries.$infer
 export interface HealthFilter {
 	clientId?: string;
 	homeId?: string;
-	kind?: 'vitals' | 'seizure' | 'illness' | 'appointment';
+	kind?: 'vitals' | 'seizure' | 'illness' | 'appointment' | 'bowel';
 	from?: Date;
 	to?: Date;
 	limit: number;
