@@ -51,7 +51,11 @@ test('health, incident and attendance drafts recover from encrypted storage with
 	await openPerson(page, person);
 	await page.getByRole('link', { name: /^Health Vitals/ }).click();
 	await page.getByLabel('Pulse', { exact: true }).fill('81');
-	await page.getByRole('button', { name: 'Lock device', exact: true }).first().click();
+	if (info.project.name === 'phone') {
+		// The mobile care screen has no lock button. Date-only rollback exercises the existing fail-closed privacy check without replacing timers or database workers.
+		await page.clock.setFixedTime(new Date(Date.now() - 60000));
+	} else await page.getByRole('button', { name: 'Lock device', exact: true }).first().click();
+	await expect(page.getByRole('heading', { name: 'Workspace locked', exact: true })).toBeVisible();
 	await unlock(page, false, 'Unlock workspace');
 	await expect(page.getByLabel('Pulse', { exact: true })).toHaveValue('81');
 	await expect(
