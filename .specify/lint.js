@@ -79,7 +79,10 @@ function lint() {
   };
 
   const schema = read("schema.ts");
-  const rls = read("rls.sql");
+  // rls.sql runs once per database; later policies ship as sql-patches/, so both count.
+  let patches = [];
+  try { patches = fs.readdirSync(path.join(SD, "sql-patches")).filter((f) => f.endsWith(".sql")).sort(); } catch {}
+  const rls = [read("rls.sql"), ...patches.map((f) => read(path.join("sql-patches", f)))].join("\n");
   const constitution = read("constitution.md");
   const security = read("security.md");
   const services = read("services.md");

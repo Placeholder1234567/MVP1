@@ -50,6 +50,13 @@
       "when": 1792307083631,
       "tag": "0006_incident_report_details",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792307743463,
+      "tag": "0007_message_reads",
+      "breakpoints": true
     }
   ]
 }

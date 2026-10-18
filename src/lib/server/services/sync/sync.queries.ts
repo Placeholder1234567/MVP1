@@ -21,7 +21,8 @@ const WINDOWS: Array<
 	['coverage_steps', s.coverageSteps, s.coverageSteps.created_at, 7],
 	// Schedule keeps the past 30 days (future slots always sync); messages 90 days
 	['schedule_slots', s.scheduleSlots, s.scheduleSlots.day, 30],
-	['messages', s.messages, s.messages.sent_at, 90]
+	['messages', s.messages, s.messages.sent_at, 90],
+	['message_reads', s.messageReads, s.messageReads.read_at, 90]
 ];
 
 export async function expireDeviceRows(tx: Tx, now: Date): Promise<Record<string, number>> {

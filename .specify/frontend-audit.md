@@ -597,6 +597,7 @@ Findings are organized by the 12 audit dimensions requested, followed by acknowl
 - **Problem:** The messaging system (`V.msgs`) is a simple flat chronological list of messages per home. There is no threading, no read receipts (beyond an unread count), no message search, no file/photo sharing, no message editing or deletion, and no way to @mention a specific staff member. Therap's SComm is also basic (no threading), but it has acknowledgment tracking and individual record linking. For shift handoff communication -- a critical safety function in IDD care -- the current messaging system is too simple.
 - **Severity:** LOW
 - **Recommended Fix:** (1) Add read receipts (who has seen each message). (2) Add the ability to link a message to a specific individual's record. (3) Add photo sharing for health observations. (4) For production: add threading for incident follow-up discussions. These can be phased -- the current simplicity is acceptable for MVP but should be on the roadmap.
+- **As built (fix 1):** Read receipts. Opening the board while the page is visible records a `message_reads` row (schema.ts table 41) for each message from someone else; it works offline and uploads through `sync.upload`. Authors see "Not seen yet" or "Seen by …" under their messages, with each reader and when they read it, and the "Team messages" link shows how many messages are new. Record links, photos and threading are not built.
 
 ---
 

@@ -29,7 +29,16 @@ test('a new caregiver sees getting-started steps, hides them and finds help', as
 	await card.getByRole('button', { name: 'Hide these tips', exact: true }).click();
 	await expect(card).toBeHidden();
 	// Saved to user_settings: still hidden after a reload, once it has synced back.
-	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	// "All changes synced" covers uploads only; Help on Me offers the tips again
+	// once the saved setting has come down to this device.
+	await page.getByRole('link', { name: 'Me', exact: true }).first().click();
+	await expect(
+		page
+			.getByRole('region', { name: 'Help' })
+			.getByRole('button', { name: 'Show getting-started tips again', exact: true })
+	).toBeVisible();
+	await page.getByRole('link', { name: 'Today', exact: true }).first().click();
+	await expect(page.getByRole('heading', { level: 1, name: /^Hello,/ })).toBeVisible();
 	await page.reload();
 	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
 	await page.getByRole('button', { name: 'Unlock', exact: true }).click();

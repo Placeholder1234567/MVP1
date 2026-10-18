@@ -1589,3 +1589,44 @@ export const smsInboundMessages = pgTable(
     uniqueIndex('sms_inbound_messages_message_id_idx').on(t.message_id),
   ],
 );
+
+// ─── 41. message_reads ───────────────────────────────────────────────────────
+// Read receipts for the home message board (frontend-audit.md finding 19):
+// one row per reader per message, written when the board shows the message.
+// Append-only; the unique pair makes a second device's receipt a no-op.
+
+export const messageReads = pgTable(
+  'message_reads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id')
+      .notNull()
+      .references(() => homes.id, { onDelete: 'cascade' }),
+    message_id: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    profile_id: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    reader_name: text('reader_name').notNull(),
+    read_at: timestamp('read_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // false once older than the messages sync window (SyncWindowJob).
+    device_sync: boolean('device_sync').notNull().default(true),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('message_reads_agency_id_idx').on(t.agency_id),
+    index('message_reads_home_id_idx').on(t.home_id),
+    uniqueIndex('message_reads_message_profile_idx').on(t.message_id, t.profile_id),
+  ],
+);

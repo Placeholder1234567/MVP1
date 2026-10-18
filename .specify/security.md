@@ -98,6 +98,7 @@ Row-Level Security (RLS) is enforced at the Postgres level. The matrix below sho
 | **health_entries** | Create; Read assigned homes | Read/Write all agency | Full CRUD |
 | **attendance** | Create; Read assigned homes | Read/Write all agency | Full CRUD |
 | **messages** | Read/Write in assigned homes | Read/Write all agency | Full CRUD |
+| **message_reads** | Read in assigned homes; insert own receipts only | Read all agency; insert own receipts only | Same as supervisor (receipts are never edited or deleted) |
 | **coverage_requests** | Read assigned homes; Create callout for own shifts | Read/Write all agency | Full CRUD |
 | **coverage_candidates** | Read own candidacy; reply via coverage.accept/decline (server) | Read/Write all agency | Full CRUD |
 | **coverage_steps** | Read assigned homes | Read + Insert all agency (append-only) | Read + Insert (append-only — coverage steps are an immutable audit trail) |

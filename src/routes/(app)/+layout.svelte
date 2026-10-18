@@ -308,7 +308,12 @@
 					>
 					<ThemeToggle />
 					<CommandPalette pages={nav} />
-					<a class="textbtn" href={resolve('/(app)/messages')}>Team messages</a>
+					<a
+						class="textbtn"
+						href={resolve('/(app)/messages')}
+						aria-label={`Team messages, ${app.unseenMessageCount} new`}
+						>Team messages{app.unseenMessageCount ? ` (${app.unseenMessageCount})` : ''}</a
+					>
 					<a
 						class="textbtn"
 						href={resolve('/(app)/notifications')}

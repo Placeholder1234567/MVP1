@@ -85,6 +85,21 @@ SELECT expect('amendment for same slot allowed',
     VALUES ('a1000000-0000-0000-0000-000000000000','d1000000-0000-0000-0000-000000000000','e1000000-0000-0000-0000-000000000000','2026-10-12','08:00','refused','c1000000-0000-0000-0000-000000000000','ba000000-0000-0000-0000-000000000000','correction')$$, false);
 SELECT check_eq('home_id on MAR derived from client', (SELECT count(*) FROM mar_records WHERE home_id = 'b1000000-0000-0000-0000-000000000000'), 3);
 
+-- 8. Message read receipts: own, on a visible board, permanent
+SELECT expect('cg can mark an Oak message read',
+  $$INSERT INTO message_reads (id, agency_id, home_id, message_id, profile_id, reader_name)
+    VALUES ('f8100000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8000000-0000-0000-0000-000000000000','c1000000-0000-0000-0000-000000000000','Cara Giver')$$, false);
+SELECT expect('cg cannot write a receipt for someone else',
+  $$INSERT INTO message_reads (agency_id, home_id, message_id, profile_id, reader_name)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8000000-0000-0000-0000-000000000000','c2000000-0000-0000-0000-000000000000','Sue Pervisor')$$, true);
+SELECT expect('cg cannot mark another home''s message read',
+  $$INSERT INTO message_reads (agency_id, home_id, message_id, profile_id, reader_name)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f9000000-0000-0000-0000-000000000000','c1000000-0000-0000-0000-000000000000','Cara Giver')$$, true);
+UPDATE message_reads SET read_at = now() - interval '1 day' WHERE id = 'f8100000-0000-0000-0000-000000000000';
+DELETE FROM message_reads WHERE id = 'f8100000-0000-0000-0000-000000000000';
+SELECT check_eq('receipts cannot be edited or deleted',
+  (SELECT count(*) FROM message_reads WHERE id = 'f8100000-0000-0000-0000-000000000000' AND read_at > now() - interval '1 hour'), 1);
+
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
 SELECT expect('sup cannot rewrite caregiver note content',
@@ -102,6 +117,11 @@ SELECT expect('sup can acknowledge a dose',
 SELECT expect('nobody can delete a MAR record',
   $$DELETE FROM mar_records WHERE id = 'ba000000-0000-0000-0000-000000000000'$$, false);
 SELECT check_eq('MAR record still there after delete attempt', (SELECT count(*) FROM mar_records WHERE id = 'ba000000-0000-0000-0000-000000000000'), 1);
+
+SELECT expect('a receipt must be on the message''s own board',
+  $$INSERT INTO message_reads (agency_id, home_id, message_id, profile_id, reader_name)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b2000000-0000-0000-0000-000000000000','f8000000-0000-0000-0000-000000000000','c2000000-0000-0000-0000-000000000000','Sue Pervisor')$$, true);
+SELECT check_eq('sup sees receipts on boards they supervise', (SELECT count(*) FROM message_reads), 1);
 
 RESET ROLE;
 SELECT check_eq('note history written by trigger (created x2, signed, approved)', (SELECT count(*) FROM note_history), 4);

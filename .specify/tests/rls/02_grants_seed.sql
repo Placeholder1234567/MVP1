@@ -30,6 +30,11 @@ INSERT INTO coverage_requests (id, agency_id, home_id, day, shift) VALUES
 INSERT INTO coverage_candidates (id, agency_id, coverage_request_id, profile_id, eligible) VALUES
   ('92000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', '91000000-0000-0000-0000-000000000000', 'c1000000-0000-0000-0000-000000000000', false);
 
+-- Board messages from the supervisor: f8 at Oak, f9 at Maple.
+INSERT INTO messages (id, agency_id, home_id, from_name, body, created_by) VALUES
+  ('f8000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'b1000000-0000-0000-0000-000000000000', 'Sue Pervisor', 'Oak note', 'c2000000-0000-0000-0000-000000000000'),
+  ('f9000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'b2000000-0000-0000-0000-000000000000', 'Sue Pervisor', 'Maple note', 'c2000000-0000-0000-0000-000000000000');
+
 -- Test helper: runs a statement as the current (non-superuser) role and
 -- reports whether it was allowed.
 CREATE FUNCTION expect(name text, stmt text, should_fail boolean) RETURNS void

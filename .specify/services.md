@@ -402,11 +402,12 @@ src/lib/server/services/
 
 **Responsibility:** Home-scoped message board for shift handoff communication and coverage announcements. New messages reach devices through PowerSync sync (typically within a few seconds while online).
 
-**Owns tables:** `messages`
+**Owns tables:** `messages`, `message_reads`
 
 **Key functions:**
 - `sendMessage(agencyId, homeId, fromUserId, body): Message` — post a message to a home's board.
 - `getMessages(agencyId, homeId, limit?, before?): Message[]` — paginated message history for a home.
+- `markRead(agencyId, user, { id, messageId, readAt? }): { created }` — record that the caller has seen a board message (idempotent per reader; none for the author). Written offline, applied through `sync.upload`.
 - `postCoverageAnnouncement(agencyId, homeId, text): Message` — system-generated message about coverage changes (called by Schedule Service).
 
 **Depends on:**

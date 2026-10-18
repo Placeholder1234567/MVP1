@@ -10,7 +10,7 @@ import { pgCode, ServiceError } from '../../errors.ts';
 import type { CurrentUser } from '../../services/auth/index.ts';
 import { createNote, updateNote } from '../../services/charting/index.ts';
 import { recordDose } from '../../services/medication/index.ts';
-import { sendMessage } from '../../services/message/index.ts';
+import { markRead, sendMessage } from '../../services/message/index.ts';
 import { findAttendanceDay, saveAttendance } from '../../services/attendance/index.ts';
 import { createHealthEntry } from '../../services/health/index.ts';
 import { createIncident } from '../../services/incident/index.ts';
@@ -146,6 +146,16 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 			});
 		}
 	},
+	// Read receipts are append-only: no PATCH or DELETE.
+	message_reads: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			await markRead(tx, user.agencyId, user, {
+				id,
+				messageId: str(d!.message_id)!,
+				readAt: str(d!.read_at) as unknown as Date | undefined
+			});
+		}
+	},
 	// Goal trials are rows of their own on the device; on the server they are
 	// part of the note, so they go through the note's update rules.
 	note_goals: {
@@ -240,7 +250,8 @@ const TABLE_FEATURE: Record<string, FeatureFlag> = {
 	mar_records: 'mar',
 	health_entries: 'health',
 	incidents: 'incidents',
-	messages: 'messaging'
+	messages: 'messaging',
+	message_reads: 'messaging'
 };
 
 /** Maps an error to a rejection, or rethrows it (unexpected: the client retries). */

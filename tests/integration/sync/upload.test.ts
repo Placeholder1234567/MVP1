@@ -62,7 +62,12 @@ beforeAll(async () => {
 	await withService(async (t) => {
 		await t
 			.insert(s.agencies)
-			.values({ id: AGENCY, name: 'Upload Test Agency', subscription_tier: 'complete', slug: `upload-${AGENCY}` });
+			.values({
+				id: AGENCY,
+				name: 'Upload Test Agency',
+				subscription_tier: 'complete',
+				slug: `upload-${AGENCY}`
+			});
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }
@@ -373,6 +378,45 @@ describe('sync.upload: messages and everything else', () => {
 			{ op: 'PUT', table: 'messages', id: randomUUID(), data: { home_id: MAPLE, body: 'Hi' } }
 		]);
 		expect(r.rejected[0]).toMatchObject({ code: 'RLS_DENIED' });
+	});
+
+	it('records read receipts once per reader, never for the author or across homes', async () => {
+		const message = randomUUID();
+		await upload(CARA, [
+			{ op: 'PUT', table: 'messages', id: message, data: { home_id: OAK, body: 'Fridge is fixed' } }
+		]);
+		const maple = randomUUID();
+		await upload(SAM, [
+			{ op: 'PUT', table: 'messages', id: maple, data: { home_id: MAPLE, body: 'Maple only' } }
+		]);
+		const read = (messageId: string, data: Record<string, unknown> = {}) => ({
+			op: 'PUT' as const,
+			table: 'message_reads',
+			id: randomUUID(),
+			data: { message_id: messageId, read_at: new Date().toISOString(), ...data }
+		});
+		// Two devices for Dev, a forged reader, and the author's own receipt.
+		const first = await upload(DEV, [read(message, { profile_id: SAM, reader_name: 'Not Dev' })]);
+		expect(first.rejected).toEqual([]);
+		expect((await upload(DEV, [read(message)])).rejected).toEqual([]);
+		expect((await upload(CARA, [read(message)])).rejected).toEqual([]);
+		const rows = await withService((t) =>
+			t.select().from(s.messageReads).where(eq(s.messageReads.message_id, message))
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ profile_id: DEV, reader_name: 'Dev Okafor', home_id: OAK });
+		// Another home's message is invisible, so there's nothing to mark.
+		const other = await upload(DEV, [read(maple)]);
+		expect(other.rejected[0]).toMatchObject({ code: 'NOT_FOUND' });
+		// Receipts are permanent.
+		const edits = await upload(DEV, [
+			{ op: 'PATCH', table: 'message_reads', id: rows[0].id, data: { read_at: null } },
+			{ op: 'DELETE', table: 'message_reads', id: rows[0].id }
+		]);
+		expect(edits.rejected.map((x) => x.code)).toEqual([
+			'NOT_ALLOWED_OFFLINE',
+			'NOT_ALLOWED_OFFLINE'
+		]);
 	});
 
 	it('refuses tables and operations a device may not write', async () => {
