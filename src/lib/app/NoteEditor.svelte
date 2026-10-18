@@ -114,7 +114,15 @@
 			loaded = version;
 			return;
 		}
-		content = parseJson<Record<string, string>>(note?.content, {});
+		const incoming = parseJson<Record<string, string>>(note?.content, {});
+		// Our own save coming back (local write, then the server copy after sync)
+		// changes nothing on screen, so it must not clear "I reviewed this note"
+		// either: a caregiver may have ticked it in between.
+		if (id === savedId && sameNote(incoming, sourceGoals)) {
+			loaded = version;
+			return;
+		}
+		content = incoming;
 		assisted = !!note?.lomi_drafted;
 		scores = {};
 		for (const row of sourceGoals) {
@@ -129,6 +137,30 @@
 		signature = false;
 		signed = false;
 	});
+	/** The form already shows this content and goal data (key order aside: the server stores JSON). */
+	function sameNote(
+		incoming: Record<string, string>,
+		goalRows: {
+			goal_id: string | null;
+			trials: string | null;
+			not_attempted: number | null;
+			reason: string | null;
+		}[]
+	) {
+		const keys = new Set([...Object.keys(incoming), ...Object.keys(content)]);
+		if ([...keys].some((k) => (incoming[k] ?? '') !== (content[k] ?? ''))) return false;
+		const goalIds = new Set([...goalRows.map((g) => g.goal_id!), ...Object.keys(scores)]);
+		return [...goalIds].every((goalId) => {
+			const row = goalRows.find((g) => g.goal_id === goalId);
+			const form = scores[goalId];
+			if (!row || !form) return false;
+			return (
+				JSON.stringify(parseJson<string[]>(row.trials, [])) === JSON.stringify(form.trials) &&
+				!!row.not_attempted === form.notAttempted &&
+				(row.reason ?? '') === form.reason
+			);
+		});
+	}
 	function addTrial(id: string, value: string) {
 		dirty = true;
 		const old = scores[id] ?? { trials: [], notAttempted: false, reason: '' };
