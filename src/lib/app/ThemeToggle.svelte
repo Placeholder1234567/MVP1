@@ -2,19 +2,42 @@
 	// Light / Dark / Auto in the app bar (frontend-spec-1.md §10.1): one tap,
 	// not buried in settings. Applies at once on this device, then saves to
 	// user_settings.theme so it follows the person to other devices.
-	import { THEMES, themeAttribute, type Theme } from '#lib/domain/index.ts';
+	import {
+		effectiveTheme,
+		shiftAt,
+		THEMES,
+		themeAttribute,
+		type Theme
+	} from '#lib/domain/index.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { useSession } from './session.svelte';
 
 	const app = useSession();
 	let message = $state('');
 	// Auto follows the device setting.
-	const labels: Record<Theme, string> = { light: 'Light', dark: 'Dark', auto: 'Auto' };
+	const labels: Record<Theme, string> = {
+		light: 'Light',
+		dark: 'Dark',
+		night: 'Night',
+		auto: 'Auto'
+	};
 
-	// The page follows the chosen theme; auto leaves it to the device setting.
+	// Night comes on by itself while clocked in to an overnight shift (§10.5).
+	let now = $state(new Date());
+	$effect(() => {
+		const timer = setInterval(() => (now = new Date()), 60_000);
+		return () => clearInterval(timer);
+	});
+	const overnight = $derived(
+		app.clocks.some((c) => c.profile_id === app.user.profileId && !c.clock_out_at) &&
+			shiftAt(now, app.user.timeZone).shift === 'on'
+	);
+	const shown = $derived(effectiveTheme(app.theme, overnight));
+
+	// The page follows the theme; auto leaves it to the device setting.
 	$effect(() => {
 		const root = document.documentElement;
-		const attribute = themeAttribute(app.theme);
+		const attribute = themeAttribute(shown);
 		if (attribute) root.dataset.theme = attribute;
 		else delete root.dataset.theme;
 	});
@@ -39,6 +62,9 @@
 	{/each}
 </div>
 {#if message}<span class="sr" role="status">{message}</span>{/if}
+{#if shown === 'night' && app.theme !== 'night'}<span class="sr" role="status"
+		>Night mode is on for your overnight shift.</span
+	>{/if}
 
 <style>
 	.theme {

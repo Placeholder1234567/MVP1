@@ -6,6 +6,8 @@
 
 export interface Disclosure {
 	onboardingDone?: boolean;
+	/** The day the evening dark-mode suggestion was last dismissed (theme.ts). */
+	darkSuggestionDay?: string;
 }
 
 /** The disclosure keys a client may set; anything else stored is ignored. */
@@ -18,10 +20,12 @@ export function parseDisclosure(value: unknown): Disclosure {
 			return {};
 		}
 	}
-	const r = (typeof v === 'object' && v) || {};
-	return typeof (r as Disclosure).onboardingDone === 'boolean'
-		? { onboardingDone: (r as Disclosure).onboardingDone }
-		: {};
+	const r = ((typeof v === 'object' && v) || {}) as Disclosure;
+	const out: Disclosure = {};
+	if (typeof r.onboardingDone === 'boolean') out.onboardingDone = r.onboardingDone;
+	if (typeof r.darkSuggestionDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.darkSuggestionDay))
+		out.darkSuggestionDay = r.darkSuggestionDay;
+	return out;
 }
 
 export interface OnboardingProgress {

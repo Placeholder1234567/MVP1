@@ -58,7 +58,8 @@ it('saves the caller’s own theme and keeps their other settings', async () => 
 	expect(await themeOf(OTHER)).toBeUndefined();
 });
 
-it('rejects anything but light, dark and auto', async () => {
+it('accepts night and rejects anything but light, dark, night and auto', async () => {
+	expect(await (await as(ME)).auth.setTheme({ theme: 'night' })).toEqual({ theme: 'night' });
 	await expect(
 		(await as(ME)).auth.setTheme({ theme: 'guad-dark-off' as 'dark' })
 	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
@@ -77,4 +78,15 @@ it('hides and shows the getting-started tips, keeping other settings', async () 
 	await expect(caller.auth.setDisclosure({ admin: true } as never)).rejects.toMatchObject({
 		code: 'BAD_REQUEST'
 	});
+});
+
+it('remembers the day the evening dark-mode suggestion was dismissed', async () => {
+	const caller = await as(ME);
+	await caller.auth.setDisclosure({ onboardingDone: true });
+	expect(await caller.auth.setDisclosure({ darkSuggestionDay: '2026-10-18' })).toEqual({
+		disclosure: { onboardingDone: true, darkSuggestionDay: '2026-10-18' }
+	});
+	await expect(
+		caller.auth.setDisclosure({ darkSuggestionDay: 'tonight' } as never)
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 });
