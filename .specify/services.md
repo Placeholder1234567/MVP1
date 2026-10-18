@@ -215,7 +215,7 @@ src/lib/server/services/
 
 **Responsibility:** Shift calendar management across all homes, slot assignment, and the Lomi coverage engine — the automated callout-to-coverage workflow. When a caregiver calls out (via SMS or app), Lomi identifies trained, available candidates nearby, texts them shift offers, and fills the slot when someone accepts. The scheduler retains final authority.
 
-**Owns tables:** `schedule_slots`, `coverage_requests`, `coverage_candidates`, `coverage_steps`
+**Owns tables:** `schedule_slots`, `schedule_templates`, `coverage_requests`, `coverage_candidates`, `coverage_steps`
 
 **Key functions:**
 - `getWeekSchedule(agencyId, homeId, weekStart): ScheduleGrid` — 7-day x 3-shift grid with assigned staff and statuses.
@@ -229,6 +229,7 @@ src/lib/server/services/
 - `fillShift(agencyId, coverageRequestId, filledById): CoverageRequest` — mark shift as filled, update schedule slot, notify family.
 - `getCoverageStatus(agencyId, coverageRequestId): CoverageRequest` — full coverage request with candidates and step log.
 - `getMyShifts(agencyId, profileId, weekStart?, weeks?): ScheduleSlot[]` — returns the caller's own scheduled shifts. Defaults to current week, up to 4 weeks ahead.
+- `copyScheduleWeek()`, `saveScheduleTemplate()`, `applyScheduleTemplate()`, `listScheduleTemplates()`, `deleteScheduleTemplate()` — fill a week's open slots from another week or from a saved template (a home's usual week by weekday, up to 20 per home); each copy goes through the `setSlot` checks (frontend-audit.md finding 17).
 
 **Depends on:**
 - Auth (staff home assignments, availability)

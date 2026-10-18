@@ -140,8 +140,19 @@ SELECT expect('a thread cannot name an unknown incident',
   $$INSERT INTO messages (agency_id, home_id, incident_id, from_name, body, created_by)
     VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8300000-0000-0000-0000-000000000000','Cara Giver','Follow-up','c1000000-0000-0000-0000-000000000000')$$, true);
 
+-- 12. Schedule templates are for supervisors and admins only
+SELECT expect('cg cannot save a schedule template',
+  $$INSERT INTO schedule_templates (agency_id, home_id, name, slots, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Mine','[]','c1000000-0000-0000-0000-000000000000')$$, true);
+
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
+SELECT expect('sup saves a schedule template for a home in the agency',
+  $$INSERT INTO schedule_templates (id, agency_id, home_id, name, slots, created_by)
+    VALUES ('f7000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Usual week','[]','c2000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('a template names its own author',
+  $$INSERT INTO schedule_templates (agency_id, home_id, name, slots, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Other','[]','c1000000-0000-0000-0000-000000000000')$$, true);
 SELECT expect('sup cannot rewrite caregiver note content',
   $$UPDATE notes SET content = '{"activities":"rewritten"}' WHERE id = 'aa000000-0000-0000-0000-000000000000'$$, true);
 SELECT expect('sup cannot send back without comment',
@@ -171,6 +182,9 @@ SELECT expect('a countersigned entry is final',
   $$UPDATE controlled_counts SET witness_status = 'pending' WHERE id = 'fc000000-0000-0000-0000-000000000000'$$, false);
 SELECT check_eq('countersigned once and still verified',
   (SELECT count(*) FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000' AND witness_status = 'verified'), 1);
+
+SELECT set_config('app.claims', :'cg', false);
+SELECT check_eq('caregivers see no schedule templates', (SELECT count(*) FROM schedule_templates), 0);
 
 RESET ROLE;
 SELECT check_eq('note history written by trigger (created x2, signed, approved)', (SELECT count(*) FROM note_history), 4);

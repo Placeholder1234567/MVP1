@@ -1717,3 +1717,35 @@ export const controlledCounts = pgTable(
     uniqueIndex('controlled_counts_witness_sign_in_idx').on(t.witness_sign_in),
   ],
 );
+
+// ─── 43. schedule_templates ──────────────────────────────────────────────────
+// A home's usual week, saved by a supervisor and applied to fill a week's open
+// shifts (frontend-audit.md finding 17). slots: [{ weekday 0-6 from the week's
+// first day, shift 'am' | 'pm' | 'on', profileId }]; parsed by
+// domain/schedule-templates.ts. Staff names only, no client data. Not synced.
+
+export const scheduleTemplates = pgTable(
+  'schedule_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id')
+      .notNull()
+      .references(() => homes.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    slots: jsonb('slots').notNull().default([]),
+    created_by: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('schedule_templates_agency_id_idx').on(t.agency_id),
+    uniqueIndex('schedule_templates_home_name_idx').on(t.home_id, t.name),
+  ],
+);
