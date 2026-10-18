@@ -97,3 +97,50 @@ it('is for admins on a plan with the audit log, in their own agency only', async
 		(await (await as(OTHER_ADMIN)).audit.list({ limit: 200 })).some((e) => e.id === any.id)
 	).toBe(false);
 });
+
+it('admins download the list as CSV for up to 93 days, without values, and the download is recorded', async () => {
+	const admin = await as(ADMIN);
+	const created = await (
+		await as(SUP)
+	).client.create({ name: 'Synthetic Export Person', homeId: HOME });
+	const now = Date.now();
+	const range = {
+		from: new Date(now - 86_400_000).toISOString(),
+		to: new Date(now + 60_000).toISOString()
+	};
+	const file = await admin.audit.export({ dateRange: range, tableName: 'clients' });
+	expect(file.contentType).toBe('text/csv');
+	expect(file.filename).toMatch(/^audit-log-\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.csv$/);
+	const [header, ...lines] = file.content.split('\r\n');
+	expect(header).toBe(
+		'"Time (UTC)","Action","Record type","Record ID","Done by","Done by ID","Entry ID"'
+	);
+	expect(lines.some((l) => l.includes(created.id) && l.includes('"INSERT"'))).toBe(true);
+	expect(file.content).not.toContain('Synthetic Export Person');
+	expect(file.rows).toBe(lines.length);
+
+	const exports = await withService((t) =>
+		t
+			.select()
+			.from(s.auditLog)
+			.where(and(eq(s.auditLog.table_name, 'report_exports'), eq(s.auditLog.performed_by, ADMIN)))
+	);
+	expect(exports).toEqual([
+		expect.objectContaining({
+			agency_id: AGENCY,
+			new_values: { type: 'audit_log', format: 'csv', rows: file.rows }
+		})
+	]);
+
+	await expect(
+		admin.audit.export({
+			dateRange: { from: new Date(now - 94 * 86_400_000).toISOString(), to: range.to }
+		})
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	await expect((await as(SUP)).audit.export({ dateRange: range })).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
+	await expect((await as(PRO_ADMIN)).audit.export({ dateRange: range })).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
+});

@@ -301,6 +301,7 @@ Implemented own-account settings procedures (all require the notifications entit
 | Procedure | Type | Input | Output | Min Role | Feature Gate | Description |
 |---|---|---|---|---|---|---|
 | `audit.list` | query | `{ dateRange?: { from: string, to: string }, tableName?: string, recordId?: uuid, performedBy?: uuid, action?: 'INSERT' \| 'UPDATE' \| 'DELETE', limit?: number, offset?: number }` | `Array<{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }>` | admin | audit_log | Returns paginated audit log entries. Filterable by date range, entity (table + record), actor, and action type. |
+| `audit.export` | mutation | `{ dateRange: { from: string, to: string }, tableName?: string, performedBy?: uuid, action?: 'INSERT' \| 'UPDATE' \| 'DELETE' }` | `{ filename, contentType: 'text/csv', content, rows }` | admin | audit_log | CSV of the same metadata `audit.list` returns (time, action, record type and ID, who), never old or new values. At most 93 days and 10,000 entries (`VALIDATION_FAILED` beyond that, nothing partial). Each download is recorded as a `report_exports` audit entry (`type: 'audit_log'`). |
 | `audit.get` | query | `{ id: uuid }` | `{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }` | admin | audit_log | Returns a single audit log entry by ID. |
 
 ### apiKey

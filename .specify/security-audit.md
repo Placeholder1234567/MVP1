@@ -30,7 +30,7 @@ A code-level review against security.md, run on `main` after Phase 4. It is not 
 | MFA enforcement for supervisors and admins (security.md "MFA Policy"). | Done | TOTP enrollment and sign-in (`src/lib/auth/firebase.ts`, `/login`), and `/auth/session` refuses supervisor and admin sessions without a second factor once their 30-day grace ends (`domain/mfa.ts`). Off only with the Auth emulator or `MFA_ENFORCE=off`. Needs Identity Platform TOTP switched on in the real project. |
 | Request rate limiting. | Done | 100 tRPC requests a minute per user and 20 `/auth/session` sign-ins a minute per IP (in-memory token buckets per instance, `src/lib/server/rate-limit.ts`), on top of the exact Lomi limits from audit_log. Cloud Armor would add an edge-level limit. |
 | Password policy, breached-password check and history. | Medium | Set Identity Platform's password policy to "enforce" (10+ characters, mixed case, digit) in the console during deploy step 2. The breached-password and history checks are post-launch items per security.md. |
-| Audit log viewer and export for admins/supervisors (security.md "Access"). | Low | The viewer is built (`/dashboard/audit`, admins); export is not built yet. |
+| Audit log viewer and export for admins/supervisors (security.md "Access"). | Low | Fixed: the viewer (`/dashboard/audit`, admins) and a CSV export (`audit.export`: metadata only, up to 93 days, each download recorded). |
 | `style-src 'unsafe-inline'`. | Low | Needed for Svelte style bindings. Scripts, the real XSS vector, are nonce-only. |
 | Safari and Firefox checks of the encrypted local database. | Medium | security.md notes they still need verifying; that needs real devices. |
 | Outside penetration test and BAA paperwork. | Required | infrastructure.md §8. |

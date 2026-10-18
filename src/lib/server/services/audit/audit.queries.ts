@@ -125,3 +125,23 @@ export async function recordNoteVersionsView(
 		new_values: { viewed: 'note_versions', note: noteId }
 	});
 }
+
+/** Downloading the audit log is recorded like any other export. */
+export async function recordAuditExport(
+	tx: Tx,
+	agencyId: string,
+	viewerId: string,
+	rows: number,
+	request: RequestInfo
+) {
+	await tx.insert(auditLog).values({
+		agency_id: agencyId,
+		table_name: 'report_exports',
+		record_id: crypto.randomUUID(),
+		action: 'INSERT',
+		performed_by: viewerId,
+		ip_address: request.ip,
+		user_agent: request.user_agent,
+		new_values: { type: 'audit_log', format: 'csv', rows }
+	});
+}
