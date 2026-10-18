@@ -598,7 +598,8 @@ Findings are organized by the 12 audit dimensions requested, followed by acknowl
 - **Severity:** LOW
 - **Recommended Fix:** (1) Add read receipts (who has seen each message). (2) Add the ability to link a message to a specific individual's record. (3) Add photo sharing for health observations. (4) For production: add threading for incident follow-up discussions. These can be phased -- the current simplicity is acceptable for MVP but should be on the roadmap.
 - **As built (fix 1):** Read receipts. Opening the board while the page is visible records a `message_reads` row (schema.ts table 41) for each message from someone else; it works offline and uploads through `sync.upload`. Authors see "Not seen yet" or "Seen by …" under their messages, with each reader and when they read it, and the "Team messages" link shows how many messages are new.
-- **As built (fix 2):** A message can name the person it is about ("About (optional)", `messages.client_id`, someone at the same home). The card links to the person, and their page lists the latest team messages about them. Photos and threading are not built.
+- **As built (fix 2):** A message can name the person it is about ("About (optional)", `messages.client_id`, someone at the same home). The card links to the person, and their page lists the latest team messages about them. Photos are not built.
+- **As built (fix 4):** Threads. Each message has a Reply button; replies show under it, oldest first, and threads are ordered by their latest reply (`boardThreads()` in `domain/message-threads.ts`). An incident's review and the person's recent reports have "Discuss with the team", which opens the board with the incident attached (`messages.incident_id`); the review shows how many messages follow up on it. Replies and follow-ups work offline like any message (`sql-patches/0006` keeps them on the same board and home).
 
 ---
 

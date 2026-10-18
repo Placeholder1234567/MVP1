@@ -156,6 +156,8 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				id,
 				homeId: str(d!.home_id)!,
 				clientId: str(d!.client_id) ?? null,
+				replyTo: str(d!.reply_to) ?? null,
+				incidentId: str(d!.incident_id) ?? null,
 				body: str(d!.body) ?? '',
 				sentAt: str(d!.sent_at) as unknown as Date | undefined
 			});

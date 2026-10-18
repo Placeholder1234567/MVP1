@@ -126,6 +126,20 @@ SELECT expect('cg cannot name a person from another home',
   $$INSERT INTO messages (agency_id, home_id, client_id, from_name, body, created_by)
     VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d2000000-0000-0000-0000-000000000000','Cara Giver','Wrong home','c1000000-0000-0000-0000-000000000000')$$, true);
 
+-- 11. Threads: a reply joins a thread on the same board; incidents from the same home
+SELECT expect('cg replies to an Oak message',
+  $$INSERT INTO messages (id, agency_id, home_id, reply_to, from_name, body, created_by)
+    VALUES ('f8200000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8000000-0000-0000-0000-000000000000','Cara Giver','Will do','c1000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('a reply must be on the thread''s own board',
+  $$INSERT INTO messages (agency_id, home_id, reply_to, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f9000000-0000-0000-0000-000000000000','Cara Giver','Wrong board','c1000000-0000-0000-0000-000000000000')$$, true);
+SELECT expect('a reply points at the first message, not another reply',
+  $$INSERT INTO messages (agency_id, home_id, reply_to, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8200000-0000-0000-0000-000000000000','Cara Giver','Nested','c1000000-0000-0000-0000-000000000000')$$, true);
+SELECT expect('a thread cannot name an unknown incident',
+  $$INSERT INTO messages (agency_id, home_id, incident_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8300000-0000-0000-0000-000000000000','Cara Giver','Follow-up','c1000000-0000-0000-0000-000000000000')$$, true);
+
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
 SELECT expect('sup cannot rewrite caregiver note content',
