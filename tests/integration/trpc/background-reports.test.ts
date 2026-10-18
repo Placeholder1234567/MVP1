@@ -25,6 +25,8 @@ const [signed, approved, draft, returned] = Array.from({ length: 4 }, () => rand
 const uid = (id: string) => `background-report-${id}`;
 const files = new Map<string, Buffer>();
 let puts = 0;
+let beforePut: ((path: string) => Promise<void>) | undefined;
+let failNextRemove = false;
 const caller = createCallerFactory(appRouter);
 const as = async (id = owner) =>
 	caller({
@@ -59,10 +61,15 @@ beforeAll(async () => {
 	setStorageForTests({
 		put: async (path, body) => {
 			puts++;
+			await beforePut?.(path);
 			files.set(path, body);
 		},
 		get: async (path) => files.get(path) ?? null,
 		remove: async (path) => {
+			if (failNextRemove) {
+				failNextRemove = false;
+				throw new Error('Synthetic storage remove failure');
+			}
 			files.delete(path);
 		}
 	});
@@ -360,5 +367,69 @@ it('refuses an expired queued job and cleans private paths for expired queued, p
 		);
 		expect(cleaned.path).toBeNull();
 		await expect((await as()).report.downloadBackground(jobInput(id))).rejects.toBeDefined();
+	}
+});
+
+it('removes a late storage write after expiry cleanup and retains its cleanup pointer if deletion fails', async () => {
+	for (const failLateDelete of [false, true]) {
+		const { id } = await queue();
+		const [job] = await withService((tx) =>
+			tx
+				.select()
+				.from(s.reportJobs)
+				.where(and(eq(s.reportJobs.agency_id, agency), eq(s.reportJobs.id, id)))
+		);
+		const path = job.storage_path!;
+		let release!: () => void;
+		let started!: () => void;
+		const putStarted = new Promise<void>((resolve) => {
+			started = resolve;
+		});
+		const putReleased = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		beforePut = async (writePath) => {
+			expect(writePath).toBe(path);
+			started();
+			await putReleased;
+		};
+		const generating = generate(id);
+		try {
+			await putStarted;
+			// Advance Date alone: real database/network timers keep running. The
+			// immutable original queue deadline expires while storage is blocked.
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(job.expires_at!.getTime() + 1000));
+			await integration.cleanupReports();
+			expect(files.has(path)).toBe(false);
+			const [cleaned] = await withService((tx) =>
+				tx
+					.select({ path: s.reportJobs.storage_path })
+					.from(s.reportJobs)
+					.where(and(eq(s.reportJobs.agency_id, agency), eq(s.reportJobs.id, id)))
+			);
+			expect(cleaned.path).toBeNull();
+			failNextRemove = failLateDelete;
+			release();
+			expect(await generating).toMatchObject({ status: 'failed' });
+			if (failLateDelete) {
+				expect(files.has(path)).toBe(true);
+				const [failed] = await withService((tx) =>
+					tx
+						.select({ path: s.reportJobs.storage_path })
+						.from(s.reportJobs)
+						.where(and(eq(s.reportJobs.agency_id, agency), eq(s.reportJobs.id, id)))
+				);
+				expect(failed.path).toBe(path);
+				await integration.cleanupReports();
+			}
+			expect(files.has(path)).toBe(false);
+		} finally {
+			vi.useRealTimers();
+			beforePut = undefined;
+			failNextRemove = false;
+			release();
+			await generating;
+		}
 	}
 });
