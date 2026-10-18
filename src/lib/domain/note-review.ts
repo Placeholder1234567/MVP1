@@ -60,3 +60,6 @@ export const reviewStatusLabel = (status: string | null) =>
 			: status === 'returned'
 				? 'Sent back'
 				: 'Draft';
+
+/** Lists show this many rows at first and this many more per "Load more". */
+export const LIST_PAGE = 25;

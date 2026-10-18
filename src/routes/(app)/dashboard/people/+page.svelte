@@ -3,6 +3,8 @@
 	// supports, adding them and editing their details and health profile.
 	// Day-to-day care records live on each person's page (/people/[id]).
 	// Supervisors and admins; archiving is admin-only. Needs a connection.
+	import LoadMore from '#lib/app/components/LoadMore.svelte';
+	import { LIST_PAGE } from '#lib/domain/note-review.ts';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
@@ -39,6 +41,7 @@
 
 	const homeName = (id: string | null) =>
 		id ? (app.homes.find((h) => h.id === id)?.name ?? 'Home') : 'No home yet';
+	let limit = $state(LIST_PAGE);
 	const visible = $derived(people.filter((p) => showArchived || p.active));
 
 	async function load() {
@@ -227,7 +230,7 @@
 
 	{#if loading}<Skeleton label="Loading people" />{:else}
 		<div class="list card" role="list">
-			{#each visible as person (person.id)}
+			{#each visible.slice(0, limit) as person (person.id)}
 				<div class="row" role="listitem">
 					<span class="avatar" aria-hidden="true">{person.initials || initialsOf(person.name)}</span
 					>
@@ -250,5 +253,10 @@
 				</div>
 			{/each}
 		</div>
+		<LoadMore
+			shown={Math.min(limit, visible.length)}
+			total={visible.length}
+			onmore={() => (limit += LIST_PAGE)}
+		/>
 	{/if}
 </section>
