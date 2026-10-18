@@ -48,7 +48,7 @@
 			selected = note.id;
 			comment = '';
 			signature = false;
-			message = '';
+			// The message stays: "Note approved." must outlive the move to the next note.
 			if (versions?.noteId !== note.id) versions = null;
 		}
 	});
@@ -126,6 +126,7 @@
 						filter = f.value;
 						selected = '';
 						picked = false;
+						message = '';
 					}}>{f.label}</button
 				>{/each}
 		</div>
@@ -158,6 +159,7 @@
 					onclick={() => {
 						selected = item.id;
 						picked = true;
+						message = '';
 					}}
 					><b>{personName(item.client_id)}</b><span
 						>{item.type === 'behavior' ? 'Behavior note' : 'Shift note'} · {item.author_name} · {item.day}</span
