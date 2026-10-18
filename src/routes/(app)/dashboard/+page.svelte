@@ -4,6 +4,7 @@
 	import { dosesDue, localTime } from '#lib/domain/index.ts';
 	import ClinicalAttention from '#lib/app/ClinicalAttention.svelte';
 	import LomiSummary from '#lib/app/LomiSummary.svelte';
+	import HealthWatch from '#lib/app/HealthWatch.svelte';
 	import { page } from '$app/state';
 	const app = useSession();
 	const lomiSummary = $derived(
@@ -81,6 +82,8 @@
 		</div>
 	</div>
 	<ClinicalAttention />
+	{#if ((page.data.user?.features ?? []) as readonly string[]).includes('health')}<HealthWatch
+		/>{/if}
 </div>
 
 <style>
