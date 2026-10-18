@@ -160,7 +160,8 @@
 						role: profile.role,
 						homeIds: profile.homeIds,
 						medCertified: profile.medCertified,
-						timeZone: agency.timezone
+						timeZone: agency.timezone,
+						features: agency.features
 					};
 					await database.execute(
 						'INSERT OR REPLACE INTO offline_sessions (id, user_json) VALUES (?, ?)',
