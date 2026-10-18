@@ -42,3 +42,4 @@ export * from './maintenance';
 export * from './note-review';
 export * from './case-notes';
 export * from './coverage-board';
+export * from './compliance';

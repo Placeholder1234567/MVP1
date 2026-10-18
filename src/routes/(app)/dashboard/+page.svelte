@@ -10,6 +10,8 @@
 		marGrid
 	} from '#lib/domain/index.ts';
 	import Sparkline from '#lib/app/components/Sparkline.svelte';
+	import ProgressRing from '#lib/app/components/ProgressRing.svelte';
+	import { complianceScore, incidentReviewPart, shiftNotesPart } from '#lib/domain/compliance.ts';
 	import ClinicalAttention from '#lib/app/ClinicalAttention.svelte';
 	import LomiSummary from '#lib/app/LomiSummary.svelte';
 	import HealthWatch from '#lib/app/HealthWatch.svelte';
@@ -87,6 +89,20 @@
 	);
 	const weekDaily = $derived(dailyCompliance(weekGrids, 7));
 	const weekScore = $derived(compliance(weekGrids.flat()));
+	/** Documentation compliance over the last 7 days (frontend-spec-3.md §4.1). */
+	const score = $derived(
+		complianceScore(
+			shiftNotesPart(app.shifts, app.notes, app.homeId, week, new Date(), app.user.timeZone),
+			app.has('mar') ? { done: weekScore.given, of: weekScore.due } : { done: 0, of: 0 },
+			incidentReviewPart(
+				app.incidents.filter((i) => i.home_id === app.homeId),
+				new Date(`${week[0]}T00:00:00Z`),
+				new Date()
+			)
+		)
+	);
+	const share = (p: { done: number; of: number }) =>
+		p.of ? `${p.done} of ${p.of}` : 'nothing to measure yet';
 	const dayName = (day: string) =>
 		new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, {
 			weekday: 'short',
@@ -143,6 +159,17 @@
 			{/if}
 		</div>
 	</div>
+	{#if score.score !== null}<section class="card pad compliance" aria-labelledby="compliance-h">
+			<ProgressRing percent={score.score} label="Compliance {score.score}%" thresholds={[90, 70]} />
+			<div class="stack">
+				<h2 id="compliance-h">Compliance, 7 days: {score.score}%</h2>
+				<p class="muted s13">
+					Shifts with a signed note: {share(score.notes)} · Scheduled doses given: {share(
+						score.meds
+					)} · Incidents reviewed within a day: {share(score.incidents)}
+				</p>
+			</div>
+		</section>{/if}
 	<ClinicalAttention />
 	{#if ((page.data.user?.features ?? []) as readonly string[]).includes('health')}<HealthWatch
 		/>{/if}
@@ -151,6 +178,15 @@
 <style>
 	.stats.four {
 		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+	.compliance {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+	.compliance h2 {
+		font-size: 16px;
+		margin: 0;
 	}
 	.stat {
 		color: inherit;
