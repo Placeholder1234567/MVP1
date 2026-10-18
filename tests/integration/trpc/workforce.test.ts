@@ -5,7 +5,7 @@ import * as s from '../../../src/lib/server/db/schema';
 import { getCurrentUser } from '../../../src/lib/server/services/auth';
 import { appRouter } from '../../../src/lib/server/trpc/router';
 import { createCallerFactory } from '../../../src/lib/server/trpc/middleware';
-import { localTime, addDays } from '../../../src/lib/domain';
+import { localTime, addDays, weekStart } from '../../../src/lib/domain';
 import { runJob } from '../../../src/lib/server/jobs/registry';
 import { and, eq } from 'drizzle-orm';
 
@@ -141,28 +141,24 @@ it('blocks caregivers, invalid/oversized ranges and foreign-tenant payroll filte
 		});
 	const otherStaff = randomUUID();
 	await withService(async (tx) => {
-		await tx
-			.insert(s.profiles)
-			.values({
-				id: otherStaff,
-				agency_id: otherAgency,
-				auth_uid: uid(otherStaff),
-				email: `${otherStaff}@example.test`,
-				name: 'Foreign payroll staff',
-				role: 'caregiver',
-				home_ids: [foreignHome]
-			});
-		await tx
-			.insert(s.clockRecords)
-			.values({
-				agency_id: otherAgency,
-				profile_id: otherStaff,
-				home_id: foreignHome,
-				clock_in_at: input.from,
-				clock_out_at: input.to,
-				manual_override: true,
-				reason: 'Foreign record'
-			});
+		await tx.insert(s.profiles).values({
+			id: otherStaff,
+			agency_id: otherAgency,
+			auth_uid: uid(otherStaff),
+			email: `${otherStaff}@example.test`,
+			name: 'Foreign payroll staff',
+			role: 'caregiver',
+			home_ids: [foreignHome]
+		});
+		await tx.insert(s.clockRecords).values({
+			agency_id: otherAgency,
+			profile_id: otherStaff,
+			home_id: foreignHome,
+			clock_in_at: input.from,
+			clock_out_at: input.to,
+			manual_override: true,
+			reason: 'Foreign record'
+		});
 	});
 	const foreign = await supervisor.report.exportTimesheet({ ...input, homeId: foreignHome });
 	expect(JSON.parse(foreign.content).entries).toEqual([]);
@@ -379,4 +375,53 @@ it('only supervisors assign staff, and training and overlapping homes are checke
 	expect(
 		(await supervisor.schedule.clearSlot({ homeId: oak, day, shift: 'am' })).assigned_to
 	).toBeNull();
+});
+
+it('copies last week into open slots, keeps assigned ones and skips double bookings', async () => {
+	const supervisor = await as(sam);
+	const from = weekStart(addDays(day, 28));
+	const to = addDays(from, 7);
+	for (const [d, shift] of [
+		[0, 'am'],
+		[1, 'am'],
+		[2, 'pm']
+	] as const)
+		await supervisor.schedule.setSlot({
+			homeId: oak,
+			day: addDays(from, d),
+			shift,
+			profileId: cara
+		});
+	// Next week: Tuesday morning is already Sam's, and Monday morning Cara works at Maple.
+	await supervisor.schedule.setSlot({
+		homeId: oak,
+		day: addDays(to, 1),
+		shift: 'am',
+		profileId: sam
+	});
+	await supervisor.schedule.setSlot({ homeId: maple, day: to, shift: 'am', profileId: cara });
+
+	await expect(
+		(await as(cara)).schedule.copyWeek({ homeId: oak, fromWeek: from, toWeek: to })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	await expect(
+		supervisor.schedule.copyWeek({ homeId: oak, fromWeek: from, toWeek: addDays(to, 1) })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+
+	const result = await supervisor.schedule.copyWeek({ homeId: oak, fromWeek: from, toWeek: to });
+	expect(result.copied).toBe(1);
+	expect(result.skipped).toEqual(
+		expect.arrayContaining([
+			{ day: addDays(to, 1), shift: 'am', reason: 'already-assigned' },
+			{ day: to, shift: 'am', reason: 'unavailable' }
+		])
+	);
+	const week = await supervisor.schedule.get({ homeId: oak, weekStart: to });
+	const by = (d: number, shift: string) =>
+		week.slots.find((s) => s.day === addDays(to, d) && s.shift === shift)?.assigned_to ?? null;
+	expect([by(0, 'am'), by(1, 'am'), by(2, 'pm')]).toEqual([null, sam, cara]);
+	// Copying again changes nothing.
+	expect(
+		(await supervisor.schedule.copyWeek({ homeId: oak, fromWeek: from, toWeek: to })).copied
+	).toBe(0);
 });
