@@ -109,6 +109,17 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 		}
 		await review.getByLabel('Search', { exact: true }).fill('no such person');
 		await expect(review.getByText('No notes match these filters.', { exact: true })).toBeVisible();
+		// The overview's "Signed today" card opens this list for today's shifts.
+		await review.getByRole('link', { name: 'Overview', exact: true }).first().click();
+		await review.getByRole('link', { name: /^Signed today/ }).click();
+		await expect(
+			review
+				.getByRole('group', { name: 'Show notes', exact: true })
+				.getByRole('button', { name: 'All', exact: true })
+		).toHaveAttribute('aria-pressed', 'true');
+		const from = await review.getByLabel('From', { exact: true }).inputValue();
+		expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+		await expect(review.getByLabel('To', { exact: true })).toHaveValue(from);
 		await expect(
 			page.getByText('This note is approved. Signed records are read-only.', { exact: true })
 		).toBeVisible();
