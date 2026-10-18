@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import LomiReview from './LomiReview.svelte';
 	import LomiVoice from './LomiVoice.svelte';
+	import { RECORDING_MAX_SECONDS } from './voice-capture';
 	import { trpc } from '#lib/trpc.ts';
 	import { draftLocally, type DraftResult, type NoteKind } from '#lib/domain/lomi.ts';
 	let {
@@ -23,6 +24,15 @@
 	let message = $state('');
 	let preview = $state<DraftResult | null>(null);
 	let voiceMessage = $state('');
+	// Seconds recorded so far, for the status line.
+	let elapsed = $state(0);
+	$effect(() => {
+		if (!recording) return;
+		elapsed = 0;
+		const timer = setInterval(() => elapsed++, 1000);
+		return () => clearInterval(timer);
+	});
+	const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 	onMount(() => {
 		void trpc.lomi.capabilities
 			.query()
@@ -68,8 +78,8 @@
 	>
 	<div class="actions">
 		{#if voice}<LomiVoice
-				seconds={55}
-				label="Speak · up to 55 seconds"
+				seconds={RECORDING_MAX_SECONDS}
+				label="Speak · up to 5 minutes"
 				disabled={busy}
 				onState={(state) => {
 					if (state.recording && !recording) preview = null;
@@ -88,7 +98,9 @@
 			onclick={draft}>{busy ? 'Working…' : 'Prepare a draft'}</button
 		>
 	</div>
-	{#if recording}<p role="status">Recording. Stops automatically after 55 seconds.</p>{/if}
+	{#if recording}<p role="status">
+			Recording <span class="elapsed">{clock(elapsed)}</span> of 5:00. Stops automatically at 5 minutes.
+		</p>{/if}
 	{#if !voice}<p class="muted">
 			Voice will be available once your agency connects transcription. You can type here now.
 		</p>{/if}
