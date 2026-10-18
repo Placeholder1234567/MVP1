@@ -447,6 +447,36 @@ label > .input {
 	font-weight: 600;
 	text-decoration: none;
 }
+/* Sidebar sections and counts (frontend-spec-3.md §3). */
+.nav-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.nav-section {
+	margin: 12px 0 0;
+	padding: 6px 14px 0;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+nav a .count {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 0 7px;
+	border-radius: 999px;
+	background: var(--sky);
+	color: var(--blue);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 20px;
+	vertical-align: middle;
+}
+.sidebar nav a[aria-current] .count {
+	background: var(--card);
+}
 /* Tab badge (frontend-spec-2.md §3.10): the text says it for screen readers. */
 nav a .dot {
 	display: inline-block;

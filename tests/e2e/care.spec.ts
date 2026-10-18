@@ -75,6 +75,11 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 	try {
 		const review = await supervisor.newPage();
 		await signIn(review, 'supervisor@guad.test');
+		// The sidebar counts notes waiting for review (desktop sidebar only).
+		if (info.project.name === 'desktop')
+			await expect(
+				review.getByRole('link', { name: 'Review notes', exact: true }).first()
+			).toHaveAccessibleDescription(/^\d+ to review$/);
 		await review.getByRole('link', { name: 'Review notes', exact: true }).click();
 		await review
 			.getByRole('button', { name: /Marcus Demo/ })
