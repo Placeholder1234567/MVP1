@@ -380,8 +380,8 @@
 			app.dispose();
 			await closeDb();
 		}}
-		onUnlock={async (key) => {
-			app.connect(await openDb(key, app.user.profileId));
+		onUnlock={async (key, onWait) => {
+			app.connect(await openDb(key, app.user.profileId, { onWait }));
 		}}
 	>
 		<a class="skip-link" href="#main">Skip to content</a>
