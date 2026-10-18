@@ -282,6 +282,16 @@ Implemented own-account settings procedures (all require the notifications entit
 | `audit.list` | query | `{ dateRange?: { from: string, to: string }, tableName?: string, recordId?: uuid, performedBy?: uuid, action?: 'INSERT' \| 'UPDATE' \| 'DELETE', limit?: number, offset?: number }` | `Array<{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }>` | admin | audit_log | Returns paginated audit log entries. Filterable by date range, entity (table + record), actor, and action type. |
 | `audit.get` | query | `{ id: uuid }` | `{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }` | admin | audit_log | Returns a single audit log entry by ID. |
 
+### apiKey
+
+API keys for the external API (openapi.yaml). Not in the original router list; added with the Integration Service (services.md §20). The screen is `/dashboard/api-keys`.
+
+| Procedure | Type | Input | Output | Min Role | Feature Gate | Description |
+|---|---|---|---|---|---|---|
+| `apiKey.list` | query | none | `Array<{ id, name, prefix, scope, lastUsedAt, revokedAt, createdAt }>` | admin | none | The agency's keys, newest first. Never returns the key or its hash. |
+| `apiKey.create` | mutation | `{ name: string (1-80), scope?: 'read' | 'write' }` | `{ id, name, prefix, scope, createdAt, key }` | admin | none | Creates a key. `key` (`guad_` + 43 base64url characters) is returned only here; only its SHA-256 is stored. |
+| `apiKey.revoke` | mutation | `{ id: uuid }` | `{ revoked: true }` | admin | none | Revokes a key at once. Keys are never deleted, so access history stays auditable. |
+
 ---
 
 ## Error Codes
