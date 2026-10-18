@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 test('queued care reports require a connection and an explicit download, then forget another home’s job', async ({
 	page,
@@ -33,9 +34,9 @@ test('queued care reports require a connection and an explicit download, then fo
 	await page.getByRole('link', { name: 'Timesheets', exact: true }).first().click();
 	await page.getByRole('link', { name: 'Care record reports →', exact: true }).click();
 	await page.getByRole('link', { name: 'Prepare a larger care report →', exact: true }).click();
-	await page.getByLabel('Report', { exact: true }).selectOption('health');
-	await page.getByLabel('Person', { exact: true }).selectOption({ label: person });
-	await page.getByLabel('Format', { exact: true }).selectOption('json');
+	await page.getByRole('combobox', { name: 'Report', exact: true }).selectOption('health');
+	await page.getByRole('combobox', { name: 'Person', exact: true }).selectOption({ label: person });
+	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('json');
 	const request = page.getByRole('button', { name: 'Request background report', exact: true });
 	await context.setOffline(true);
 	await expect(request).toBeDisabled();
@@ -48,6 +49,13 @@ test('queued care reports require a connection and an explicit download, then fo
 		timeout: 90000
 	});
 	expect(downloads).toBe(0);
+	expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+		true
+	);
+	const screenshot = info.outputPath('queued-care-report-ready.png');
+	await page.screenshot({ path: screenshot, fullPage: true });
+	await info.attach('queued-care-report-ready', { path: screenshot, contentType: 'image/png' });
 	const downloadEvent = page.waitForEvent('download');
 	await page.getByRole('button', { name: 'Download prepared report', exact: true }).click();
 	const download = await downloadEvent;
@@ -59,20 +67,30 @@ test('queued care reports require a connection and an explicit download, then fo
 		report.rows.some((row: { data?: { consistency?: string } }) => row.data?.consistency === marker)
 	).toBe(true);
 	expect(downloads).toBe(1);
+	await page.reload();
+	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
+	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+	await expect(page.getByRole('region', { name: 'Current report', exact: true })).toHaveCount(0);
+	const resume = page
+		.getByRole('region', { name: 'Recent report requests', exact: true })
+		.getByRole('button', { name: 'Select Health entries request', exact: true })
+		.first();
+	await expect(resume).toBeVisible();
+	await resume.click();
+	await expect(page.getByRole('region', { name: 'Current report', exact: true })).toBeVisible();
+	expect(downloads).toBe(1);
 	const currentHome = page.getByLabel('Current home', { exact: true });
-	const other = await currentHome
-		.locator('option')
-		.evaluateAll(
-			(options) =>
-				options
-					.map((option) => ({
-						value: (option as HTMLOptionElement).value,
-						selected: (option as HTMLOptionElement).selected
-					}))
-					.find((option) => option.value && !option.selected)?.value
-		);
+	const other = await currentHome.locator('option').evaluateAll(
+		(options) =>
+			options
+				.map((option) => ({
+					value: (option as HTMLOptionElement).value,
+					selected: (option as HTMLOptionElement).selected
+				}))
+				.find((option) => option.value && !option.selected)?.value
+	);
 	expect(other).toBeTruthy();
 	await currentHome.selectOption(other!);
 	await expect(page.getByRole('region', { name: 'Current report', exact: true })).toHaveCount(0);
-	await expect(page.getByLabel('Person', { exact: true })).toHaveValue('');
+	await expect(page.getByRole('combobox', { name: 'Person', exact: true })).toHaveValue('');
 });

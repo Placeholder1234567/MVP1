@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
@@ -20,12 +20,17 @@
 	let approvedOnly = $state(false);
 	type Job = Awaited<ReturnType<typeof trpc.report.backgroundStatus.mutate>>;
 	let job = $state<Job | null>(null);
+	let recent = $state<Job[]>([]);
+	let recentBusy = $state(false);
+	let recentMessage = $state('');
+	let recentLoadedFor = $state('');
+	let recentController: AbortController | undefined;
 	let busy = $state(false);
 	let message = $state('');
 	let online = $state(false);
 	let visible = $state(false);
 	let controller: AbortController | undefined;
-	let context = '';
+	let context = $state('');
 	const guard = new ReportJobGuard();
 	const canConnect = $derived(reportCanConnect(online, visible, app.privacyLocked));
 	const availableHomes = $derived(
@@ -50,6 +55,11 @@
 		]);
 		if (guard.change(next)) {
 			controller?.abort();
+			recentController?.abort();
+			recent = [];
+			recentBusy = false;
+			recentMessage = '';
+			recentLoadedFor = '';
 			job = null;
 			busy = false;
 			message = '';
@@ -57,6 +67,43 @@
 			context = next;
 		}
 	});
+	$effect(() => {
+		if (canConnect && allowedHome && context && recentLoadedFor !== context)
+			untrack(() => void loadRecent());
+	});
+	async function loadRecent() {
+		if (!canConnect || !allowedHome || recentBusy) return;
+		const current = context;
+		const generationCurrent = guard.capture();
+		const homeId = app.homeId;
+		const profileId = app.user.profileId;
+		recentLoadedFor = current;
+		recentBusy = true;
+		recentMessage = '';
+		recentController = new AbortController();
+		const abort = recentController;
+		const timeout = setTimeout(() => abort.abort(), 30000);
+		const valid = () =>
+			generationCurrent() &&
+			!app.privacyLocked &&
+			allowedHome &&
+			current ===
+				JSON.stringify([app.user.agencyId, app.user.profileId, app.homeId, app.privacyLocked]);
+		try {
+			const result = await trpc.report.recentBackground.mutate(
+				{ homeId, expectedProfileId: profileId },
+				{ signal: abort.signal }
+			);
+			if (valid()) recent = result;
+		} catch {
+			if (valid())
+				recentMessage =
+					'Could not load recent requests. Reconnect and check your report permissions, then refresh the list.';
+		} finally {
+			clearTimeout(timeout);
+			if (generationCurrent()) recentBusy = false;
+		}
+	}
 	// Check the live session again after every await, before exposing data or downloading.
 	function begin() {
 		const current = context;
@@ -118,7 +165,10 @@
 			const result = await trpc.report.requestBackground.mutate(input, {
 				signal: operation.signal
 			});
-			if (operation.valid()) job = result;
+			if (operation.valid()) {
+				job = result;
+				void loadRecent();
+			}
 		} catch {
 			if (operation.valid())
 				message =
@@ -138,6 +188,7 @@
 			);
 			if (operation.valid() && job?.id === id) {
 				job = result;
+				recent = recent.map((item) => (item.id === id ? result : item));
 				message = '';
 			}
 		} catch {
@@ -194,6 +245,7 @@
 		return () => {
 			guard.change('disposed');
 			controller?.abort();
+			recentController?.abort();
 			clearInterval(interval);
 			window.removeEventListener('online', update);
 			window.removeEventListener('offline', update);
@@ -311,9 +363,41 @@
 			>
 		</section>{/if}
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
+	<section class="card pad stack" aria-label="Recent report requests">
+		<h2>Recent requests for this home</h2>
+		<p class="muted">
+			Up to 20 currently accessible requests from your latest 50 requests. Select a request to
+			resume checking progress or download it. This list is not a complete history.
+		</p>
+		<button
+			class="textbtn"
+			onclick={loadRecent}
+			disabled={!canConnect || !allowedHome || recentBusy}>Refresh recent requests</button
+		>
+		{#if recentBusy}<p role="status">Checking recent requests…</p>
+		{:else if recentMessage}<p role="status">{recentMessage}</p>
+		{:else if !recent.length}<p>No recent requests available for this home.</p>{/if}
+		{#each recent as item (item.id)}
+			<div class="stack">
+				<p>
+					{labels[item.type]} · {item.format.toUpperCase()} · {item.status} · {new Date(
+						item.createdAt
+					).toLocaleString(undefined, { timeZone: app.user.timeZone })}
+				</p>
+				<button
+					class="textbtn"
+					disabled={busy || !canConnect || !allowedHome || job?.id === item.id}
+					onclick={() => {
+						job = item;
+						message = '';
+					}}>Select {labels[item.type]} request</button
+				>
+			</div>
+		{/each}
+	</section>
 	<p class="muted">
-		Only this page remembers the most recent report. Leaving, reloading, locking or changing homes
-		forgets that reference; it does not cancel a server report. There is no report history here.
-		Exported files contain confidential care information.
+		Leaving, reloading, locking or changing homes clears the selected report; it does not cancel
+		server work. Resume an accessible request from the recent list after unlocking. Prepared files
+		expire after 24 hours. Exported files contain confidential care information.
 	</p>
 </div>
