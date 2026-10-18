@@ -3,6 +3,7 @@ import type { PowerSyncDatabase } from '@powersync/web';
 import type { Database } from '#lib/sync/schema.ts';
 import { chartingLabels } from '#lib/config/charting-preset.ts';
 import { isTheme, type Theme } from '#lib/domain/theme.ts';
+import { unseenMessages } from '#lib/domain/message-reads.ts';
 import { UploadStatus } from '#lib/sync/upload-status.ts';
 
 export interface AppUser {
@@ -46,6 +47,7 @@ export class CareSession {
 	shifts = $state<Database['schedule_slots'][]>([]);
 	staff = $state<Database['profiles'][]>([]);
 	messages = $state<Database['messages'][]>([]);
+	messageReads = $state<Database['message_reads'][]>([]);
 	agencies = $state<Database['agencies'][]>([]);
 	notifications = $state<Database['notifications'][]>([]);
 	notificationPreferences = $state<Database['notification_preferences'][]>([]);
@@ -58,6 +60,11 @@ export class CareSession {
 	unreadAlerts = $derived(
 		this.notifications.filter((n) => n.channel === 'in_app' && !n.read_at).length
 	);
+	/** Board messages for the current home that this person hasn't seen (finding 19). */
+	get unseenMessageCount(): number {
+		return unseenMessages(this.messages, this.messageReads, this.user.profileId, this.homeId)
+			.length;
+	}
 	failed = $state<{ id: string; message: string }[]>([]);
 	status = $state('Connecting…');
 	pending = $state(0);
@@ -132,6 +139,10 @@ export class CareSession {
 		watch<Database['messages']>(
 			'SELECT * FROM messages ORDER BY sent_at DESC LIMIT 100',
 			(r) => (this.messages = r)
+		);
+		watch<Database['message_reads']>(
+			'SELECT * FROM message_reads WHERE message_id IN (SELECT id FROM messages ORDER BY sent_at DESC LIMIT 100)',
+			(r) => (this.messageReads = r)
 		);
 		watch<Database['agencies']>('SELECT * FROM agencies', (r) => (this.agencies = r));
 		watch<Database['notifications']>(

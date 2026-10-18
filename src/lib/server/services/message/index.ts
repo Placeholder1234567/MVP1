@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
-import { insertMessage } from './message.queries';
+import { findMessage, insertMessage, insertRead } from './message.queries';
 
 export const NewMessage = z.object({
 	id: z.uuid(),
@@ -32,6 +32,42 @@ export async function sendMessage(
 		body: m.body,
 		sent_at: m.sentAt ?? new Date(),
 		created_by: user.profileId
+	});
+	return { created };
+}
+
+export const ReadReceipt = z.object({
+	id: z.uuid(),
+	messageId: z.uuid(),
+	/** When the board showed the message, possibly offline */
+	readAt: z.coerce.date().optional()
+});
+
+/**
+ * Records that the caller has seen a message (frontend-audit.md finding 19).
+ * Idempotent: a second device or a retried upload is a no-op, and authors
+ * don't get receipts for their own messages.
+ */
+export async function markRead(
+	tx: Tx,
+	agencyId: string,
+	user: CurrentUser,
+	input: z.input<typeof ReadReceipt>
+): Promise<{ created: boolean }> {
+	const r = ReadReceipt.parse(input);
+	const message = await findMessage(tx, agencyId, r.messageId);
+	if (!message) throw new ServiceError('NOT_FOUND', 'Message not found');
+	if (message.createdBy === user.profileId) return { created: false };
+	const now = Date.now();
+	const readAt = r.readAt && r.readAt.getTime() <= now + 5 * 60_000 ? r.readAt : new Date(now);
+	const created = await insertRead(tx, {
+		id: r.id,
+		agency_id: agencyId,
+		home_id: message.homeId,
+		message_id: r.messageId,
+		profile_id: user.profileId,
+		reader_name: user.name,
+		read_at: readAt
 	});
 	return { created };
 }

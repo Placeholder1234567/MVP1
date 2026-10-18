@@ -104,6 +104,7 @@ For a feature to be considered offline-capable, all of the following must be tru
 | Reading client info, goals, medications | Full -- pre-synced to device within sync window |
 | Browsing schedule | Full -- schedule_slots pre-synced |
 | Sending home messages | Full -- write locally, delivered on sync |
+| Read receipts on home messages | Full -- recorded locally when the board shows a message, uploaded on sync |
 
 > **Two connections, not one.** Reads stream from PowerSync; queued writes go to the app server (`sync.upload`). A device can upload while PowerSync is down, and can read saved data while the app server is down. "Offline" in the UI means PowerSync isn't connected; the upload count shows what hasn't reached the app server yet.
 | Viewing recent history (notes, incidents, MAR) | Full -- 30-day window synced |
@@ -340,6 +341,11 @@ streams:
     query: >-
       SELECT id, agency_id, home_id, from_name, body, sent_at, created_by, created_at, updated_at FROM messages
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+  message_reads:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, message_id, profile_id, reader_name, read_at, created_at, updated_at FROM message_reads
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
   notes:
     auto_subscribe: true
     query: >-
@@ -448,6 +454,7 @@ PowerSync applies this model automatically. The write queue replays mutations th
 | **Clock out** | Caregiver clocks out offline. Meanwhile, supervisor manually overrides the clock record. | Server state wins. The supervisor's manual override is authoritative. The caregiver's clock-out may be applied to the overridden record or rejected. | Caregiver sees the corrected times on sync. `manual_override = true` and `acknowledged = false` -- caregiver must acknowledge. |
 | **Send message** | Caregiver sends a home message offline. | Write accepted on sync. Messages are append-only -- no conflict possible (each message has a unique ID). | Message appears in the home board after sync. Timestamp reflects `sent_at` captured locally. Messages may appear out of chronological order if multiple users are offline. |
 | **Record health entry** | Two caregivers record vitals for the same client at the same time while both offline. | Both accepted -- different `health_entry.id` UUIDs, no conflict. Duplicate vital entries for the same time may indicate re-measurement and are reviewed by supervisor. | Both entries appear in the health log. Supervisor reviews and may flag duplicate readings for the same time window. |
+| **Read receipt** | The same person reads a message on two devices while offline. | The unique index on `(message_id, profile_id)` keeps the first receipt; the second upload is a no-op, not a rejection. | Nothing to show: the message reads "Seen by" the person once. |
 | **Update attendance** | Two caregivers record attendance for the same client on the same day. | The unique index on `(client_id, day)` keeps one row. `sync.upload` merges the two service lists (union) rather than overwriting, and both caregivers are recorded in the audit log. Attendance is a billing document, so it is never silently replaced. | UI shows "Attendance already recorded by [name]" before editing an existing record. |
 
 ### Conflict Notification Flow
@@ -891,6 +898,7 @@ npm run test:e2e -- --grep @offline
 | `medications` | home_data | Full | Assigned homes | All homes | No |
 | `schedule_slots` | home_data | 90 days (past 30 + future 60) | Assigned homes | All homes | No |
 | `messages` | home_data | 90 days | Assigned homes | All homes | Yes |
+| `message_reads` | home_data | 90 days | Assigned homes | All homes | Yes (own receipts only) |
 | `notes` | home_data | 30 days | Assigned homes | All homes | Yes |
 | `note_goals` | home_data | 30 days (via note) | Assigned homes | All homes | Yes |
 | `incidents` | home_data | 30 days | Assigned homes | All homes | Yes |

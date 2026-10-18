@@ -207,6 +207,17 @@ const medications = new Table({
 	updated_at: column.text,
 });
 
+const message_reads = new Table({
+	agency_id: column.text,
+	home_id: column.text,
+	message_id: column.text,
+	profile_id: column.text,
+	reader_name: column.text,
+	read_at: column.text,
+	created_at: column.text,
+	updated_at: column.text,
+});
+
 const messages = new Table({
 	agency_id: column.text,
 	home_id: column.text,
@@ -314,7 +325,7 @@ const user_settings = new Table({
 	updated_at: column.text,
 });
 
-export const syncedTables = { agencies, attendance, client_health_info, clients, clock_records, coverage_requests, coverage_steps, goal_templates, goals, health_entries, homes, incidents, mar_records, medications, messages, note_goals, notes, notification_preferences, notifications, profiles, schedule_slots, user_settings };
+export const syncedTables = { agencies, attendance, client_health_info, clients, clock_records, coverage_requests, coverage_steps, goal_templates, goals, health_entries, homes, incidents, mar_records, medications, message_reads, messages, note_goals, notes, notification_preferences, notifications, profiles, schedule_slots, user_settings };
 
 export const AppSchema = new Schema(syncedTables);
 
