@@ -64,6 +64,7 @@
 <div class="stack">
 	<p class="eyebrow">Care records</p>
 	<h1>Records ready for review.</h1>
+	<a class="textbtn" href={resolve('/(app)/dashboard/imports')}>Review CSV imports →</a>
 	<p class="muted">
 		Download an audited report from the server. Dates include both selected days in {app.user
 			.timeZone}. Reports require a connection and your agency’s reporting and care feature
