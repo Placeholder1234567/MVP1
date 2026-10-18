@@ -117,6 +117,10 @@ test('offline health and attendance updates survive reconnect and appear in care
 	await page.getByLabel('Pulse', { exact: true }).fill(info.project.name === 'phone' ? '83' : '84');
 	await page.getByRole('button', { name: 'Save vitals', exact: true }).click();
 	await expect(page.getByText(/^Vitals saved for /)).toBeVisible();
+	// The next reading shows the last one under its field.
+	await expect(page.getByLabel('Pulse', { exact: true })).toHaveAccessibleDescription(
+		new RegExp(`^Last: ${info.project.name === 'phone' ? '83' : '84'} bpm · `)
+	);
 	await page.getByRole('button', { name: 'Attendance', exact: true }).click();
 	for (const service of ['Day program', 'Employment support']) {
 		const checkbox = page.getByRole('checkbox', { name: new RegExp(`^${service}`) });

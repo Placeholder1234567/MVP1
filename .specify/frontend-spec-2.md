@@ -1548,6 +1548,8 @@ AI-filled sections appear at opacity 0.85 (slightly faded). When the DSP taps in
 | Last weight | Most recent vitals entry for person | Health form placeholder: "Last: 185 lb on Oct 3" *(Rebuild target -- not in MVP)* |
 | Baseline BP | Most recent vitals with normal BP | Health form reference below BP fields *(Rebuild target -- not in MVP)* |
 
+**As built (last readings):** each number field on the vitals form shows the person's last saved reading under it, "Last: 185 lb · Oct 3" (`lastReadings()` in `domain/vital-trend.ts`, from the vitals on the device), linked to the field with `aria-describedby` rather than a placeholder that disappears on typing. Blood pressure shows the last top and bottom readings this way; a separate "baseline" from the last normal reading is not built. Fields are never pre-filled, so nothing is entered for the caregiver.
+
 **Visual indicator for auto-filled values:** *(Rebuild target -- not in MVP)*
 
 - A 2px left border in `var(--lemon)` on any auto-filled field
