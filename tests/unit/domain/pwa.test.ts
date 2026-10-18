@@ -22,10 +22,15 @@ it('only caches immutable build assets and the explicitly public offline shell',
 		'/api/trpc',
 		'/_app/immutable/code.js.map',
 		'/_app/immutable/app.js?secret=1',
-		'/_app/immutable/../private'
+		'/_app/immutable/../private',
+		// The worker's SQLite build is kept; the unused bundle copies are not.
+		'/_app/immutable/workers/assets/mc-wa-sqlite-B1.wasm',
+		'/_app/immutable/assets/mc-wa-sqlite.B1.wasm',
+		'/_app/immutable/assets/wa-sqlite-async.C2.wasm'
 	]);
 	expect(paths).toEqual([
 		'/_app/immutable/app.js',
+		'/_app/immutable/workers/assets/mc-wa-sqlite-B1.wasm',
 		'/offline',
 		'/_app/env.js',
 		'/manifest.webmanifest',
