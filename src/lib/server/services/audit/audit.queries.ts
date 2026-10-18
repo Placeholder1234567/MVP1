@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { RequestInfo, Tx } from '../../db';
 import { auditLog, profiles } from '../../db/schema';
 
@@ -81,5 +81,47 @@ export async function recordAuditView(
 		ip_address: request.ip,
 		user_agent: request.user_agent,
 		new_values: { viewed: entryId }
+	});
+}
+
+/** Each saved state of one note, oldest first (the audit trigger's new_values). */
+export function selectNoteStates(tx: Tx, agencyId: string, noteId: string) {
+	return tx
+		.select({
+			at: auditLog.created_at,
+			by: profiles.name,
+			values: auditLog.new_values
+		})
+		.from(auditLog)
+		.leftJoin(profiles, eq(profiles.id, auditLog.performed_by))
+		.where(
+			and(
+				eq(auditLog.agency_id, agencyId),
+				eq(auditLog.table_name, 'notes'),
+				eq(auditLog.record_id, noteId),
+				inArray(auditLog.action, ['INSERT', 'UPDATE'])
+			)
+		)
+		.orderBy(asc(auditLog.created_at), asc(auditLog.id))
+		.limit(500);
+}
+
+/** Reading a note's earlier versions is a PHI read of the audit trail. */
+export async function recordNoteVersionsView(
+	tx: Tx,
+	agencyId: string,
+	viewerId: string,
+	noteId: string,
+	request: RequestInfo
+) {
+	await tx.insert(auditLog).values({
+		agency_id: agencyId,
+		table_name: 'audit_views',
+		record_id: noteId,
+		action: 'INSERT',
+		performed_by: viewerId,
+		ip_address: request.ip,
+		user_agent: request.user_agent,
+		new_values: { viewed: 'note_versions', note: noteId }
 	});
 }

@@ -115,6 +115,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | `note.sign` | mutation | `{ id: uuid }` | `{ id, status: 'submitted', updatedAt }` | caregiver | Transitions the note from `draft` to `submitted`. Only the author can sign. This is the human-signature step -- the client must confirm intent before calling this. Inserts a `note_history` entry (action: 'signed'). |
 | `note.approve` | mutation | `{ id: uuid }` | `{ id, status: 'approved', updatedAt }` | supervisor | Approves a submitted note. Inserts a `note_history` entry (action: 'approved'). |
 | `note.sendBack` | mutation | `{ id: uuid, comment: string }` | `{ id, status: 'returned', supervisorComment, updatedAt }` | supervisor | Returns a submitted note to the author with a comment explaining what needs correction. Inserts a `note_history` entry (action: 'returned'). |
+| `note.versions` | mutation | `{ id: uuid }` | `{ versions: Array<{ number, at, by, status, content }> }` | supervisor | Each version of the note its author signed, rebuilt from the audit trail (`audit_log` rows of the notes table), so a supervisor can see what changed in a resubmitted note (frontend-audit.md finding 14). A mutation because the read is recorded as an `audit_views` entry. Needs a connection: the audit trail isn't synced. |
 
 ### incident
 

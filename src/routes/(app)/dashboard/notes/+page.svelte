@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { useSession, parseJson } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import { sectionChanges } from '#lib/domain/index.ts';
 	const app = useSession();
+	type Versions = Awaited<ReturnType<typeof trpc.note.versions.mutate>>['versions'];
+	// Earlier signed versions (frontend-audit.md finding 14), loaded on request.
+	let versions = $state<{ noteId: string; list: Versions } | null>(null);
+	let loadingVersions = $state(false);
 	let selected = $state('');
 	let comment = $state('');
 	let signature = $state(false);
@@ -18,8 +23,30 @@
 			comment = '';
 			signature = false;
 			message = '';
+			if (versions?.noteId !== note.id) versions = null;
 		}
 	});
+	const changes = $derived.by(() => {
+		const list = versions?.list ?? [];
+		if (list.length < 2) return null;
+		const [before, after] = list.slice(-2);
+		return { before, after, sections: sectionChanges(before.content, after.content) };
+	});
+	async function showVersions() {
+		if (!note || loadingVersions) return;
+		const id = note.id;
+		loadingVersions = true;
+		message = '';
+		try {
+			const { versions: list } = await trpc.note.versions.mutate({ id });
+			if (note?.id === id) versions = { noteId: id, list };
+		} catch {
+			message = 'Earlier versions need a connection. Reconnect and try again.';
+		} finally {
+			loadingVersions = false;
+		}
+	}
+	const when = (iso: string) => new Date(iso).toLocaleString();
 	async function review(action: 'approve' | 'return') {
 		if (!note || busy) return;
 		if (!app.db?.currentStatus.connected) {
@@ -70,6 +97,38 @@
 				</div>
 				{#if note.lomi_drafted}<span class="pill">AI-assisted · reviewed and signed by staff</span
 					>{/if}
+				{#if versions?.noteId !== note.id}<button
+						class="textbtn"
+						disabled={loadingVersions}
+						onclick={showVersions}>{loadingVersions ? 'Loading…' : 'Show earlier versions'}</button
+					>{:else if !changes}<p class="muted">
+						This is the first signed version; there is nothing earlier to compare.
+					</p>{:else}<section
+						class="versions stack"
+						aria-label="Changes since the last signed version"
+					>
+						<h3>
+							Changes since version {changes.before.number} ({when(changes.before.at)})
+						</h3>
+						{#each changes.sections as change (change.section)}<div>
+								<h4>{change.section}</h4>
+								<p class="record-text">
+									{#each change.parts as part, i (i)}{#if part.kind === 'same'}{part.text}{:else if part.kind === 'added'}<ins
+												>{part.text}</ins
+											>{:else}<del>{part.text}</del>{/if}{/each}
+								</p>
+							</div>{:else}<p class="muted">
+								The text is unchanged; only goal data or the signature changed.
+							</p>{/each}
+						<details>
+							<summary>All signed versions ({versions.list.length})</summary>
+							<ol>
+								{#each versions.list as v (v.number)}<li>
+										Version {v.number}: signed {when(v.at)}{v.by ? ` by ${v.by}` : ''}
+									</li>{/each}
+							</ol>
+						</details>
+					</section>{/if}
 				{#each Object.entries(content) as [section, text] (section)}<section class="record-section">
 						<h3>{section}</h3>
 						<p class="record-text">{typeof text === 'string' ? text : JSON.stringify(text)}</p>
@@ -107,3 +166,31 @@
 	</div>
 	{#if message}<p role="status" class="callout">{message}</p>{/if}
 </div>
+
+<style>
+	.versions {
+		border: 1px solid var(--line2);
+		border-radius: 16px;
+		padding: 14px 16px;
+	}
+	.versions h3,
+	.versions h4 {
+		margin: 0;
+	}
+	.versions h4 {
+		font-size: 14px;
+		color: var(--muted);
+		text-transform: capitalize;
+	}
+	/* Colour plus underline / strikethrough, so the change reads without colour. */
+	ins {
+		background: var(--ok-bg);
+		color: var(--ok);
+		text-decoration: underline;
+	}
+	del {
+		background: var(--bad-bg);
+		color: var(--bad);
+		text-decoration: line-through;
+	}
+</style>
