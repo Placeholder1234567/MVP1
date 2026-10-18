@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	attentionItems,
+	goalMilestone,
 	clock12,
 	doseNeedsReason,
 	healthFlags,
@@ -357,5 +358,14 @@ describe('attentionItems', () => {
 		});
 		expect(item.urgency).toBe('action');
 		expect(item.detail).toBe('Not yet marked as told: Family or guardian, Nurse');
+	});
+});
+
+describe('goal milestones (frontend-spec-3.md §13 item 40)', () => {
+	it('celebrate two or more trials that were all Independent', () => {
+		expect(goalMilestone(['Independent', 'Independent'])).toBe(true);
+		expect(goalMilestone(['Independent'])).toBe(false);
+		expect(goalMilestone(['Independent', 'Refused', 'Independent'])).toBe(false);
+		expect(goalMilestone([])).toBe(false);
 	});
 });

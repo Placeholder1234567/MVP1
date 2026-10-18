@@ -3,6 +3,7 @@
 export * from './time';
 export * from './care-notices';
 export * from './schedule-copy';
+export * from './search';
 export * from './onboarding';
 export * from './shifts';
 export * from './dose-slots';

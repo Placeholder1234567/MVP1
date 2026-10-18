@@ -77,6 +77,9 @@
 		>
 			<span style:width={`${people.length ? (completed / people.length) * 100 : 0}%`}></span>
 		</div>
+		{#if people.length && completed === people.length}<p class="all-done" role="status">
+				<span class="orb bounce" aria-hidden="true">◒</span> All notes done for this shift. Thank you.
+			</p>{/if}
 	</div>
 	<div class="section-title">
 		<h2>People you support</h2>
