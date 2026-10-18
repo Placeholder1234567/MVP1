@@ -15,7 +15,12 @@ export function render(
 	}
 ): Delivery {
 	const link = `/notifications/${n.id}`;
+	// Maintenance text is built from the window and a fixed impact choice
+	// (domain/maintenance.ts), never typed text, so it can be shown in full.
+	const maintenance = n.type === 'system_maintenance';
 	if (channel === 'push') {
+		if (maintenance)
+			return { notificationId: n.id, title: 'Guad: Scheduled maintenance', body: n.title, link };
 		return {
 			notificationId: n.id,
 			title: 'Guad: Action needed',
@@ -33,6 +38,15 @@ export function render(
 			: `Guad: ${title}. Open the app to review.`;
 		return { notificationId: n.id, title: n.title, body: body.slice(0, 160), link };
 	}
+	if (maintenance)
+		return {
+			notificationId: n.id,
+			title: 'Scheduled maintenance',
+			body: `${n.title}
+
+${n.body ?? ''}`.trim(),
+			link
+		};
 	// The daily summary's body is counts and home names only (digest.ts).
 	const details =
 		n.type === 'daily_summary' && n.body

@@ -4,6 +4,7 @@
 	// homes with their clock-in geofence. Needs a connection.
 	import { onMount } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
+	import MaintenanceNotice from '#lib/app/MaintenanceNotice.svelte';
 
 	type Agency = Awaited<ReturnType<typeof trpc.agency.get.query>>;
 	type Home = Awaited<ReturnType<typeof trpc.home.list.query>>[number];
@@ -104,8 +105,8 @@
 				<fieldset class="stack">
 					<legend>Charting terms</legend>
 					<label class="check"
-						><input type="radio" name="preset" value="default" bind:group={preset} /> Standard (Shift note,
-						Goals, Medications)</label
+						><input type="radio" name="preset" value="default" bind:group={preset} /> Standard (Shift
+						note, Goals, Medications)</label
 					>
 					<label class="check"
 						><input type="radio" name="preset" value="therap" bind:group={preset} /> Therap-style (T-Log,
@@ -145,7 +146,13 @@
 					<label>Address<input class="input" maxlength="300" bind:value={home.address} /></label>
 					<div class="grid2">
 						<label
-							>Latitude<input class="input" type="number" step="any" min="-90" max="90" bind:value={home.lat}
+							>Latitude<input
+								class="input"
+								type="number"
+								step="any"
+								min="-90"
+								max="90"
+								bind:value={home.lat}
 							/></label
 						>
 						<label
@@ -172,7 +179,9 @@
 					>
 					<div class="actions">
 						<button class="btn">Save home</button>
-						<button type="button" class="btn sec" onclick={() => (editingHome = null)}>Cancel</button>
+						<button type="button" class="btn sec" onclick={() => (editingHome = null)}
+							>Cancel</button
+						>
 					</div>
 				</fieldset>
 			</form>
@@ -185,13 +194,17 @@
 							>{h.address ?? 'No address'} · clock-in radius {h.radius ?? 150} m</span
 						></span
 					>
-					<button class="btn sec" disabled={saving} aria-label="Edit {h.name}" onclick={() => openHome(h)}
-						>Edit</button
+					<button
+						class="btn sec"
+						disabled={saving}
+						aria-label="Edit {h.name}"
+						onclick={() => openHome(h)}>Edit</button
 					>
 				</div>
 			{:else}
 				<div class="row muted" role="listitem">No homes yet.</div>
 			{/each}
 		</div>
+		<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
 	{/if}
 </section>
