@@ -160,7 +160,12 @@
 		void draftStore?.clear();
 		draftSaved = false;
 	};
-	beforeNavigate(({ cancel, type, to }) => {
+	/** Waits (up to 5 s) for an in-flight save or draft write, so a tap during one isn't lost. */
+	async function settle() {
+		for (let i = 0; i < 50 && (busy || draftAction); i++)
+			await new Promise((done) => setTimeout(done, 100));
+	}
+	beforeNavigate(({ cancel, type, to, willUnload }) => {
 		if (type === 'leave') {
 			if (dirty || busy || draftAction) {
 				void draftStore?.flush();
@@ -168,13 +173,16 @@
 			}
 		} else if (dirty || busy || draftAction) {
 			cancel();
-			void leave().then((allowed) => {
-				if (allowed && to) {
+			void settle()
+				.then(leave)
+				.then((allowed) => {
+					if (!allowed || !to) return;
+					// Full-page links (e.g. "Reconnect and sync") must still reload the page.
+					if (willUnload) location.assign(to.url.href);
 					// SvelteKit already resolved this intercepted navigation URL.
 					// eslint-disable-next-line svelte/no-navigation-without-resolve
-					void goto(to.url);
-				}
-			});
+					else void goto(to.url);
+				});
 		}
 	});
 </script>
