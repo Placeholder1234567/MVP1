@@ -371,6 +371,8 @@ The notes screen uses a split-pane layout on desktop (list left, detail right) a
 
 **Approve and next:** after approving or sending back, the detail pane moves to the next note waiting for review. There is no "approve all": approving notes nobody read defeats the review step.
 
+**As built:** `/dashboard/notes` filters the signed notes saved on the device (about 30 days; drafts never show): To review (default), All, Approved, Sent back, a search over the person's and author's names (every word must match, accents ignored), From/To dates and newest or oldest first (`reviewList()` in `domain/note-review.ts`). Each row shows the note type, author, day and a status pill; the detail shows the status, the supervisor's comment on a sent-back note, and review actions only for notes to review. After approving or sending back, the next note waiting for review in the list opens. Under 900px the list and the note take turns, with "← All notes" to go back (frontend-audit finding 20). The audit trail in the detail is not built; "Show earlier versions" covers signed versions.
+
 **ASCII Wireframe -- Note Review (Desktop):**
 
 ```
