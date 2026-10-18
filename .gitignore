@@ -36,3 +36,4 @@ deploy/app.env.yaml
 
 # Lighthouse CI reports (lighthouserc.json)
 .lighthouseci/
+.data/

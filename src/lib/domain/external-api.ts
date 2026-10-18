@@ -104,3 +104,38 @@ export function instantParam(value: string | null, name: string): Date | null {
 		throw new ApiInputError(`'${name}' must be an ISO 8601 date-time`);
 	return at;
 }
+
+export const REPORT_TYPES = [
+	'incidents',
+	'notes',
+	'mar',
+	'goals',
+	'attendance',
+	'timesheets',
+	'audit'
+] as const;
+export type ReportType = (typeof REPORT_TYPES)[number];
+export const isReportType = (t: string): t is ReportType =>
+	(REPORT_TYPES as readonly string[]).includes(t);
+
+/** Reports are kept for 24 hours after they're generated (openapi.yaml generateReport). */
+export const REPORT_RETENTION_HOURS = 24;
+
+/** Whether the agency's plan includes a report type (entitlements.md: reports, reports_basic, audit_log). */
+export function reportAllowed(type: ReportType, features: ReadonlySet<string>): boolean {
+	const has = (f: string) => features.has(f);
+	switch (type) {
+		case 'timesheets':
+			return has('timekeeping') && (has('reports') || has('reports_basic'));
+		case 'audit':
+			return has('audit_log');
+		case 'incidents':
+			return has('reports') && has('incidents');
+		case 'mar':
+			return has('reports') && has('mar');
+		case 'goals':
+			return has('reports') && has('goals');
+		default:
+			return has('reports') && has('charting');
+	}
+}

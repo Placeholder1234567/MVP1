@@ -25,8 +25,16 @@ info:
 
     ## As built
     Served by the web service at `/api/v1` (src/routes/api/v1). Built: EVV (`/evv/*`), bulk export
-    (`/export/{type}`) and webhooks (`/webhooks/*`). Reports (`/reports/*`) are not built yet.
+    (`/export/{type}`), webhooks (`/webhooks/*`) and reports (`/reports/*`, CSV only; `format: pdf`
+    is a 400 until PDF generation exists).
     Bearer-only, so `/api/v1` is exempt from the app's same-origin (CSRF) check.
+    - Reports: generating needs a `write` key and the plan for the data (clinical types need `reports`
+      plus their feature; `timesheets` needs `timekeeping` and `reports` or `reports_basic`; `audit`
+      needs `audit_log`). A `report-generate` task reads the period by each type's own date
+      (incidents by occurrence, notes/MAR/attendance by day, goal trials by their note's day,
+      timesheets by clock-in, audit by time written; audit is metadata only), up to 50,000 rows,
+      and stores the CSV privately (Cloud Storage `EXPORTS_BUCKET`, or `.data/exports` locally) for
+      24 hours. Downloads after that are 409, and an hourly `report-cleanup` deletes the files.
     - Webhooks: creating, changing, deleting and testing need a `write` key. Events come from the
       audit trail (every insert/update on the event tables is audited), so a `webhook-sweep` job
       every minute turns new changes into one delivery per subscribed webhook (unique per
