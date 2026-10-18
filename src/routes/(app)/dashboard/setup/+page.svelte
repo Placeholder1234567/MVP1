@@ -4,6 +4,7 @@
 	// homes with their clock-in geofence. Needs a connection.
 	import { onMount } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
+	import ControlledRulesSettings from '#lib/app/ControlledRulesSettings.svelte';
 	import MaintenanceNotice from '#lib/app/MaintenanceNotice.svelte';
 	import IncidentRulesSettings from '#lib/app/IncidentRulesSettings.svelte';
 
@@ -206,6 +207,7 @@
 				<div class="row muted" role="listitem">No homes yet.</div>
 			{/each}
 		</div>
+		<ControlledRulesSettings settings={agency.settings} onSaved={load} />
 		<IncidentRulesSettings settings={agency.settings} onSaved={load} />
 		<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
 	{/if}

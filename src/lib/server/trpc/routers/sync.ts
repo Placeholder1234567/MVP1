@@ -9,7 +9,7 @@ import type { Tx } from '../../db/index.ts';
 import { pgCode, ServiceError } from '../../errors.ts';
 import type { CurrentUser } from '../../services/auth/index.ts';
 import { createNote, updateNote } from '../../services/charting/index.ts';
-import { recordDose } from '../../services/medication/index.ts';
+import { recordCountEntry, recordDose } from '../../services/medication/index.ts';
 import { markRead, sendMessage } from '../../services/message/index.ts';
 import { findAttendanceDay, saveAttendance } from '../../services/attendance/index.ts';
 import { createHealthEntry } from '../../services/health/index.ts';
@@ -136,6 +136,20 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 		}
 		// No PATCH or DELETE: MAR records are permanent. Corrections are a PUT with amends_id.
 	},
+	// Count book entries are permanent; the witness countersigns online.
+	controlled_counts: {
+		PUT: async (tx, user, { id, data: d = {} }) => {
+			await recordCountEntry(tx, user.agencyId, user, {
+				id,
+				medicationId: str(d!.medication_id)!,
+				kind: str(d!.kind) as 'count',
+				quantity: Number(d!.quantity),
+				reason: str(d!.reason) ?? null,
+				witnessId: str(d!.witness_id) ?? null,
+				recordedAt: str(d!.recorded_at) as unknown as Date | undefined
+			});
+		}
+	},
 	messages: {
 		PUT: async (tx, user, { id, data: d = {} }) => {
 			await sendMessage(tx, user.agencyId, user, {
@@ -248,6 +262,7 @@ const TABLE_FEATURE: Record<string, FeatureFlag> = {
 	note_goals: 'charting',
 	attendance: 'charting',
 	mar_records: 'mar',
+	controlled_counts: 'mar',
 	health_entries: 'health',
 	incidents: 'incidents',
 	messages: 'messaging',

@@ -187,6 +187,45 @@ describe('attentionItems', () => {
 		expect(attentionItems(empty)).toEqual([]);
 	});
 
+	it('flags a controlled count that still doesn’t match and overdue countersigns', () => {
+		const count = (id: string, at: string, discrepancy: boolean, witness_status = 'verified') => ({
+			id,
+			client_id: 'p1',
+			medication_id: 'm1',
+			kind: 'count',
+			quantity: 25,
+			expected: discrepancy ? 27 : 25,
+			discrepancy,
+			witness_name: 'Dev',
+			witness_status,
+			recorded_at: at,
+			medicationName: 'Med C'
+		});
+		const now = new Date('2026-10-15T20:00:00Z');
+		const items = attentionItems({
+			...empty,
+			now,
+			counts: [
+				count('old-off', '2026-10-14T10:00:00Z', true, 'pending'),
+				count('later-ok', '2026-10-15T10:00:00Z', false, 'pending')
+			]
+		});
+		// The later count matched, so only the overdue countersign remains.
+		expect(items.map((i) => [i.id, i.urgency, i.title])).toEqual([
+			['old-off', 'action', 'Med C entry not countersigned']
+		]);
+		const off = attentionItems({
+			...empty,
+			now,
+			counts: [count('off', '2026-10-15T19:00:00Z', true)]
+		});
+		expect(off[0]).toMatchObject({
+			kind: 'controlled',
+			urgency: 'critical',
+			detail: 'Counted 25, expected 27'
+		});
+	});
+
 	it('bands every source and orders critical first', () => {
 		const items = attentionItems({
 			...empty,

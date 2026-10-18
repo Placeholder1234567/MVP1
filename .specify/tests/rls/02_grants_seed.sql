@@ -24,6 +24,8 @@ INSERT INTO clients (id, agency_id, home_id, name) VALUES
 
 INSERT INTO medications (id, agency_id, client_id, name, scheduled_times) VALUES
   ('e1000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'd1000000-0000-0000-0000-000000000000', 'Med A', '{08:00,20:00}');
+INSERT INTO medications (id, agency_id, client_id, name, prn_instructions, controlled, controlled_schedule) VALUES
+  ('e2000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'd1000000-0000-0000-0000-000000000000', 'Med C', 'PRN', true, 'II');
 
 INSERT INTO coverage_requests (id, agency_id, home_id, day, shift) VALUES
   ('91000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'b1000000-0000-0000-0000-000000000000', '2026-10-13', 'pm');

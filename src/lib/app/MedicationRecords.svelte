@@ -13,6 +13,8 @@
 		type DoseStatus
 	} from '#lib/domain/index.ts';
 	import { canReachServer, insertClinical, timeOf } from './clinical-write';
+	import { medicationLedger } from './controlled-write';
+	import { resolve } from '$app/paths';
 	import { trpc } from '#lib/trpc.ts';
 	import type { Database } from '#lib/sync/schema.ts';
 	let {
@@ -177,6 +179,14 @@
 		`${r.status === 'given' ? 'Given' : 'Recorded'} at ${timeOf(r.recorded_at, tz)} by ${r.recorded_by_name ?? 'staff'}${r.reason ? ` · ${r.reason}` : ''}`;
 </script>
 
+{#snippet onHand(medId: string, controlled: number | null)}
+	{#if Number(controlled)}<p class="s14">
+			<span class="pill">Controlled</span>
+			On hand: <b>{medicationLedger(app, medId).expected}</b> ·
+			<a href={resolve('/(app)/controlled')}>Count book</a>
+		</p>{/if}
+{/snippet}
+
 {#snippet history(r: Mar)}
 	{#each conflicts(r.id) as c (c.id)}<p class="callout warn s14">
 			{c.recorded_by_name ?? 'Someone else'} also recorded this dose at {timeOf(c.recorded_at, tz)}.
@@ -283,6 +293,7 @@
 					<p class="muted s14">
 						{[med.dose, med.route, clock12(slot.time), med.notes].filter(Boolean).join(' · ')}
 					</p>
+					{@render onHand(med.id, med.controlled)}
 				</div>
 				<span class="pill {statusPill(r?.status)}">{statusLabel(r?.status)}</span>
 			</div>
@@ -319,6 +330,7 @@
 				<p class="muted s14">
 					{[med.dose, med.route, med.prn_instructions].filter(Boolean).join(' · ')}
 				</p>
+				{@render onHand(med.id, med.controlled)}
 			</div>
 			{#each given as r (r.id)}<div class="stack prn-given">
 					<p class="s14">

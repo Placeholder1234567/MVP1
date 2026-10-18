@@ -1,10 +1,17 @@
 import AxeBuilder from '@axe-core/playwright';
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 // Read receipts on the home board (frontend-audit.md finding 19): two people,
 // two browser contexts, both signed in to Oak House.
+// Extra signed-in devices are closed after each test so they stop syncing.
+const contexts: BrowserContext[] = [];
+test.afterEach(async () => {
+	await Promise.all(contexts.splice(0).map((c) => c.close()));
+});
+
 async function signIn(browser: Browser, email: string, viewport: Page['viewportSize']) {
 	const context = await browser.newContext(viewport() ? { viewport: viewport()! } : {});
+	contexts.push(context);
 	const page = await context.newPage();
 	await page.goto('/login');
 	await page.getByLabel('Email', { exact: true }).fill(email);

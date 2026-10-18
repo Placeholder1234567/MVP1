@@ -23,6 +23,10 @@ export const DEFAULT_CHANNELS = {
 	med_refusal: r([], ['push'], ['push']),
 	med_possible_double_dose: r([], ['push', 'sms'], ['push', 'sms']),
 	med_due_reminder: r(['push'], [], []),
+	// A controlled medication count doesn't match the record (§2.7b), and a
+	// named witness asked to countersign a count book entry (§2.7c).
+	controlled_count_discrepancy: r([], ['push', 'sms'], ['push', 'sms']),
+	controlled_countersign: r(['push'], ['push'], ['push']),
 	// A scheduled dose still unrecorded 30 minutes after its time (§2.8 escalation).
 	med_overdue: r([], ['push'], ['push']),
 	health_alert: r([], ['push'], ['push']),
@@ -66,6 +70,8 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	daily_summary: 'Daily summaries',
 	referral_status_change: 'Referral updates',
 	system_maintenance: 'System maintenance',
+	controlled_count_discrepancy: 'Controlled medication count discrepancies',
+	controlled_countersign: 'Requests to witness a count',
 	email_delivery_problem: 'Email delivery problems'
 };
 
@@ -73,6 +79,7 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 export const MANDATORY = new Set([
 	'med_refusal',
 	'med_possible_double_dose',
+	'controlled_count_discrepancy',
 	'health_alert',
 	'incident_reported',
 	'incident_high_severity',

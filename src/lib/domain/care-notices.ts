@@ -58,3 +58,9 @@ export function shiftsStartingSoon<T extends { day: string; shift: ShiftKey }>(
 export const INCIDENT_REVIEW_AFTER_HOURS = 24;
 /** The daily repeats stop after 3 days, so older incidents aren't newly flagged. */
 export const INCIDENT_REVIEW_UNTIL_HOURS = 72;
+
+export const controlledDiscrepancyTitle = (home: string) =>
+	`Controlled medication count does not match at ${home}. Review now.`;
+
+export const controlledCountersignTitle = (recorder: string, home: string) =>
+	`${recorder} asked you to countersign a controlled medication entry at ${home}.`;

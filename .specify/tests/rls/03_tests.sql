@@ -100,6 +100,24 @@ DELETE FROM message_reads WHERE id = 'f8100000-0000-0000-0000-000000000000';
 SELECT check_eq('receipts cannot be edited or deleted',
   (SELECT count(*) FROM message_reads WHERE id = 'f8100000-0000-0000-0000-000000000000' AND read_at > now() - interval '1 hour'), 1);
 
+-- 9. Controlled medication count book: own entries, pending witness, permanent
+SELECT expect('cg records a count with a pending witness',
+  $$INSERT INTO controlled_counts (id, agency_id, home_id, client_id, medication_id, kind, quantity, recorded_by, recorded_by_name, witness_id, witness_name, witness_status)
+    VALUES ('fc000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d1000000-0000-0000-0000-000000000000','e2000000-0000-0000-0000-000000000000','count',30,'c1000000-0000-0000-0000-000000000000','Cara Giver','c2000000-0000-0000-0000-000000000000','Sue Pervisor','pending')$$, false);
+SELECT expect('cg cannot claim the witness already verified',
+  $$INSERT INTO controlled_counts (agency_id, home_id, client_id, medication_id, kind, quantity, recorded_by, recorded_by_name, witness_id, witness_name, witness_status)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d1000000-0000-0000-0000-000000000000','e2000000-0000-0000-0000-000000000000','count',30,'c1000000-0000-0000-0000-000000000000','Cara Giver','c2000000-0000-0000-0000-000000000000','Sue Pervisor','verified')$$, true);
+SELECT expect('cg cannot witness their own entry',
+  $$INSERT INTO controlled_counts (agency_id, home_id, client_id, medication_id, kind, quantity, recorded_by, recorded_by_name, witness_id, witness_name, witness_status)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d1000000-0000-0000-0000-000000000000','e2000000-0000-0000-0000-000000000000','count',30,'c1000000-0000-0000-0000-000000000000','Cara Giver','c1000000-0000-0000-0000-000000000000','Cara Giver','pending')$$, true);
+SELECT expect('count book entries only for controlled medications',
+  $$INSERT INTO controlled_counts (agency_id, home_id, client_id, medication_id, kind, quantity, recorded_by, recorded_by_name)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d1000000-0000-0000-0000-000000000000','e1000000-0000-0000-0000-000000000000','count',30,'c1000000-0000-0000-0000-000000000000','Cara Giver')$$, true);
+UPDATE controlled_counts SET witness_status = 'verified' WHERE id = 'fc000000-0000-0000-0000-000000000000';
+DELETE FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000';
+SELECT check_eq('only the named witness countersigns; nobody deletes',
+  (SELECT count(*) FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000' AND witness_status = 'pending'), 1);
+
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
 SELECT expect('sup cannot rewrite caregiver note content',
@@ -122,6 +140,15 @@ SELECT expect('a receipt must be on the message''s own board',
   $$INSERT INTO message_reads (agency_id, home_id, message_id, profile_id, reader_name)
     VALUES ('a1000000-0000-0000-0000-000000000000','b2000000-0000-0000-0000-000000000000','f8000000-0000-0000-0000-000000000000','c2000000-0000-0000-0000-000000000000','Sue Pervisor')$$, true);
 SELECT check_eq('sup sees receipts on boards they supervise', (SELECT count(*) FROM message_reads), 1);
+
+SELECT expect('the witness cannot change the counted amount',
+  $$UPDATE controlled_counts SET quantity = 1, witness_status = 'verified' WHERE id = 'fc000000-0000-0000-0000-000000000000'$$, true);
+SELECT expect('the named witness countersigns',
+  $$UPDATE controlled_counts SET witness_status = 'verified', witnessed_at = now() WHERE id = 'fc000000-0000-0000-0000-000000000000'$$, false);
+SELECT expect('a countersigned entry is final',
+  $$UPDATE controlled_counts SET witness_status = 'pending' WHERE id = 'fc000000-0000-0000-0000-000000000000'$$, false);
+SELECT check_eq('countersigned once and still verified',
+  (SELECT count(*) FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000' AND witness_status = 'verified'), 1);
 
 RESET ROLE;
 SELECT check_eq('note history written by trigger (created x2, signed, approved)', (SELECT count(*) FROM note_history), 4);

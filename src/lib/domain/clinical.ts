@@ -447,7 +447,8 @@ export const URGENCY_BANDS: readonly { key: Urgency; label: string }[] = [
 	{ key: 'info', label: 'Informational' }
 ];
 
-export type AttentionKind = 'incident' | 'health' | 'dose' | 'coverage' | 'clock' | 'note';
+export type AttentionKind =
+	'incident' | 'health' | 'dose' | 'controlled' | 'coverage' | 'clock' | 'note';
 
 export interface AttentionItem {
 	kind: AttentionKind;
@@ -518,6 +519,23 @@ export interface AttentionInput {
 		author_name: string | null;
 		updated_at: string | null;
 	}[];
+	/** Controlled medication count book entries (domain/controlled.ts) */
+	counts?: readonly {
+		id: string;
+		client_id: string | null;
+		medication_id: string | null;
+		kind: string | null;
+		quantity: number | null;
+		expected: number | null;
+		discrepancy: Bool;
+		witness_name: string | null;
+		witness_status: string | null;
+		recorded_at: string | null;
+		medicationName?: string | null;
+	}[];
+	/** How long a witness has to countersign, in hours (default 24) */
+	countersignHours?: number;
+	now?: Date;
 }
 
 /** JSON text from the device database (or an array) as a string list. */
@@ -539,8 +557,9 @@ const KIND_ORDER: Record<AttentionKind, number> = {
 	incident: 1,
 	health: 2,
 	dose: 3,
-	note: 4,
-	clock: 5
+	controlled: 4,
+	note: 5,
+	clock: 6
 };
 
 /** Urgency band of an open incident (frontend-spec-3.md §4.1). */
@@ -648,6 +667,44 @@ export function attentionItems(input: AttentionInput): AttentionItem[] {
 			detail: 'Waiting for your review',
 			at: n.updated_at ?? '',
 			pill: 'Review'
+		});
+	}
+	// The latest count for each controlled medication, if it didn't match, and
+	// entries whose witness hasn't countersigned in time.
+	const latestCount = new Map<string, NonNullable<AttentionInput['counts']>[number]>();
+	for (const c of input.counts ?? []) {
+		if (c.kind !== 'count' || !c.medication_id) continue;
+		const prior = latestCount.get(c.medication_id);
+		if (!prior || (c.recorded_at ?? '') > (prior.recorded_at ?? ''))
+			latestCount.set(c.medication_id, c);
+	}
+	for (const c of latestCount.values()) {
+		if (!c.discrepancy) continue;
+		items.push({
+			kind: 'controlled',
+			id: c.id,
+			clientId: c.client_id,
+			urgency: 'critical',
+			title: `${c.medicationName ?? 'Controlled medication'} count doesn’t match`,
+			detail: `Counted ${c.quantity}, expected ${c.expected}`,
+			at: c.recorded_at ?? '',
+			pill: 'Medication'
+		});
+	}
+	const countersignMs = (input.countersignHours ?? 24) * 3_600_000;
+	const nowMs = (input.now ?? new Date()).getTime();
+	for (const c of input.counts ?? []) {
+		if (c.witness_status !== 'pending' || nowMs - Date.parse(c.recorded_at ?? '') <= countersignMs)
+			continue;
+		items.push({
+			kind: 'controlled',
+			id: c.id,
+			clientId: c.client_id,
+			urgency: 'action',
+			title: `${c.medicationName ?? 'Controlled medication'} entry not countersigned`,
+			detail: `Waiting for ${c.witness_name ?? 'the witness'}`,
+			at: c.recorded_at ?? '',
+			pill: 'Medication'
 		});
 	}
 	for (const k of input.clocks) {

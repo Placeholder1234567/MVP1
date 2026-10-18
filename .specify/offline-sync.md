@@ -329,7 +329,7 @@ streams:
   medications:
     auto_subscribe: true
     query: >-
-      SELECT id, agency_id, client_id, home_id, name, dose, route, scheduled_times, prn_instructions, notes, started_at, stopped_at, created_at, updated_at FROM medications
+      SELECT id, agency_id, client_id, home_id, name, dose, route, scheduled_times, prn_instructions, notes, controlled, controlled_schedule, units_per_dose, started_at, stopped_at, created_at, updated_at FROM medications
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND agency_id IN (SELECT p.agency_id FROM profiles p, json_each(p.plan_features) AS f WHERE p.auth_uid = auth.user_id() AND p.active = true AND f.value = 'mar')
   schedule_slots:
     auto_subscribe: true
@@ -365,6 +365,11 @@ streams:
     auto_subscribe: true
     query: >-
       SELECT id, agency_id, client_id, home_id, medication_id, day, scheduled_time, status, recorded_at, recorded_by, recorded_by_name, reason, effect, is_prn, acknowledged, amends_id, conflict_with, created_by, created_at, updated_at FROM mar_records
+      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true AND agency_id IN (SELECT p.agency_id FROM profiles p, json_each(p.plan_features) AS f WHERE p.auth_uid = auth.user_id() AND p.active = true AND f.value = 'mar')
+  controlled_counts:
+    auto_subscribe: true
+    query: >-
+      SELECT id, agency_id, home_id, client_id, medication_id, kind, quantity, expected, discrepancy, reason, recorded_by, recorded_by_name, witness_id, witness_name, witness_status, witnessed_at, recorded_at, created_at, updated_at FROM controlled_counts
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true AND agency_id IN (SELECT p.agency_id FROM profiles p, json_each(p.plan_features) AS f WHERE p.auth_uid = auth.user_id() AND p.active = true AND f.value = 'mar')
   health_entries:
     auto_subscribe: true
@@ -903,6 +908,7 @@ npm run test:e2e -- --grep @offline
 | `note_goals` | home_data | 30 days (via note) | Assigned homes | All homes | Yes |
 | `incidents` | home_data | 30 days | Assigned homes | All homes | Yes |
 | `mar_records` | home_data | 30 days | Assigned homes | All homes | Yes |
+| `controlled_counts` | home_data | 30 days | Assigned homes | All homes | Yes (new entries; the witness countersigns online) |
 | `health_entries` | home_data | 30 days | Assigned homes | All homes | Yes |
 | `attendance` | home_data | 30 days | Assigned homes | All homes | Yes |
 | `coverage_requests` | home_data | 7 days | Assigned homes | All homes | No |

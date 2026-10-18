@@ -13,6 +13,10 @@ import {
 	listMar,
 	listMedications,
 	recordDose,
+	NewCountEntry,
+	Countersign,
+	recordCountEntry,
+	countersign,
 	recordEffect
 } from '../../services/medication/index.ts';
 import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
@@ -91,6 +95,14 @@ export const medicationRouter = router({
 	history: featureRoleProcedure('mar', 'supervisor')
 		.input(MedicationHistoryFilter)
 		.query(({ ctx, input }) => medicationHistory(ctx.db, ctx.user.agencyId, ctx.user, input)),
+	/** Count book entry for a controlled medication (domain/controlled.ts). */
+	countEntry: featureProcedure('mar')
+		.input(NewCountEntry)
+		.mutation(({ ctx, input }) => recordCountEntry(ctx.db, ctx.user.agencyId, ctx.user, input)),
+	/** The named witness countersigns from their own device. */
+	countersign: featureProcedure('mar')
+		.input(Countersign)
+		.mutation(({ ctx, input }) => countersign(ctx.db, ctx.user.agencyId, ctx.user, input)),
 	list: featureProcedure('mar')
 		.input(z.object({ clientId: z.uuid(), includeStopped: z.boolean().default(false) }))
 		.query(({ ctx, input }) =>

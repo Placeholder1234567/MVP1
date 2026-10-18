@@ -4,6 +4,7 @@ import type { Database } from '#lib/sync/schema.ts';
 import { chartingLabels } from '#lib/config/charting-preset.ts';
 import { isTheme, type Theme } from '#lib/domain/theme.ts';
 import { unseenMessages } from '#lib/domain/message-reads.ts';
+import { parseControlledRules } from '#lib/domain/controlled.ts';
 import { parseIncidentRules } from '#lib/domain/charting.ts';
 import { UploadStatus } from '#lib/sync/upload-status.ts';
 
@@ -39,6 +40,7 @@ export class CareSession {
 	noteGoals = $state<Database['note_goals'][]>([]);
 	medications = $state<Database['medications'][]>([]);
 	doses = $state<Database['mar_records'][]>([]);
+	controlledCounts = $state<Database['controlled_counts'][]>([]);
 	health = $state<Database['health_entries'][]>([]);
 	incidents = $state<Database['incidents'][]>([]);
 	attendance = $state<Database['attendance'][]>([]);
@@ -73,6 +75,8 @@ export class CareSession {
 	ready = $state(false);
 	error = $state('');
 	labels = $derived(chartingLabels(this.agencies[0]?.charting_preset));
+	/** The agency's controlled medication count rules (domain/controlled.ts). */
+	controlledRules = $derived(parseControlledRules(this.agencies[0]?.settings));
 	/** The agency's incident reporting rules (frontend-audit.md finding 8). */
 	incidentRules = $derived(parseIncidentRules(this.agencies[0]?.settings));
 	currentPeople = $derived(this.people.filter((p) => p.active && p.home_id === this.homeId));
@@ -114,6 +118,10 @@ export class CareSession {
 		watch<Database['note_goals']>('SELECT * FROM note_goals', (r) => (this.noteGoals = r));
 		watch<Database['medications']>('SELECT * FROM medications', (r) => (this.medications = r));
 		watch<Database['mar_records']>('SELECT * FROM mar_records', (r) => (this.doses = r));
+		watch<Database['controlled_counts']>(
+			'SELECT * FROM controlled_counts ORDER BY recorded_at',
+			(r) => (this.controlledCounts = r)
+		);
 		watch<Database['health_entries']>(
 			'SELECT * FROM health_entries ORDER BY recorded_at DESC',
 			(r) => (this.health = r)

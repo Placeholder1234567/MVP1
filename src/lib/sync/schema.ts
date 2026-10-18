@@ -68,6 +68,27 @@ const clock_records = new Table({
 	updated_at: column.text,
 });
 
+const controlled_counts = new Table({
+	agency_id: column.text,
+	home_id: column.text,
+	client_id: column.text,
+	medication_id: column.text,
+	kind: column.text,
+	quantity: column.real,
+	expected: column.real,
+	discrepancy: column.integer,
+	reason: column.text,
+	recorded_by: column.text,
+	recorded_by_name: column.text,
+	witness_id: column.text,
+	witness_name: column.text,
+	witness_status: column.text,
+	witnessed_at: column.text,
+	recorded_at: column.text,
+	created_at: column.text,
+	updated_at: column.text,
+});
+
 const coverage_requests = new Table({
 	agency_id: column.text,
 	home_id: column.text,
@@ -201,6 +222,9 @@ const medications = new Table({
 	scheduled_times: column.text,
 	prn_instructions: column.text,
 	notes: column.text,
+	controlled: column.integer,
+	controlled_schedule: column.text,
+	units_per_dose: column.real,
 	started_at: column.text,
 	stopped_at: column.text,
 	created_at: column.text,
@@ -325,7 +349,7 @@ const user_settings = new Table({
 	updated_at: column.text,
 });
 
-export const syncedTables = { agencies, attendance, client_health_info, clients, clock_records, coverage_requests, coverage_steps, goal_templates, goals, health_entries, homes, incidents, mar_records, medications, message_reads, messages, note_goals, notes, notification_preferences, notifications, profiles, schedule_slots, user_settings };
+export const syncedTables = { agencies, attendance, client_health_info, clients, clock_records, controlled_counts, coverage_requests, coverage_steps, goal_templates, goals, health_entries, homes, incidents, mar_records, medications, message_reads, messages, note_goals, notes, notification_preferences, notifications, profiles, schedule_slots, user_settings };
 
 export const AppSchema = new Schema(syncedTables);
 

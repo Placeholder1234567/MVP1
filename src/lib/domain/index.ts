@@ -32,4 +32,5 @@ export * from './vital-trend';
 export * from './webhooks';
 export * from './incident-details';
 export * from './message-reads';
+export * from './controlled';
 export * from './maintenance';
