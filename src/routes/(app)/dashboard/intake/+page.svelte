@@ -329,7 +329,7 @@
 							admitting.
 						</p>
 						{#if dirty}<p class="callout">Save your referral changes before admission.</p>{/if}
-						<div class="stack" aria-label="Placement availability guidance">
+						<div class="stack" role="group" aria-label="Placement availability guidance">
 							<h3>Compare homes</h3>
 							<p class="muted">
 								Availability guidance only. Review needs, accessibility, caregiver skills and

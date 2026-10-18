@@ -307,7 +307,8 @@
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: var(--faint);
+		/* --muted, not --faint: 11px text needs 4.5:1, also on the critical tint. */
+		color: var(--muted);
 		padding: 12px 16px 0;
 	}
 	.band-label + :global(.row) {
