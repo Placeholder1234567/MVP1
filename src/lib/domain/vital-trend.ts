@@ -124,3 +124,24 @@ export function lastReadings(
 	}
 	return out;
 }
+
+/**
+ * Baseline blood pressure (frontend-spec-2.md §6 "Baseline BP"): the most
+ * recent reading where both top and bottom were within the normal range,
+ * shown as a reference under the blood pressure fields. Null when none.
+ */
+export function baselineBloodPressure(
+	entries: TrendEntry[]
+): { systolic: number; diastolic: number; at: string } | null {
+	const top = TREND_SERIES.find((s) => s.key === 'systolic')!;
+	const bottom = TREND_SERIES.find((s) => s.key === 'diastolic')!;
+	let best: { systolic: number; diastolic: number; at: string } | null = null;
+	for (const e of entries) {
+		const systolic = reading(e.data.systolic);
+		const diastolic = reading(e.data.diastolic);
+		if (!e.recorded_at || systolic === null || diastolic === null) continue;
+		if (outOfRange(top, systolic) || outOfRange(bottom, diastolic)) continue;
+		if (!best || e.recorded_at > best.at) best = { systolic, diastolic, at: e.recorded_at };
+	}
+	return best;
+}
