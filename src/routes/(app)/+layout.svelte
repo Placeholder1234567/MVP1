@@ -3,6 +3,7 @@
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import PushNotice from '#lib/app/PushNotice.svelte';
 	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
+	import EveningSuggestion from '#lib/app/EveningSuggestion.svelte';
 	import { stopWebPush } from '#lib/pwa/web-push.ts';
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	// Catches the browser's install offer early; Today's banner shows it.
@@ -324,6 +325,7 @@
 				</header>
 				<main id="main" class="main-content" tabindex="-1">
 					<PushNotice />
+					<EveningSuggestion />
 					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
 					{#if app.failed.length}<div class="callout bad" role="alert">
 							<b>{app.failed.length} changes need attention</b>

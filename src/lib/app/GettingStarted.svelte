@@ -92,7 +92,7 @@
 		height: 40px;
 		border-radius: 50%;
 		background: var(--lemon);
-		color: var(--ink);
+		color: #1c1b4b;
 		font-size: 26px;
 	}
 	.steps {

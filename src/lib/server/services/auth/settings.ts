@@ -22,7 +22,10 @@ export async function saveTheme(tx: Tx, user: CurrentUser, input: z.input<typeof
 }
 
 /** Progressive-disclosure flags the client may set (domain/onboarding.ts). */
-export const DisclosureInput = z.object({ onboardingDone: z.boolean() }).partial().strict();
+export const DisclosureInput = z
+	.object({ onboardingDone: z.boolean(), darkSuggestionDay: z.iso.date() })
+	.partial()
+	.strict();
 
 /** Merges the given flags into user_settings.disclosure, keeping the others. */
 export async function saveDisclosure(

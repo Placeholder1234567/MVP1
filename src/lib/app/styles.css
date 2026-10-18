@@ -99,6 +99,35 @@
 	--shadow: none;
 	color-scheme: dark;
 }
+/* Night (frontend-spec-1.md §10.5): the dark palette, dimmer still, for
+   documenting while people sleep. Chosen from the toggle, or on by itself
+   while clocked in to an overnight shift. After the dark rules so it wins. */
+:root[data-theme='night'] {
+	--bg: #0a0a1c;
+	--card: #131330;
+	--ink: #d4d2ec;
+	--muted: #a9a8cc;
+	--faint: #8584ad;
+	--line: #222248;
+	--line2: #2e2e5c;
+	--blue: #8590ff;
+	--blue-d: #a2aaff;
+	--sky: #1d1e4a;
+	--lemon: #e6c25f;
+	--lemon-2: #2e2918;
+	--lemon-line: #5a4c20;
+	--ok: #7fd8a8;
+	--ok-bg: #16301f;
+	--bad: #ff9c94;
+	--bad-bg: #331a1f;
+	--warn: #e8b84a;
+	--warn-bg: #241f14;
+	--flag-bg: #3d351c;
+	--flag-line: #e8b84a;
+	--ink-inverse: #1c1b4b;
+	--shadow: none;
+	color-scheme: dark;
+}
 * {
 	box-sizing: border-box;
 }
@@ -315,7 +344,8 @@ label > .input {
 }
 .pill.due {
 	background: var(--lemon);
-	color: var(--ink);
+	/* Dark navy on lemon in every theme, as mvp/styles.css:79 (--ink is light in dark themes). */
+	color: #1c1b4b;
 }
 .pill.ok {
 	background: var(--ok-bg);
@@ -891,7 +921,7 @@ button.row:hover {
 	height: 24px;
 	border-radius: 999px;
 	background: var(--lemon);
-	color: var(--ink);
+	color: #1c1b4b;
 	font-size: 16px;
 }
 .bounce {
@@ -922,4 +952,8 @@ button.row:hover {
 	.bounce {
 		animation: none;
 	}
+}
+/* Night: Lomi stays still so it doesn't draw the eye in a dark room. */
+:root[data-theme='night'] .bounce {
+	animation: none;
 }

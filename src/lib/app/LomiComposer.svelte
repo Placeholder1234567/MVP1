@@ -129,7 +129,7 @@
 		width: 60px;
 		height: 60px;
 		background: var(--lemon);
-		color: var(--ink);
+		color: #1c1b4b;
 		border-radius: 50%;
 		font-size: 38px;
 	}
