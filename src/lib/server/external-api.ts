@@ -5,7 +5,8 @@
 // writes one audit_log row per call.
 import type { RequestEvent } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
-import { ApiInputError } from '#lib/domain/index.ts';
+import { ZodError } from 'zod';
+import { ApiInputError, WebhookUrlError } from '#lib/domain/index.ts';
 import {
 	authenticateKey,
 	logApiAccess,
@@ -147,6 +148,20 @@ export async function handleApi(
 			await audit(400);
 			return fail(400, 'BAD_REQUEST', e.message, headers);
 		}
+		if (e instanceof ZodError) {
+			await audit(400);
+			const issue = e.issues[0];
+			return fail(
+				400,
+				'BAD_REQUEST',
+				issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : 'Invalid request body',
+				headers
+			);
+		}
+		if (e instanceof WebhookUrlError) {
+			await audit(422);
+			return fail(422, 'UNPROCESSABLE', e.message, headers);
+		}
 		if (e instanceof ApiError) {
 			await audit(e.status);
 			return fail(e.status, e.code, e.message, headers);
@@ -160,3 +175,18 @@ export async function handleApi(
 }
 
 export const notFound = () => new ApiError(404, 'NOT_FOUND', 'Resource not found');
+
+/** The JSON request body, as an object; anything else is a 400. */
+export async function readJson(event: RequestEvent): Promise<Record<string, unknown>> {
+	if (!(event.request.headers.get('content-type') ?? '').includes('application/json'))
+		throw new ApiInputError('Send a JSON body with Content-Type: application/json');
+	const text = await event.request.text();
+	if (text.length > 16_384) throw new ApiInputError('Request body is too large');
+	try {
+		const value = JSON.parse(text);
+		if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+	} catch {
+		// fall through
+	}
+	throw new ApiInputError('Request body must be a JSON object');
+}

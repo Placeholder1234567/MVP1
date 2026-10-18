@@ -24,8 +24,19 @@ info:
     included in every response.
 
     ## As built
-    Served by the web service at `/api/v1` (src/routes/api/v1). Built so far: EVV (`/evv/*`) and
-    bulk export (`/export/{type}`); reports and webhooks are not built yet.
+    Served by the web service at `/api/v1` (src/routes/api/v1). Built: EVV (`/evv/*`), bulk export
+    (`/export/{type}`) and webhooks (`/webhooks/*`). Reports (`/reports/*`) are not built yet.
+    Bearer-only, so `/api/v1` is exempt from the app's same-origin (CSRF) check.
+    - Webhooks: creating, changing, deleting and testing need a `write` key. Events come from the
+      audit trail (every insert/update on the event tables is audited), so a `webhook-sweep` job
+      every minute turns new changes into one delivery per subscribed webhook (unique per
+      webhook and audit row). Deliveries POST JSON signed with `X-Guad-Signature: sha256=<hex>`
+      (HMAC-SHA256 of the raw body with the secret), plus `X-Guad-Event` and `X-Guad-Delivery`.
+      Failed deliveries retry after 1, 5, 30 and 120 minutes, then are marked failed. The secret
+      (`whsec_...`) is shown once; the server keeps its SHA-256 and an AES-256-GCM sealed copy
+      (signing needs the secret itself). A non-https URL is 422. Every send re-resolves the host,
+      refuses private, loopback, link-local and metadata addresses, connects to the vetted
+      address, follows no redirects and times out after 5 seconds.
     - Keys are created and revoked by agency admins in the app (Admin, API keys). A key is
       `guad_` plus 43 base64url characters; only its SHA-256 is stored and it is shown once.
       `read` keys can use every GET operation; `write` is for reports and webhooks.

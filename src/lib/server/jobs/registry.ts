@@ -13,6 +13,7 @@ import {
 import { applySyncWindows } from '../services/sync/index.ts';
 import { searchCoverage, coverageTimer, sweepCoverage } from '../services/schedule/index.ts';
 import { checkMissedPunches } from '../services/clock/index.ts';
+import { deliverWebhook, sweepWebhooks } from '../services/integration/index.ts';
 
 export interface RunContext {
 	/** Cloud Tasks retry count (0 on the first attempt) */
@@ -126,6 +127,20 @@ const JOBS = {
 		maxAttempts: 1,
 		run: () => sweepNotifications()
 	}),
+	// External API webhooks (openapi.yaml): audited changes become signed deliveries.
+	'webhook-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => sweepWebhooks()
+	}),
+	// One attempt per task; the handler queues its own retries (1, 5, 30, 120 minutes).
+	'webhook-deliver': job({
+		queue: 'webhooks',
+		payload: z.object({ id: z.uuid() }),
+		maxAttempts: 1,
+		run: (p) => deliverWebhook(p)
+	}),
 	'sync-window': job({
 		queue: 'maintenance',
 		payload: z.object({}).passthrough(),
@@ -178,5 +193,6 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	{ job: 'daily-digest-sweep', cron: '*/15 * * * *' },
 	// Doses due in 30 minutes, and doses 30 minutes late (med-reminders.ts).
 	{ job: 'med-reminder-sweep', cron: '*/5 * * * *' },
+	{ job: 'webhook-sweep', cron: '* * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' }
 ];

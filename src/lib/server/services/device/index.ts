@@ -5,7 +5,8 @@
 // under DEVICE_KEY_KEK (Secret Manager in production) and sent to the device
 // once per online sign-in over TLS. All access runs as app_service; the table
 // has RLS with no policies, so no user session can read it.
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { open, seal } from '../../sealing.ts';
 import { withService } from '../../db';
 import { findDeviceKey, insertDeviceKey, markIssued, revokeKeys } from './device.queries';
 
@@ -13,30 +14,6 @@ export class DeviceRevokedError extends Error {
 	constructor() {
 		super('This device has been signed out by an administrator');
 	}
-}
-
-function kek(): Buffer {
-	const raw = process.env.DEVICE_KEY_KEK;
-	if (!raw) throw new Error('DEVICE_KEY_KEK is not set');
-	const key = Buffer.from(raw, 'base64url');
-	if (key.length !== 32) throw new Error('DEVICE_KEY_KEK must be 32 bytes (base64url)');
-	return key;
-}
-
-/** iv (12) | tag (16) | ciphertext, base64url. The profile+device ID is bound as AAD. */
-function seal(plain: Buffer, aad: string): string {
-	const iv = randomBytes(12);
-	const cipher = createCipheriv('aes-256-gcm', kek(), iv).setAAD(Buffer.from(aad));
-	const ct = Buffer.concat([cipher.update(plain), cipher.final()]);
-	return Buffer.concat([iv, cipher.getAuthTag(), ct]).toString('base64url');
-}
-
-function open(sealed: string, aad: string): Buffer {
-	const buf = Buffer.from(sealed, 'base64url');
-	const decipher = createDecipheriv('aes-256-gcm', kek(), buf.subarray(0, 12))
-		.setAAD(Buffer.from(aad))
-		.setAuthTag(buf.subarray(12, 28));
-	return Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]);
 }
 
 /**

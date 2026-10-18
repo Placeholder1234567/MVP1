@@ -1406,7 +1406,11 @@ export const webhooks = pgTable(
     url: text('url').notNull(),
     events: text('events').array().notNull(),
     description: text('description'),
+    // SHA-256 of the signing secret (a fingerprint; the secret is shown once).
     secret_hash: text('secret_hash').notNull(),
+    // The signing secret, AES-256-GCM sealed under DEVICE_KEY_KEK with the
+    // webhook ID as AAD: HMAC signing needs the secret itself, not its hash.
+    secret_sealed: text('secret_sealed'),
     active: boolean('active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -1433,6 +1437,12 @@ export const webhookDeliveries = pgTable(
       .notNull()
       .references(() => webhooks.id, { onDelete: 'cascade' }),
     event: text('event').notNull(),
+    // The audit_log row the event came from (one delivery per webhook and row).
+    audit_id: uuid('audit_id'),
+    // The signed JSON body (IDs and status only, never PHI; openapi.yaml WebhookPayload).
+    payload: jsonb('payload'),
+    attempts: integer('attempts').notNull().default(0),
+    last_error: text('last_error'),
     status: text('status').notNull().default('pending'),
     status_code: integer('status_code'),
     response_time_ms: integer('response_time_ms'),
@@ -1448,6 +1458,7 @@ export const webhookDeliveries = pgTable(
   (t) => [
     index('webhook_deliveries_agency_id_idx').on(t.agency_id),
     index('webhook_deliveries_webhook_id_idx').on(t.webhook_id),
+    uniqueIndex('webhook_deliveries_webhook_audit_idx').on(t.webhook_id, t.audit_id),
   ],
 );
 
