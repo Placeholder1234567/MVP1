@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import {
 	CSV_LIMITS,
 	IMPORT_HEADERS,
+	IMPORT_EXTRA_HEADERS,
 	type ImportKind,
 	parseImportCsv,
 	previewImport,
@@ -13,6 +14,127 @@ const context = {
 	homes: [{ id: home, name: 'Synthetic House' }],
 	people: [{ id: client, name: 'Synthetic Person', homeId: home, active: true }]
 };
+const encodeCsv = (values: string[]) => values.map((v) => `"${v.replaceAll('"', '""')}"`).join(',');
+it('preserves reordered extended columns and maps reviewed health details without changing legacy imports', () => {
+	const headers = [
+		'guardian',
+		...IMPORT_HEADERS.people,
+		'dob',
+		'allergies',
+		'conditions',
+		'diet',
+		'doctor',
+		'behaviors'
+	];
+	const values = [
+		'Synthetic guardian',
+		home,
+		'New Person',
+		'',
+		'',
+		'2000-02-29',
+		'Synthetic allergy',
+		'Synthetic condition',
+		'Synthetic diet',
+		'Synthetic doctor',
+		JSON.stringify([' Requests quiet space ', 'Uses cards, gestures'])
+	];
+	const row = previewImport(
+		'people',
+		parseImportCsv(headers.join(',') + '\n' + encodeCsv(values)),
+		context
+	)[0];
+	expect(row.errors).toEqual([]);
+	expect(row.values).toEqual(values);
+	expect(row.payload).toMatchObject({
+		kind: 'people',
+		input: {
+			behaviors: ['Requests quiet space', 'Uses cards, gestures'],
+			healthInfo: {
+				dob: '2000-02-29',
+				guardian: 'Synthetic guardian',
+				allergies: 'Synthetic allergy',
+				conditions: 'Synthetic condition',
+				diet: 'Synthetic diet',
+				doctor: 'Synthetic doctor'
+			}
+		}
+	});
+	const legacy = previewImport(
+		'people',
+		parseImportCsv(`home_id,name,first_name,info\n${home},New Person,,`),
+		context
+	)[0];
+	expect(legacy.errors).toEqual([]);
+	expect(legacy.payload.input).not.toHaveProperty('healthInfo');
+	expect(legacy.payload.input).not.toHaveProperty('behaviors');
+});
+it('rejects impossible birth dates, unknown extras and out-of-bounds health details without quoting values', () => {
+	for (const date of ['2025-02-29', '2026-04-31', '2026-13-01', 'not-a-date']) {
+		const row = previewImport(
+			'people',
+			parseImportCsv(`home_id,name,first_name,info,dob\n${home},New Person,,,${date}`),
+			context
+		)[0];
+		expect(row.errors).toContain('dob must be a valid YYYY-MM-DD calendar date.');
+	}
+	for (const [field, max] of Object.entries({
+		guardian: 500,
+		doctor: 500,
+		allergies: 2000,
+		conditions: 2000,
+		diet: 2000
+	})) {
+		const row = previewImport(
+			'people',
+			parseImportCsv(
+				`home_id,name,first_name,info,${field}\n${home},New Person,,,${'x'.repeat(max + 1)}`
+			),
+			context
+		)[0];
+		expect(row.errors).toContain(`${field} is too long (maximum ${max}).`);
+	}
+	expect(() =>
+		previewImport(
+			'goals',
+			parseImportCsv(`client_id,area,text,frequency,target,dob\n${client},Area,Text,,,,`),
+			context
+		)
+	).toThrow(/Optional columns: steps/);
+});
+it('keeps goal step order and rejects malformed, empty, nontext or excessive list items', () => {
+	const read = (kind: 'people' | 'goals', value: string) => {
+		const base =
+			kind === 'people' ? [home, 'New Person', '', ''] : [client, 'Area', 'Goal', '', ''];
+		const field = kind === 'people' ? 'behaviors' : 'steps';
+		return previewImport(
+			kind,
+			parseImportCsv(
+				[...IMPORT_HEADERS[kind], field].join(',') + '\n' + encodeCsv([...base, value])
+			),
+			context
+		)[0];
+	};
+	expect(
+		read('goals', JSON.stringify(['Second, by name', 'First\nwith detail'])).payload
+	).toMatchObject({ input: { steps: ['Second, by name', 'First\nwith detail'] } });
+	for (const kind of ['people', 'goals'] as const) {
+		for (const value of [
+			'not JSON',
+			'{}',
+			'[null]',
+			'[4]',
+			'[""]',
+			'["   "]',
+			JSON.stringify(Array(31).fill('Step')),
+			JSON.stringify(['x'.repeat(kind === 'people' ? 101 : 1001)])
+		])
+			expect(read(kind, value).errors.length).toBeGreaterThan(0);
+		expect(read(kind, '').errors).toEqual([]);
+		expect(read(kind, '[]').errors).toEqual([]);
+	}
+	expect(IMPORT_EXTRA_HEADERS.medications).toEqual([]);
+});
 it('requires explicit staff permissions, certification and accessible home assignments', () => {
 	const row = (values: string) =>
 		previewImport(

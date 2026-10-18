@@ -7,6 +7,7 @@
 	import {
 		CSV_LIMITS,
 		IMPORT_HEADERS,
+		IMPORT_EXTRA_HEADERS,
 		CsvImportError,
 		parseImportCsv,
 		previewImport,
@@ -28,6 +29,7 @@
 	let kind = $state<ImportKind>('people');
 	let context = $state<ImportContext>({ homes: [], people: [] });
 	let rows = $state<ImportPreviewRow[]>([]);
+	let previewHeaders = $state<string[]>([]);
 	let outcomes = $state<ImportOutcome[]>([]);
 	let batch: ImportBatch | undefined;
 	let busy = $state(false);
@@ -85,6 +87,7 @@
 	}
 	function clear() {
 		rows = [];
+		previewHeaders = [];
 		outcomes = [];
 		batch = undefined;
 		reviewed = false;
@@ -166,6 +169,7 @@
 				}
 			}
 			rows = previewImport(kind, parsed, { ...context, existingKeys });
+			previewHeaders = parsed.headers;
 			batch = new ImportBatch(rows);
 			outcomes = [...batch.outcomes];
 			message = rows.some((row) => row.errors.length)
@@ -229,7 +233,9 @@
 	}
 	function template() {
 		const url = URL.createObjectURL(
-			new Blob([IMPORT_HEADERS[kind].join(',') + '\r\n'], { type: 'text/csv' })
+			new Blob([[...IMPORT_HEADERS[kind], ...IMPORT_EXTRA_HEADERS[kind]].join(',') + '\r\n'], {
+				type: 'text/csv'
+			})
 		);
 		const link = document.createElement('a');
 		link.href = url;
@@ -281,6 +287,20 @@
 			></label
 		>
 		<p>Required headers, in any order: <code>{IMPORT_HEADERS[kind].join(', ')}</code></p>
+		{#if IMPORT_EXTRA_HEADERS[kind].length}<p>
+				Optional columns: <code>{IMPORT_EXTRA_HEADERS[kind].join(', ')}</code>. Older templates
+				still work. Blank optional values stay absent.
+			</p>{/if}
+		{#if kind === 'people'}<p class="muted">
+				DOB uses YYYY-MM-DD. Conditions, allergies, diet, doctor and guardian are plain text copied
+				from your reviewed records. Behaviors uses a JSON text array, for example ["Requests quiet
+				space","Uses picture cards"]. Check health details against the current care plan.
+			</p>{/if}
+		{#if kind === 'goals'}<p class="muted">
+				Steps uses an ordered JSON text array, for example ["Pick up toothbrush","Apply
+				toothpaste"]. Use your spreadsheet’s CSV export to quote commas and double quotes correctly.
+				Imported goals start now; this does not import historical goal scores.
+			</p>{/if}
 		{#if kind === 'staff'}<p class="callout warn">
 				Each applied row creates a sign-in and sends a password-setup invitation. Use caregiver or
 				supervisor; invite administrators individually. Separate home IDs with semicolons.
@@ -342,7 +362,7 @@
 			>
 				<h3>CSV line {row.line} → {row.target}</h3>
 				<dl>
-					{#each IMPORT_HEADERS[kind] as header, cell (header)}<div>
+					{#each previewHeaders as header, cell (header)}<div>
 							<dt>{header}</dt>
 							<dd>{row.values[cell] || '(blank)'}</dd>
 						</div>{/each}
