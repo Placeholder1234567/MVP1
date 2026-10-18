@@ -1,13 +1,20 @@
 <script lang="ts">
-	// Trend arrow (frontend-spec-3.md §5.5 "Trend Arrow"): the last two weeks
-	// against the two before. Green is better, red worse, grey steady, so the
-	// colour depends on whether a higher number is good for this measure.
+	// Trend arrow (frontend-spec-3.md §5.5 "Trend Arrow"): the later half of
+	// the series against the earlier half; `against` says what is compared, for
+	// screen readers. Green is better, red worse, grey steady, so the colour
+	// depends on whether a higher number is good for this measure.
 	import { trendChange, trendText } from '#lib/domain/index.ts';
 	let {
 		values,
 		higherIsBetter = true,
-		label
-	}: { values: (number | null)[]; higherIsBetter?: boolean; label: string } = $props();
+		label,
+		against
+	}: {
+		values: (number | null)[];
+		higherIsBetter?: boolean;
+		label: string;
+		against: string;
+	} = $props();
 	const change = $derived(trendChange(values, higherIsBetter));
 	const words = $derived(
 		change
@@ -19,7 +26,7 @@
 </script>
 
 {#if change}
-	<span class="trend {change.tone}" aria-label="{label}: {words} than the two weeks before">
+	<span class="trend {change.tone}" aria-label="{label}: {words}, {against}">
 		<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
 			{#if change.direction === 'up'}<path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
 			{:else if change.direction === 'down'}<path d="M8 3v10M3.5 8.5 8 13l4.5-4.5" />

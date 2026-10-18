@@ -6,6 +6,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
 	import TrendArrow from '#lib/app/components/TrendArrow.svelte';
+	import { fullWeekTrend } from '#lib/domain/index.ts';
 
 	type Weekly = Awaited<ReturnType<typeof trpc.analytics.weekly.query>>;
 	const app = useSession();
@@ -45,8 +46,9 @@
 	<article class="card kpi" aria-label={label}>
 		<div class="top">
 			<span class="muted">{label}</span><TrendArrow
-				{values}
+				values={fullWeekTrend(values)}
 				{label}
+				against="last full week against the two before"
 				higherIsBetter={better === 'higher'}
 			/>
 		</div>
@@ -73,7 +75,10 @@
 	<div class="spread">
 		<div>
 			<h1>Analytics</h1>
-			<p class="muted">{homeName} · last 4 weeks, by week starting</p>
+			<p class="muted">
+				{homeName} · last 4 weeks, by week starting. Arrows compare the last full week with the two before
+				it.
+			</p>
 		</div>
 		<label
 			>Home<select class="input" bind:value={homeId} onchange={load}

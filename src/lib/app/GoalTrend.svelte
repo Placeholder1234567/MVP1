@@ -41,7 +41,8 @@
 				{#if trendChange(trend.weeks)}<span class="week"
 						>This week against last: <TrendArrow
 							values={trend.weeks}
-							label="Independent trials, this week against last"
+							label="Independent trials"
+							against="this week against last"
 						/></span
 					>{/if}
 			</p>

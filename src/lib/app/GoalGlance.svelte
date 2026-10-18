@@ -54,7 +54,7 @@
 							: `${g.trend.summary?.independentTrials} of ${g.trend.summary?.recordedTrials} trials independent`}</span
 					></span
 				>
-				<TrendArrow values={g.trend.weeks} label="{g.text}, this week against last" />
+				<TrendArrow values={g.trend.weeks} label={g.text} against="this week against last" />
 			</div>
 		{:else}
 			<div class="row muted" role="listitem">No active goals.</div>

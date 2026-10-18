@@ -37,6 +37,19 @@ export function trendChange(values: (number | null)[], higherIsBetter = true): T
 	return { direction, percent, tone };
 }
 
+/**
+ * For a weekly series whose last value is the current, unfinished week: the
+ * last full week against the average of the (up to two) full weeks before
+ * it, as a two-value series for trendChange. A part week would otherwise
+ * read as a drop early in the week.
+ */
+export function fullWeekTrend(values: (number | null)[]): (number | null)[] {
+	const full = values.slice(0, -1);
+	const last = full.at(-1) ?? null;
+	const before = full.slice(-3, -1).filter((v): v is number => v !== null);
+	return [before.length ? before.reduce((a, b) => a + b, 0) / before.length : null, last];
+}
+
 /** Short text for a change: "+12%", "−8%", "steady", or "up from none". */
 export function trendText(change: TrendChange): string {
 	if (change.percent === null) return 'up from none';

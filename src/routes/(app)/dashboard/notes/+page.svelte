@@ -45,7 +45,13 @@
 			personName
 		)
 	);
-	const note = $derived(list.find((n) => n.id === selected) ?? list[0]);
+	/** Notes reviewed on this screen whose new status hasn't synced back yet. */
+	let reviewed = $state<string[]>([]);
+	const awaitingSync = (n: { id: string; status: string | null }) =>
+		n.status === 'submitted' && reviewed.includes(n.id);
+	const note = $derived(
+		list.find((n) => n.id === selected) ?? list.find((n) => !awaitingSync(n)) ?? list[0]
+	);
 	const pillClass = (status: string | null) =>
 		status === 'approved' ? 'ok' : status === 'returned' ? 'bad' : '';
 	const content = $derived(parseJson<Record<string, unknown>>(note?.content, {}));
@@ -86,8 +92,9 @@
 	let history = $state<{ noteId: string; list: History } | null>(null);
 	let historyError = $state('');
 	async function loadHistory(id: string) {
-		if (history?.noteId === id) return;
+		// Cleared first, so another note's failed load never shows here.
 		historyError = '';
+		if (history?.noteId === id) return;
 		try {
 			const { history: list } = await trpc.note.get.query({ id });
 			if (note?.id === id) history = { noteId: id, list };
@@ -111,9 +118,12 @@
 			const done = note.id;
 			if (action === 'approve') await trpc.note.approve.mutate({ id: done });
 			else await trpc.note.sendBack.mutate({ id: done, comment });
-			// Approve and next: the next note waiting for review, in list order.
+			reviewed = [...reviewed, done];
+			// Approve and next: the next note waiting for review, in list order
+			// (not one already reviewed here whose new status is still syncing).
 			const at = list.findIndex((n) => n.id === done);
-			const waiting = (n: (typeof list)[number]) => n.status === 'submitted' && n.id !== done;
+			const waiting = (n: (typeof list)[number]) =>
+				n.status === 'submitted' && !reviewed.includes(n.id);
 			const next = list.slice(at + 1).find(waiting) ?? list.find(waiting);
 			selected = next?.id ?? '';
 			if (!next) picked = false;
@@ -272,7 +282,7 @@
 									</li>{:else}<li class="muted">No history recorded.</li>{/each}
 							</ol>{/if}
 					</details>{/key}
-				{#if note.status === 'submitted'}
+				{#if note.status === 'submitted' && !reviewed.includes(note.id)}
 					<label class="checkline"
 						><input type="checkbox" bind:checked={signature} disabled={busy} />I have read this note
 						and approve this care record.</label
@@ -295,7 +305,9 @@
 				{:else}<p class="muted">
 						{note.status === 'approved'
 							? 'Approved notes are read-only.'
-							: 'Waiting for the author to revise and sign again.'}
+							: note.status === 'submitted'
+								? 'Reviewed. The new status shows once this device syncs.'
+								: 'Waiting for the author to revise and sign again.'}
 					</p>{/if}
 			</article>{/if}
 	</div>
