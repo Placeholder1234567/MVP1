@@ -7,7 +7,7 @@
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	import { inspectDevice, deviceIssue } from '#lib/pwa/readiness.ts';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, onNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { closeDb, openDb } from '#lib/sync/db.ts';
 	import {
@@ -25,6 +25,26 @@
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
 	const app = provideSession(untrack(() => data.user));
+	// Page transitions (frontend-spec-3.md item 26): the main area slides in from
+	// the right for a sub-screen and cross-fades otherwise. Skipped where the
+	// browser can't, or the person asked for reduced motion.
+	onNavigate((nav) => {
+		if (
+			!document.startViewTransition ||
+			matchMedia('(prefers-reduced-motion: reduce)').matches ||
+			nav.to?.url.pathname === nav.from?.url.pathname
+		)
+			return;
+		const from = nav.from?.url.pathname ?? '';
+		document.documentElement.dataset.nav =
+			nav.to && from && nav.to.url.pathname.startsWith(from + '/') ? 'forward' : 'fade';
+		return new Promise((ready) => {
+			document.startViewTransition(async () => {
+				ready();
+				await nav.complete;
+			});
+		});
+	});
 	let step = $state<'checking' | 'set-pin' | 'enter-pin' | 'open'>('checking');
 	let pin = $state('');
 	let again = $state('');

@@ -8,6 +8,7 @@
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import Skeleton from '#lib/app/Skeleton.svelte';
 	import VitalTrend from '#lib/app/VitalTrend.svelte';
 	import { parseJson } from '#lib/app/session.svelte.ts';
 	import { localTime, TREND_SERIES, trendPoints } from '#lib/domain/index.ts';
@@ -144,19 +145,20 @@
 			</div>
 		</form>
 		{#if message}<p class="callout" role="status">{message}</p>{/if}
-		<div class="list card" aria-label="Case note history">
-			{#each notes as note (note.id)}
-				<div class="row">
-					<span class="grow"
-						><b>{note.authorName ?? 'Staff'} · {new Date(note.createdAt).toLocaleString()}</b><span
-							class="note-body">{note.body}</span
-						></span
-					>
-				</div>
-			{:else}
-				<div class="row muted">{loaded ? 'No case notes yet.' : 'Loading…'}</div>
-			{/each}
-		</div>
+		{#if !loaded}<Skeleton count={2} label="Loading case notes" />{:else}
+			<div class="list card" aria-label="Case note history">
+				{#each notes as note (note.id)}
+					<div class="row">
+						<span class="grow"
+							><b>{note.authorName ?? 'Staff'} · {new Date(note.createdAt).toLocaleString()}</b
+							><span class="note-body">{note.body}</span></span
+						>
+					</div>
+				{:else}
+					<div class="row muted">No case notes yet.</div>
+				{/each}
+			</div>
+		{/if}
 		{#if more}<button class="btn sec" disabled={busy} onclick={() => load(true)}>Older notes</button
 			>{/if}
 	{/if}
