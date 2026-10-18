@@ -136,13 +136,62 @@
 			busy = false;
 		}
 	}
+
+	// Keyboard review (frontend-spec-3.md §4.2): J / K move through the list,
+	// A approves once "I have read this note" is ticked, S sends back once
+	// feedback is written (otherwise it moves to the feedback box). Never
+	// while typing in a field.
+	let feedback = $state<HTMLTextAreaElement | null>(null);
+	const typing = (el: EventTarget | null) => {
+		if (!(el instanceof HTMLElement)) return false;
+		if (el.isContentEditable || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+		return (
+			el.tagName === 'INPUT' &&
+			!['checkbox', 'radio', 'button', 'submit'].includes((el as HTMLInputElement).type)
+		);
+	};
+	function onKey(e: KeyboardEvent) {
+		if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || typing(e.target)) return;
+		const key = e.key.toLowerCase();
+		if (key === 'j' || key === 'k') {
+			if (!list.length) return;
+			e.preventDefault();
+			const at = list.findIndex((n) => n.id === note?.id);
+			selected = list[key === 'j' ? Math.min(list.length - 1, at + 1) : Math.max(0, at - 1)].id;
+			picked = true;
+			message = '';
+			return;
+		}
+		if (key !== 'a' && key !== 's') return;
+		if (
+			!note ||
+			busy ||
+			note.status !== 'submitted' ||
+			reviewed.includes(note.id) ||
+			note.author_id === app.user.profileId
+		)
+			return;
+		e.preventDefault();
+		if (key === 'a') {
+			if (signature) void review('approve');
+			else message = 'Tick “I have read this note” before approving.';
+		} else if (comment.trim()) void review('return');
+		else feedback?.focus();
+	}
 </script>
 
+<svelte:window onkeydown={onKey} />
 <svelte:head><title>Review notes · Guad</title></svelte:head>
 <div class="stack">
 	<p class="eyebrow">Care records</p>
 	<h1>Read, review, reassure.</h1>
-	<p class="muted">Review each note before approving. Your own notes need another supervisor.</p>
+	<p class="muted">
+		Review each note before approving. Your own notes need another supervisor.
+		<span class="keys"
+			>Keyboard: <kbd>J</kbd> / <kbd>K</kbd> next and previous, <kbd>A</kbd> approve,
+			<kbd>S</kbd> send back.</span
+		>
+	</p>
 	<div
 		class="filters"
 		role="search"
@@ -293,6 +342,7 @@
 					><label
 						>Feedback for the author<textarea
 							class="input"
+							bind:this={feedback}
 							bind:value={comment}
 							maxlength="2000"
 							disabled={busy}
@@ -315,6 +365,23 @@
 </div>
 
 <style>
+	/* Shortcuts only help with a keyboard; phones don't show them. */
+	.keys {
+		display: block;
+		font-size: 13px;
+	}
+	kbd {
+		font: inherit;
+		font-weight: 600;
+		border: 1px solid var(--line2);
+		border-radius: 4px;
+		padding: 0 4px;
+	}
+	@media (max-width: 900px) {
+		.keys {
+			display: none;
+		}
+	}
 	.filters {
 		display: flex;
 		flex-wrap: wrap;
