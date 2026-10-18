@@ -23,7 +23,13 @@ async function dismissReload(page: Page) {
 		expect(d.type()).toBe('beforeunload');
 		await d.dismiss();
 	});
-	await Promise.all([dialog, page.reload().catch(() => undefined)]);
+	const url = page.url();
+	// A cancelled reload never emits the load event page.reload() awaits.
+	await page.evaluate(() => {
+		setTimeout(() => window.location.reload(), 0);
+	});
+	await dialog;
+	await expect(page).toHaveURL(url);
 }
 
 test('button choices and changed incident facts retain draft and require a fresh signature', async ({

@@ -51,9 +51,17 @@ test('incident review keeps drafts in their home and protects a pending real sav
 	await page.getByRole('link', { name: 'Schedule', exact: true }).first().click();
 	await stay;
 	await expect(contact).toHaveValue('Synthetic contact draft');
-	const keepReload = page.waitForEvent('dialog').then((dialog) => dialog.dismiss());
-	await page.reload().catch((error: Error) => expect(error.message).toContain('ERR_ABORTED'));
+	const keepReload = page.waitForEvent('dialog').then(async (dialog) => {
+		expect(dialog.type()).toBe('beforeunload');
+		await dialog.dismiss();
+	});
+	const reviewUrl = page.url();
+	// Trigger the real native prompt without awaiting a load that cancellation prevents.
+	await page.evaluate(() => {
+		setTimeout(() => window.location.reload(), 0);
+	});
 	await keepReload;
+	await expect(page).toHaveURL(reviewUrl);
 	await expect(contact).toHaveValue('Synthetic contact draft');
 	await home.selectOption({ label: 'Maple House' });
 	await expect(review).toBeHidden();
