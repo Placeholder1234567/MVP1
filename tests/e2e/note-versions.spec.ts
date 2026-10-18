@@ -68,6 +68,10 @@ test('a supervisor compares a resubmitted note with the version they sent back',
 
 		// The author revises and signs again (a returned note signs online).
 		await expect(page.getByText('What did Theo eat?')).toBeVisible();
+		// The caregiver's Notes tab carries a red dot while a note sent back today waits.
+		await expect(
+			page.getByRole('link', { name: 'Notes, needs attention', exact: true }).first()
+		).toBeVisible();
 		await sign(page, 'Theo ate a full lunch of soup at noon.');
 
 		await review.reload();
