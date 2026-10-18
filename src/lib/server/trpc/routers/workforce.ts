@@ -5,6 +5,7 @@ import {
 	getSchedule,
 	myShifts,
 	setScheduleSlot,
+	copyScheduleWeek,
 	startCoverage,
 	respondCoverage,
 	coverageOffers
@@ -55,7 +56,10 @@ export const scheduleRouter = router({
 		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, input)),
 	clearSlot: featureRoleProcedure('scheduling', 'supervisor')
 		.input(slot)
-		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, { ...input, profileId: null }))
+		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, { ...input, profileId: null })),
+	copyWeek: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ homeId: z.uuid(), fromWeek: z.iso.date(), toWeek: z.iso.date() }))
+		.mutation(({ ctx, input }) => copyScheduleWeek(ctx.db, ctx.user, input))
 });
 export const coverageRouter = router({
 	callout: featureProcedure('coverage')

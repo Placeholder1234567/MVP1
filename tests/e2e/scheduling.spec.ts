@@ -82,3 +82,55 @@ test('supervisor follows home-scoped coverage activity online and offline', asyn
 		).toBeVisible();
 	}
 });
+
+test('supervisor copies last week’s assignments into the open slots of this week', async ({
+	page
+}, info) => {
+	test.setTimeout(180000);
+	await page.goto('/login');
+	await page.getByLabel('Email', { exact: true }).fill('supervisor@guad.test');
+	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
+	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
+	await page.getByLabel('Confirm PIN', { exact: true }).fill('654321');
+	await page.getByRole('button', { name: 'Save PIN and open', exact: true }).click();
+	await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
+	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	await page.getByRole('link', { name: 'Schedule', exact: true }).first().click();
+	// Weeks no other test uses: three ahead on desktop, four on phone.
+	const ahead = info.project.name === 'phone' ? 4 : 3;
+	for (let i = 0; i < ahead; i++)
+		await page.getByRole('button', { name: 'Next week →', exact: true }).click();
+	const weekOf = async () =>
+		(await page.getByText(/^Week of /).innerText()).replace('Week of ', '').trim();
+	const lastWeek = await weekOf();
+	const slot = (day: string) =>
+		page.getByRole('combobox', { name: `${day} Evening assignment`, exact: true });
+	const plus = (day: string, n: number) => {
+		const d = new Date(`${day}T12:00:00Z`);
+		d.setUTCDate(d.getUTCDate() + n);
+		return d.toISOString().slice(0, 10);
+	};
+	const cara = await slot(plus(lastWeek, 2))
+		.getByRole('option', { name: 'Cara Giver', exact: true })
+		.getAttribute('value');
+	await slot(plus(lastWeek, 2)).selectOption(cara!);
+	await expect(
+		page.getByText('Schedule saved. Updates will appear after sync.', { exact: true })
+	).toBeVisible();
+	await page.getByRole('button', { name: 'Next week →', exact: true }).click();
+	const thisWeek = await weekOf();
+	expect(thisWeek).toBe(plus(lastWeek, 7));
+	try {
+		await page.getByRole('button', { name: 'Copy last week’s assignments', exact: true }).click();
+		await expect(page.getByText(/^Copied \d+ shifts? from last week\./)).toBeVisible();
+		await expect(slot(plus(thisWeek, 2))).toHaveValue(cara!);
+		const axe = await new AxeBuilder({ page }).analyze();
+		expect(axe.violations).toEqual([]);
+	} finally {
+		await slot(plus(thisWeek, 2)).selectOption('');
+		await page.getByRole('button', { name: '← Previous week', exact: true }).click();
+		await slot(plus(lastWeek, 2)).selectOption('');
+	}
+});

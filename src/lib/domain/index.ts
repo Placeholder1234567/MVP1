@@ -2,6 +2,7 @@
 // principle 15). Nothing here may import from outside src/lib/domain/.
 export * from './time';
 export * from './care-notices';
+export * from './schedule-copy';
 export * from './shifts';
 export * from './dose-slots';
 export * from './note-lifecycle';

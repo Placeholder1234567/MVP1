@@ -172,6 +172,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 | `schedule.clearSlot` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on' }` | `{ id, status: 'open', updatedAt }` | supervisor | Removes the assigned caregiver from a slot, setting status back to 'open'. |
 | `schedule.postOpen` | mutation | `{ homeId: uuid, day: string, shift: 'am' \| 'pm' \| 'on' }` | `{ id, status: 'open', updatedAt }` | supervisor | Marks a slot as open and triggers Lomi's coverage workflow: enqueues a Cloud Tasks job that identifies eligible caregivers (trained for the home, not already scheduled, within distance) and sends SMS offers via AWS End User Messaging. |
 | `schedule.myShifts` | query | `{ weekStart?: string, weeks?: number }` | `Array<{ id, homeId, homeName, day, shift, status }>` | caregiver | Returns the caller's own scheduled shifts. Defaults to current week, up to 4 weeks ahead. |
+| `schedule.copyWeek` | mutation | `{ homeId: uuid, fromWeek: string, toWeek: string }` | `{ copied: number, skipped: Array<{ day, shift, reason: 'already-assigned' \| 'finding-cover' \| 'started' \| 'unavailable' }> }` | supervisor | Copies each assignment of `fromWeek` to the same weekday and shift of `toWeek` (whole weeks apart) at one home. Only open slots are filled; shifts already started are skipped; each copy goes through the `setSlot` checks (active, trained for the home, not booked elsewhere), and one that fails is reported as `unavailable` instead of failing the week. Per frontend-audit.md finding 17. |
 
 ### coverage
 
