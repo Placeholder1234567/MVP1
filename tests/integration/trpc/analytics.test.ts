@@ -9,7 +9,7 @@ const s = await import('../../../src/lib/server/db/schema');
 const { getCurrentUser } = await import('../../../src/lib/server/services/auth');
 const { appRouter } = await import('../../../src/lib/server/trpc/router');
 const mw = await import('../../../src/lib/server/trpc/middleware');
-const { localTime } = await import('../../../src/lib/domain');
+const { addDays, lastWeeks, localTime } = await import('../../../src/lib/domain');
 
 const createCaller = mw.createCallerFactory(appRouter);
 const AGENCY = randomUUID(),
@@ -75,7 +75,30 @@ beforeAll(async () => {
 			client_id: PERSON,
 			home_id: HOME,
 			name: 'Synthetic med',
-			scheduled_times: ['08:00', '20:00']
+			scheduled_times: ['08:00', '20:00'],
+			started_at: new Date(`${TODAY}T00:00:00Z`)
+		});
+		// Last full week: two shifts worked, a signed note for one of them.
+		const lastWeek = lastWeeks(new Date(), 'UTC', 2)[0];
+		await t.insert(s.scheduleSlots).values(
+			(['am', 'pm'] as const).map((shift) => ({
+				agency_id: AGENCY,
+				home_id: HOME,
+				day: addDays(lastWeek, 1),
+				shift,
+				assigned_to: CARER,
+				status: 'filled' as const
+			}))
+		);
+		await t.insert(s.notes).values({
+			agency_id: AGENCY,
+			client_id: PERSON,
+			home_id: HOME,
+			author_id: CARER,
+			day: addDays(lastWeek, 1),
+			shift: 'am',
+			type: 'shift',
+			status: 'submitted'
 		});
 		const now = new Date();
 		await t.insert(s.coverageRequests).values([
@@ -153,6 +176,12 @@ it('reports this week’s coverage, documentation and care for a home', async ()
 	]);
 	// Earlier weeks are empty, not missing.
 	expect(r.care.dosesGiven.slice(0, 3)).toEqual([0, 0, 0]);
+	// Scheduled doses given out of those due so far (the medication started today).
+	const hour = new Date().getUTCHours();
+	expect(now(r.care.medCompliance)).toBe(hour < 8 ? null : hour < 20 ? 100 : 50);
+	expect(r.care.medCompliance.slice(0, 3)).toEqual([null, null, null]);
+	// Last full week: one of two worked shifts has a signed note by the person on shift.
+	expect(r.documentation.completeness[2]).toBe(50);
 });
 
 it('covers all homes by default and is for supervisors on the Complete plan', async () => {

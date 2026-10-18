@@ -3,14 +3,24 @@
 // plan. Read-only aggregates over the last few weeks; person first names and
 // goal wording appear only in goal progress, inside the signed-in app.
 import { z } from 'zod';
-import { countByWeek, lastWeeks, percent, weekOf } from '../../../domain/index.ts';
+import {
+	countByWeek,
+	lastWeeks,
+	percent,
+	weekOf,
+	weeklyDoseCompliance,
+	weeklyNoteCompleteness
+} from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import {
+	assignedSlotsSince,
 	coverageSince,
 	dosesSince,
 	goalTrialsSince,
 	incidentsSince,
-	noteEventsSince
+	noteEventsSince,
+	scheduledMeds,
+	signedNotesSince
 } from './analytics.queries';
 
 export const WeeklyInput = z.object({
@@ -40,6 +50,9 @@ export async function weeklyAnalytics(
 	const doses = await dosesSince(tx, agencyId, weeks[0], homeId);
 	const incidentRows = await incidentsSince(tx, agencyId, since, homeId);
 	const trials = await goalTrialsSince(tx, agencyId, since, homeId);
+	const meds = await scheduledMeds(tx, agencyId, homeId);
+	const slots = await assignedSlotsSince(tx, agencyId, weeks[0], homeId);
+	const shiftNotes = await signedNotesSince(tx, agencyId, weeks[0], homeId);
 
 	const signed = events.filter(
 		(e) => e.action === 'signed' || e.action === 'amended and resubmitted'
@@ -89,6 +102,13 @@ export async function weeklyAnalytics(
 			)
 		},
 		documentation: {
+			completeness: weeklyNoteCompleteness(
+				slots.map((s) => ({ ...s, assigned_to: s.assigned_to! })),
+				shiftNotes,
+				weeks,
+				now,
+				timeZone
+			),
 			signed: signedByWeek.map((s) => s.length),
 			lomiRate: signedByWeek.map((s) => percent(s.filter((e) => e.lomiDrafted).length, s.length)),
 			hoursToApprove: approvedByWeek.map((a) =>
@@ -105,6 +125,7 @@ export async function weeklyAnalytics(
 			)
 		},
 		care: {
+			medCompliance: weeklyDoseCompliance(meds, doses, weeks, now, timeZone),
 			dosesGiven: countByWeek(
 				doses.filter((d) => d.status === 'given'),
 				weeks,
