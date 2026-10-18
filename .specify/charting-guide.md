@@ -239,6 +239,8 @@ Add a supervisor screen scanning recent notes for keywords:
 
 Display as a card per person with risk flags. This directly mirrors Therap's AI-powered Fatal Five Dashboard but can start rule-based.
 
+**As built:** "Lomi's health watch" (`HealthWatch.svelte`, rules in `src/lib/domain/health-watch.ts`) on the supervisor overview (current home) and each supervisor person page, on plans with `health`. It scans the last 14 days of records on the device: signed notes and incident descriptions for the keyword lists above (whole words; a mention with "no", "not", "denies", "without" and similar in the three words before it is skipped), health entries' text, every seizure entry, bowel tracking (a person with bowel entries and no movement observed for 3+ days) and sepsis (a temperature of 100.4°F or more with a pulse over 100, breathing over 20/min, or infection words within 48 hours). Each person shows the flagged conditions with a count and the latest evidence (date and the quoted sentence). It is labelled as signs to check, not a diagnosis. Drafts are not scanned. AI scanning is not built.
+
 ### Priority 4 — Data Import
 
 **4a. CSV Import Wizard**

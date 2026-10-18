@@ -10,6 +10,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
 	import VitalTrend from '#lib/app/VitalTrend.svelte';
+	import HealthWatch from '#lib/app/HealthWatch.svelte';
 	import { parseJson } from '#lib/app/session.svelte.ts';
 	import { localTime, TREND_SERIES, trendPoints } from '#lib/domain/index.ts';
 
@@ -106,6 +107,7 @@
 	</div>
 
 	{#if healthPlan}
+		<HealthWatch clientId={id} />
 		<h2>Vital trends</h2>
 		{#if trends.length}
 			<p class="muted">
