@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import type { DraftData } from './care-drafts.ts';
 	import { useSession, parseJson } from './session.svelte';
 	import { ATTENDANCE_SERVICES, localTime } from '#lib/domain/index.ts';
 	import { insertClinical, timeOf } from './clinical-write';
@@ -7,12 +8,16 @@
 		clientId,
 		onSaved,
 		onDirty,
-		onBusyChange
+		onBusyChange,
+		initialDraft,
+		onDraft
 	}: {
 		clientId: string;
 		onSaved?: () => void;
 		onDirty?: () => void;
 		onBusyChange?: (busy: boolean) => void;
+		initialDraft?: DraftData | null;
+		onDraft?: (data: DraftData) => void;
 	} = $props();
 	onDestroy(() => onBusyChange?.(false));
 	const app = useSession();
@@ -20,7 +25,9 @@
 	const day = localTime(new Date(), app.user.timeZone).day;
 	const saved = $derived(app.attendance.find((r) => r.client_id === clientId && r.day === day));
 	const recorded = $derived(parseJson<string[]>(saved?.services, []));
-	let services = $state<string[]>([]);
+	const restored = untrack(() => initialDraft);
+	let services = $state<string[]>((restored?.services as string[]) ?? []);
+	$effect(() => onDraft?.({ day, services: $state.snapshot(services) }));
 	let busy = $state(false);
 	let message = $state('');
 	let error = $state('');
