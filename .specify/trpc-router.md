@@ -84,7 +84,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### staff
 
-**As built:** `staff.invite` creates the Identity Platform account with no password and emails the Admin SDK password-setup link after the profile commits. `staff.update` with `active: false` disables the account and revokes its sessions; `active: true` re-enables it. Admins can't demote or deactivate themselves. `agency.update` also takes `timezone`; settings are merged, not replaced, and the plan (tier, features) isn't editable here.
+**As built:** `staff.invite` creates the Identity Platform account with no password and emails the Admin SDK password-setup link after the profile commits. `staff.update` with `active: false` disables the account and revokes its sessions; `active: true` re-enables it. Admins can't demote or deactivate themselves. `agency.update` also takes `timezone`; settings are merged, not replaced, and the plan (tier, features) isn't editable here. Known settings are validated: `mfa_required_roles`, and `incident_rules` (`{ guardianWhen, nurseTypes, nurseWhen, stateSeverities, stateTypes, stateWhen }`, deadlines up to 60 characters), which drives `incident.create`'s `mustNotify` and the device's incident wizard.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
