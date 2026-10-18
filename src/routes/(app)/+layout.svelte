@@ -44,6 +44,7 @@
 					{ href: '/dashboard', label: 'Overview' },
 					{ href: '/dashboard/notes', label: 'Review notes', feature: 'note_review' },
 					{ href: '/today', label: 'Care records', feature: 'charting' },
+					{ href: '/dashboard/mar', label: 'MAR grid', feature: 'mar' },
 					{ href: '/shifts', label: 'Schedule', feature: 'scheduling' },
 					{ href: '/dashboard/timesheets', label: 'Timesheets', feature: 'timekeeping' },
 					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake' },

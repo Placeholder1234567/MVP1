@@ -1595,6 +1595,8 @@ Every component with variants, states, and exact dimensions. A developer should 
 ```
 
 **MAR Grid (supervisor desktop medication view):** *(Rebuild target, Phase 4 item #31 -- not in current MVP. Neither the .mar-grid CSS class nor any grid implementation exists.)*
+
+**As built:** `/dashboard/mar` ("MAR grid" in the supervisor menu, `mar` feature), rules in `src/lib/domain/mar-grid.ts`. One row per medication and dose time, plus one row for each as-needed medication with the number given each day; one person and one week (Sunday to Saturday) at a time, up to four weeks back (the 30 days of MAR kept on the device), so it works offline. A corrected dose shows the latest correction, marked with *, as is a dose recorded twice offline. Days outside a medication's start and stop are "not scheduled" (—), doses later today are "not due yet" (dashed circle), and the compliance bar counts given doses out of those due. It is read-only: doses are recorded in Care records, so the cards remain the way to record.
 ```css
 .mar-grid {
   display: grid;
