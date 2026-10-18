@@ -28,16 +28,22 @@ test('search finds people and pages on the device and opens them', async ({ page
 	await box.fill('ROSÁ');
 	const result = page.getByRole('option', { name: /^Rosa Demo/ });
 	await expect(result).toBeVisible();
-	await expect(result).toHaveAttribute('aria-selected', 'true');
 	const axe = await new AxeBuilder({ page }).include('dialog').analyze();
 	expect(axe.violations).toEqual([]);
-	await box.press('Enter');
+	// Other tests' notes may mention Rosa too, and supervisors see notes first.
+	await result.click();
 	await expect(page.getByRole('dialog', { name: 'Search' })).toBeHidden();
 	await expect(page).toHaveURL(/\/dashboard\/people\/[0-9a-f-]{36}$/);
 
+	// Pages come first, so the first result is chosen with Enter.
 	await open();
-	await box.fill('time');
-	await page.getByRole('option', { name: /^Timesheets/ }).click();
+	await box.fill('timesh');
+	const first = page.getByRole('option', { name: /^Timesheets/ });
+	await expect(first).toHaveAttribute('aria-selected', 'true');
+	await box.press('ArrowDown');
+	await box.press('ArrowUp');
+	await expect(first).toHaveAttribute('aria-selected', 'true');
+	await box.press('Enter');
 	await expect(page).toHaveURL(/\/dashboard\/timesheets$/);
 
 	await open();
