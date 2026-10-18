@@ -2,7 +2,9 @@
 	import { page } from '$app/state';
 	import { useSession, parseJson } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import LoadMore from '#lib/app/components/LoadMore.svelte';
 	import {
+		LIST_PAGE,
 		reviewList,
 		reviewStatusLabel,
 		sectionChanges,
@@ -45,6 +47,9 @@
 			personName
 		)
 	);
+	// The first rows of the list, more on "Load more"; the open note always shows.
+	let limit = $state(LIST_PAGE);
+	const shownCount = $derived(Math.max(limit, list.findIndex((n) => n.id === selected) + 1));
 	/**
 	 * Notes reviewed on this screen, with the version reviewed (updated_at). One
 	 * still shows as waiting until sync brings its new status; once the note
@@ -241,7 +246,7 @@
 	</p>
 	<div class="review-layout" class:picked={picked && !!note}>
 		<div class="stack note-list">
-			{#each list as item (item.id)}<button
+			{#each list.slice(0, shownCount) as item (item.id)}<button
 					class="record-choice"
 					aria-pressed={note?.id === item.id}
 					onclick={() => {
@@ -258,6 +263,11 @@
 						? 'No notes waiting for review.'
 						: 'No notes match these filters.'}
 				</div>{/each}
+			<LoadMore
+				shown={Math.min(shownCount, list.length)}
+				total={list.length}
+				onmore={() => (limit += LIST_PAGE)}
+			/>
 		</div>
 		{#if note}<article class="card pad stack note-detail">
 				<button type="button" class="textbtn back" onclick={() => (picked = false)}

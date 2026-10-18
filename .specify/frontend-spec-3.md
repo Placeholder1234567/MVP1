@@ -1509,6 +1509,8 @@ Every component with variants, states, and exact dimensions. A developer should 
   NOT auto-infinite-scroll (causes scroll position confusion)
 ```
 
+**As built:** `LoadMore.svelte` (`src/lib/app/components`) under the note review list, People and Staff: 25 rows first (`LIST_PAGE`), 25 more per press, "Showing X of Y" above the button. The note open in review always stays in the list, so J/K and approve-and-next can move past the shown rows. Lists that already page on the server (alert inbox, case notes, audit log, referrals) keep their own "Older"/"Load" buttons.
+
 ---
 
 ### 5.5 Data Visualization

@@ -2,6 +2,8 @@
 	// Staff management (frontend-spec-3.md §4.6). Supervisors see the roster;
 	// admins invite people and change role, homes, certification and status.
 	// Changes need a connection: they go straight to staff.* (tRPC).
+	import LoadMore from '#lib/app/components/LoadMore.svelte';
+	import { LIST_PAGE } from '#lib/domain/note-review.ts';
 	import { onMount } from 'svelte';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { initialsOf } from '#lib/domain/people.ts';
@@ -37,6 +39,7 @@
 		]
 			.filter(Boolean)
 			.join(' · ');
+	let limit = $state(LIST_PAGE);
 	const visible = $derived(staff.filter((p) => showInactive || p.active));
 
 	async function load() {
@@ -200,7 +203,7 @@
 
 	{#if loading}<Skeleton label="Loading staff" />{:else}
 		<div class="list card" role="list">
-			{#each visible as person (person.id)}
+			{#each visible.slice(0, limit) as person (person.id)}
 				<div class="row" role="listitem">
 					<span class="avatar" aria-hidden="true">{person.initials || initialsOf(person.name)}</span
 					>
@@ -223,5 +226,10 @@
 				<div class="row muted" role="listitem">No staff yet.</div>
 			{/each}
 		</div>
+		<LoadMore
+			shown={Math.min(limit, visible.length)}
+			total={visible.length}
+			onmore={() => (limit += LIST_PAGE)}
+		/>
 	{/if}
 </section>
