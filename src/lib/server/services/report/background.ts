@@ -88,6 +88,11 @@ export async function requestBackground(
 		type: p.type,
 		format: p.format,
 		status: 'queued' as const,
+		homeId: p.homeId,
+		clientId: p.clientId,
+		fromDay: p.fromDay,
+		toDay: p.toDay,
+		approvedOnly: p.approvedOnly,
 		createdAt: job.created_at.toISOString(),
 		expiresAt: job.expires_at!.toISOString()
 	};
@@ -132,6 +137,11 @@ function describeStatus(job: CareJob, params: z.infer<typeof Params>) {
 		type: params.input.type,
 		format: params.input.format,
 		status,
+		homeId: params.input.homeId,
+		clientId: params.input.clientId,
+		fromDay: params.input.fromDay,
+		toDay: params.input.toDay,
+		approvedOnly: params.input.approvedOnly,
 		createdAt: job.created_at.toISOString(),
 		expiresAt: job.expires_at?.toISOString(),
 		...(status === 'ready' ? { rows: params.rows } : {}),
