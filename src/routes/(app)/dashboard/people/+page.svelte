@@ -8,6 +8,7 @@
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { initialsOf } from '#lib/domain/people.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import Skeleton from '#lib/app/Skeleton.svelte';
 
 	type Person = Awaited<ReturnType<typeof trpc.client.list.query>>[number];
 	const app = useSession();
@@ -224,7 +225,7 @@
 		</form>
 	{/if}
 
-	{#if loading}<p class="muted">Loading people…</p>{:else}
+	{#if loading}<Skeleton label="Loading people" />{:else}
 		<div class="list card" role="list">
 			{#each visible as person (person.id)}
 				<div class="row" role="listitem">

@@ -4,6 +4,7 @@
 	// shows its values and is itself recorded in the audit log.
 	import { onMount } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
+	import Skeleton from '#lib/app/Skeleton.svelte';
 
 	type Entry = Awaited<ReturnType<typeof trpc.audit.list.query>>[number];
 	type Detail = Awaited<ReturnType<typeof trpc.audit.get.query>>;
@@ -156,19 +157,21 @@
 		</article>
 	{/if}
 
-	<div class="list card" aria-label="Audit entries">
-		{#each entries as e (e.id)}
-			<button class="row" onclick={() => open(e.id)}>
-				<span class="grow"
-					><b>{e.action} · {e.tableName}</b><span
-						>{when(e.createdAt)} · {e.performedByName ?? 'System'}</span
-					></span
-				>
-			</button>
-		{:else}
-			<div class="row muted">{loading ? 'Loading…' : 'No entries match.'}</div>
-		{/each}
-	</div>
+	{#if loading && !entries.length}<Skeleton count={5} label="Loading audit entries" />{:else}
+		<div class="list card" aria-label="Audit entries">
+			{#each entries as e (e.id)}
+				<button class="row" onclick={() => open(e.id)}>
+					<span class="grow"
+						><b>{e.action} · {e.tableName}</b><span
+							>{when(e.createdAt)} · {e.performedByName ?? 'System'}</span
+						></span
+					>
+				</button>
+			{:else}
+				<div class="row muted">No entries match.</div>
+			{/each}
+		</div>
+	{/if}
 	<div class="actions">
 		<button
 			class="btn sec"
