@@ -320,6 +320,7 @@
 		{#if editable && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
 					clientId={person.id}
 					type={kind as 'shift' | 'behavior'}
+					shift={(note?.shift ?? current.shift) as 'am' | 'pm' | 'on'}
 					onDirty={() => {
 						dirty = true;
 						signature = false;

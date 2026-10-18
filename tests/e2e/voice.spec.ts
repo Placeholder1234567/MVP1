@@ -40,6 +40,10 @@ test('a synthetic voice clip becomes editable observations without drafting or s
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await page.getByRole('link', { name: /Rosa Demo/ }).click();
 	await page.getByRole('link', { name: /^Behavior note/ }).click();
+	// Topic reminders follow the note type (and, for shift notes, the shift).
+	await expect(page.getByRole('group', { name: 'Try covering', exact: true })).toContainText(
+		'What happenedYour responseHow it ended'
+	);
 	const observations = page.getByLabel('Your observations', { exact: true });
 	await observations.fill('Synthetic typed observation.');
 	await page.getByRole('button', { name: 'Speak · up to 5 minutes', exact: true }).click();

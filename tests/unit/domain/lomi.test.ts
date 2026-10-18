@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest';
-import { draftLocally } from '../../../src/lib/domain/lomi';
+import { describe, expect, it } from 'vitest';
+import { draftLocally, topicSuggestions } from '../../../src/lib/domain/lomi';
 
 it('preserves source facts and leaves unstated sections empty', () => {
 	const result = draftLocally('Ate lunch. Completed a puzzle.', 'shift');
@@ -30,4 +30,24 @@ it('never invents a behavior antecedent or outcome', () => {
 });
 it('detects a slip as a possible incident, matching the MVP pattern', () => {
 	expect(draftLocally('Had a slip in the bathroom.', 'shift').incident.detected).toBe(true);
+});
+
+describe('topicSuggestions', () => {
+	it('follows the shift for shift notes, and the incident order for behavior notes', () => {
+		expect(topicSuggestions('shift', 'am')).toContain('Breakfast');
+		expect(topicSuggestions('shift', 'pm')).toContain('Evening meds');
+		expect(topicSuggestions('shift', 'on')).toEqual([
+			'Bed routine',
+			'Sleep',
+			'Checks',
+			'Incidents'
+		]);
+		expect(topicSuggestions('shift', null)).toEqual(['Meals', 'Mood', 'Goals', 'Anything unusual']);
+		expect(topicSuggestions('behavior', 'am')).toEqual([
+			'Before',
+			'What happened',
+			'Your response',
+			'How it ended'
+		]);
+	});
 });

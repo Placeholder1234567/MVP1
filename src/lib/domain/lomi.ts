@@ -24,6 +24,25 @@ const INCIDENT =
 	/\b(fell|fall|slipped|slip|tripped|hurt|injur\w*|bleed\w*|bruise\w*|hospital|911|emergency|wrong med\w*|missed (his|her|their) med\w*|ran off|left the house|eloped|seizure)\b/i;
 /** Vague or judgmental wording (ai-pipeline.md § Vague Language Detection). The
  * phrase stays in the note for the caregiver to fix or keep; Lomi never replaces it. */
+/**
+ * "Try covering" topics on the compose screen (frontend-spec-2.md §6,
+ * "Contextual topic suggestions by shift time"; mvp app-caregiver.js .cv-try).
+ * Reminders only, never inserted into the note.
+ */
+export function topicSuggestions(type: NoteKind, shift?: 'am' | 'pm' | 'on' | null): string[] {
+	if (type === 'behavior') return ['Before', 'What happened', 'Your response', 'How it ended'];
+	switch (shift) {
+		case 'am':
+			return ['Morning routine', 'Medications', 'Breakfast', 'Goals'];
+		case 'pm':
+			return ['Dinner', 'Evening meds', 'Activities', 'Mood'];
+		case 'on':
+			return ['Bed routine', 'Sleep', 'Checks', 'Incidents'];
+		default:
+			return ['Meals', 'Mood', 'Goals', 'Anything unusual'];
+	}
+}
+
 export function vagueFlags(text: string): Array<{ phrase: string; tip: string }> {
 	const low = text.toLowerCase();
 	return VAGUE.filter((phrase) => low.includes(phrase)).map((phrase) => ({

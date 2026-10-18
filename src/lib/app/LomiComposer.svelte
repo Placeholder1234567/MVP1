@@ -4,17 +4,25 @@
 	import LomiVoice from './LomiVoice.svelte';
 	import { RECORDING_MAX_SECONDS } from './voice-capture';
 	import { trpc } from '#lib/trpc.ts';
-	import { draftLocally, type DraftResult, type NoteKind } from '#lib/domain/lomi.ts';
+	import {
+		draftLocally,
+		topicSuggestions,
+		type DraftResult,
+		type NoteKind
+	} from '#lib/domain/lomi.ts';
 	import { useSession } from './session.svelte';
 	const app = useSession();
 	let {
 		clientId,
 		type,
+		shift,
 		onDraft,
 		onDirty
 	}: {
 		clientId: string;
 		type: NoteKind;
+		/** The shift the note covers, for the topic reminders */
+		shift?: 'am' | 'pm' | 'on' | null;
 		onDraft: (result: DraftResult) => void;
 		onDirty?: () => void;
 	} = $props();
@@ -131,6 +139,10 @@
 		<span class="lemon-orb" aria-hidden="true">◒</span>
 	</div>
 	<p class="muted">Use your own words. Lomi helps organize them, and you review every section.</p>
+	<div class="try" role="group" aria-label="Try covering">
+		<span class="muted">Try covering:</span>
+		{#each topicSuggestions(type, shift) as topic (topic)}<span class="tag">{topic}</span>{/each}
+	</div>
 	<label
 		>Your observations<textarea
 			class="input"
@@ -196,6 +208,21 @@
 </section>
 
 <style>
+	/* Ported from mvp/styles.css (.cv-try, .cv-tag). */
+	.try {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: center;
+		font-size: 14px;
+	}
+	.tag {
+		background: var(--sky);
+		color: var(--blue);
+		font-weight: 600;
+		border-radius: 999px;
+		padding: 6px 12px;
+	}
 	.lomi-panel {
 		border-color: var(--lemon-line);
 	}
