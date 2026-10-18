@@ -37,7 +37,8 @@ export async function openDb(
 
 /** Locking drops the database (and with it the key) from memory. */
 export async function closeDb(): Promise<void> {
-	await flushCareDrafts();
+	// The session reference is already disposed when privacy locking starts.
+	if (db) await flushCareDrafts(db);
 	await db?.close();
 	db = undefined;
 }

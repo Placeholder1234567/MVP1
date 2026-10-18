@@ -6,10 +6,10 @@ export interface DraftDatabase {
 	execute(sql: string, parameters?: unknown[]): Promise<unknown>;
 	getOptional<T>(sql: string, parameters?: unknown[]): Promise<T | null | undefined>;
 }
-const flushers = new Set<() => Promise<void>>();
+const flushers = new Set<(database?: DraftDatabase) => Promise<void>>();
 /** Called before the encrypted OPFS file closes. Failures never prevent privacy locking. */
-export async function flushCareDrafts() {
-	await Promise.allSettled([...flushers].map((flush) => flush()));
+export async function flushCareDrafts(database?: DraftDatabase) {
+	await Promise.allSettled([...flushers].map((flush) => flush(database)));
 }
 export const canResumeCareDraft = (section: DraftSection, data: DraftData, today: string) =>
 	section === 'health' || data.day === today;
@@ -86,24 +86,26 @@ export class CareDraftStore {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private tail = Promise.resolve();
 	private revision = 0;
-	private readonly flushRegistered = () => this.flush();
+	private readonly flushRegistered = (database?: DraftDatabase) => this.flush(database);
 	readonly id: string;
+	readonly database: DraftDatabase | undefined;
 	constructor(
-		private db: () => DraftDatabase | undefined,
+		db: () => DraftDatabase | undefined,
 		readonly profileId: string,
 		readonly clientId: string,
 		readonly section: DraftSection,
 		private status: (error: boolean) => void
 	) {
+		this.database = db();
 		this.id = `${profileId}:${clientId}:${section}`;
 		flushers.add(this.flushRegistered);
 	}
 	async load(): Promise<DraftData | null> {
-		const row = await this.db()?.getOptional<{ data: string }>(
+		const row = await this.database?.getOptional<{ data: string }>(
 			'SELECT data FROM care_drafts WHERE id = ? AND profile_id = ? AND client_id = ? AND section = ?',
 			[this.id, this.profileId, this.clientId, this.section]
 		);
-		if (!this.db()) throw new Error('Draft storage unavailable');
+		if (!this.database) throw new Error('Draft storage unavailable');
 		if (!row) return null;
 		if (row.data.length > 128000) throw new Error('Draft unavailable');
 		const payload = JSON.parse(row.data);
@@ -133,14 +135,15 @@ export class CareDraftStore {
 		this.revision++;
 		return this.flush();
 	}
-	flush(): Promise<void> {
+	flush(database?: DraftDatabase): Promise<void> {
+		if (database && database !== this.database) return Promise.resolve();
 		clearTimeout(this.timer);
 		this.tail = this.tail.then(async () => {
 			const value = this.latest;
 			const revision = this.revision;
 			if (value === undefined) return;
 			try {
-				const db = this.db();
+				const db = this.database;
 				if (!db) throw new Error('Draft storage unavailable');
 				if (value === null)
 					await db.execute('DELETE FROM care_drafts WHERE id = ? AND profile_id = ?', [
