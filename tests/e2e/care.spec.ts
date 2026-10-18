@@ -83,8 +83,16 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 		await expect(review.getByText(content, { exact: true })).toBeVisible();
 		await expect(review.getByRole('button', { name: 'Approve note', exact: true })).toBeDisabled();
 		await accessible(review);
-		await review.getByRole('checkbox', { name: /I have read this note/ }).check();
-		await review.getByRole('button', { name: 'Approve note', exact: true }).click();
+		if (info.project.name === 'desktop') {
+			// Keyboard review: A needs the read confirmation first.
+			await review.keyboard.press('a');
+			await expect(review.getByText(/before approving\.$/)).toBeVisible();
+			await review.getByRole('checkbox', { name: /I have read this note/ }).check();
+			await review.keyboard.press('a');
+		} else {
+			await review.getByRole('checkbox', { name: /I have read this note/ }).check();
+			await review.getByRole('button', { name: 'Approve note', exact: true }).click();
+		}
 		await expect(review.getByText('Note approved.', { exact: true })).toBeVisible();
 		// The approved note moves to the Approved filter, and search narrows the list.
 		const author = info.project.name === 'phone' ? 'Dev Okafor' : 'Cara Giver';
