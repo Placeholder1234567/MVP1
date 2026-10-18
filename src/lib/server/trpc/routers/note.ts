@@ -11,12 +11,19 @@ import {
 	signNote,
 	updateNote
 } from '../../services/charting/index.ts';
+import { noteVersions } from '../../services/audit/index.ts';
 import { featureProcedure, featureRoleProcedure, router } from '../middleware.ts';
 
 const shift = z.enum(['am', 'pm', 'on']);
 const Content = z.record(z.string(), z.unknown());
 
 export const noteRouter = router({
+	// A mutation: reading earlier versions is recorded in the audit trail.
+	versions: featureRoleProcedure('note_review', 'supervisor')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) =>
+			noteVersions(ctx.db, ctx.user.agencyId, ctx.user.profileId, input.id, ctx.request)
+		),
 	create: featureProcedure('charting')
 		.input(
 			z.object({
