@@ -33,6 +33,8 @@ export const DEFAULT_CHANNELS = {
 	incident_reported: r([], ['push'], ['push']),
 	incident_high_severity: r([], ['push', 'sms'], ['push', 'sms']),
 	incident_review_needed: r([], ['push'], ['push']),
+	// A required contact's reminder time passed without it being marked as told.
+	incident_contact_overdue: r([], ['push'], ['push']),
 	shift_reminder: r(['push'], [], []),
 	clock_anomaly: r([], ['push'], []),
 	clock_missed: r(['push'], ['push'], []),
@@ -64,6 +66,7 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	incident_reported: 'New incidents',
 	incident_high_severity: 'Urgent incidents',
 	incident_review_needed: 'Incident review reminders',
+	incident_contact_overdue: 'Incident contacts not yet told',
 	shift_reminder: 'Shift reminders',
 	clock_anomaly: 'Clock location exceptions',
 	clock_missed: 'Missed clock punches',

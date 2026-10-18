@@ -296,8 +296,9 @@ describe('incident reporting rules', () => {
 		});
 		expect(r.mustNotify).toEqual([
 			{ who: 'Supervisor', when: 'Right away' },
-			{ who: 'Family or guardian', when: 'Within 12 hours' },
-			{ who: 'State reporting system', when: 'Within 24 hours' }
+			// No hours were saved, so the default reminder hours apply.
+			{ who: 'Family or guardian', when: 'Within 12 hours', hours: 24 },
+			{ who: 'State reporting system', when: 'Within 24 hours', hours: null }
 		]);
 	});
 });

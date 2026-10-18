@@ -13,7 +13,7 @@ const { getCurrentUser } = await import('../../../src/lib/server/services/auth')
 const { appRouter } = await import('../../../src/lib/server/trpc/router');
 const mw = await import('../../../src/lib/server/trpc/middleware');
 const { setProvidersForTests } = await import('../../../src/lib/server/messaging');
-const { remindShifts, flagIncidents } =
+const { remindShifts, flagIncidents, flagOverdueContacts } =
 	await import('../../../src/lib/server/services/notification/care-reminders');
 
 const createCaller = mw.createCallerFactory(appRouter);
@@ -252,4 +252,53 @@ it('flags an incident still open after 24 hours to the home’s supervisors and 
 		title: 'Incident at Oak House from Mar 11 still awaiting review.',
 		referenceId: stale
 	});
+});
+
+it('reminds supervisors once per contact not marked as told by the agency’s hours', async () => {
+	const nurseLate = randomUUID(),
+		familyLate = randomUUID(),
+		closed = randomUUID();
+	const now = new Date('2026-05-20T12:00:00Z');
+	const incident = (
+		id: string,
+		hoursAgo: number,
+		told: string[],
+		status: 'open' | 'reviewed' = 'open'
+	) => ({
+		id,
+		agency_id: agency,
+		client_id: person,
+		home_id: oak,
+		type: 'Fall',
+		severity: 'Low' as const,
+		occurred_at: new Date(now.getTime() - hoursAgo * 3_600_000),
+		created_at: new Date(now.getTime() - hoursAgo * 3_600_000),
+		description: 'Synthetic',
+		notified_parties: told,
+		status
+	});
+	await withService((tx) =>
+		tx
+			.insert(s.incidents)
+			.values([
+				incident(nurseLate, 3, []),
+				incident(familyLate, 30, ['Nurse']),
+				incident(closed, 30, [], 'reviewed')
+			])
+	);
+	const sweep = () => withService((tx) => flagOverdueContacts(tx, agency, 'UTC', now));
+	await sweep();
+	const forIncident = async (id: string) =>
+		(await inbox('incident_contact_overdue')).filter((r) => r.referenceId === id);
+	expect((await forIncident(nurseLate)).map((r) => [r.profileId, r.title])).toEqual([
+		[sup, 'Incident at Oak House from May 20: nurse not yet marked as told.']
+	]);
+	expect((await forIncident(familyLate)).map((r) => r.title)).toEqual([
+		'Incident at Oak House from May 19: family or guardian not yet marked as told.'
+	]);
+	expect(await forIncident(closed)).toEqual([]);
+	// Once per incident and contact.
+	await sweep();
+	expect(await forIncident(nurseLate)).toHaveLength(1);
+	expect(await forIncident(familyLate)).toHaveLength(1);
 });

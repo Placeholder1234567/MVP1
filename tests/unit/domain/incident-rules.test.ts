@@ -4,7 +4,7 @@ import {
 	incidentNotifyRules,
 	parseIncidentRules
 } from '../../../src/lib/domain/charting';
-import { missingNotifications } from '../../../src/lib/domain/clinical';
+import { missingNotifications, overdueContacts } from '../../../src/lib/domain/clinical';
 
 const custom = {
 	incident_rules: {
@@ -42,7 +42,9 @@ describe('parseIncidentRules', () => {
 describe('incidentNotifyRules with agency rules', () => {
 	const rules = parseIncidentRules(custom);
 	it('applies the agency’s contacts and deadlines', () => {
-		expect(incidentNotifyRules('Medium', 'Fall', rules)).toEqual([
+		expect(
+			incidentNotifyRules('Medium', 'Fall', rules).map(({ who, when }) => ({ who, when }))
+		).toEqual([
 			{ who: 'Supervisor', when: 'Right away' },
 			{ who: 'Family or guardian', when: 'Within 12 hours' },
 			{ who: 'State reporting system', when: 'Within 24 hours (state portal)' }
@@ -65,5 +67,37 @@ describe('incidentNotifyRules with agency rules', () => {
 			'State reporting system'
 		]);
 		expect(missingNotifications('Medium', 'Fall', ['Family or guardian'])).toEqual(['Nurse']);
+	});
+});
+
+describe('overdueContacts', () => {
+	const occurred = new Date('2026-10-18T10:00:00Z');
+	const at = (h: number) => new Date(occurred.getTime() + h * 3_600_000);
+
+	it('is due once each contact’s reminder hours pass without it marked as told', () => {
+		expect(overdueContacts('Medium', 'Fall', [], occurred, at(1))).toEqual([]);
+		expect(overdueContacts('Medium', 'Fall', [], occurred, at(3)).map((c) => c.who)).toEqual([
+			'Nurse'
+		]);
+		expect(
+			overdueContacts('Medium', 'Fall', ['Nurse'], occurred, at(25)).map((c) => c.who)
+		).toEqual(['Family or guardian']);
+		// The state has no reminder hours by default.
+		expect(overdueContacts('High', 'Other', ['Family or guardian'], occurred, at(500))).toEqual([]);
+	});
+
+	it('uses the agency’s hours, and none switches a reminder off', () => {
+		const rules = parseIncidentRules({
+			incident_rules: { ...custom.incident_rules, guardianHours: null, stateHours: 12 }
+		});
+		expect(rules).toMatchObject({ guardianHours: null, nurseHours: 2, stateHours: 12 });
+		expect(overdueContacts('High', 'Fall', [], occurred, at(13), rules)).toEqual([
+			{
+				who: 'State reporting system',
+				when: 'Within 24 hours (state portal)',
+				dueAt: at(12)
+			}
+		]);
+		expect(parseIncidentRules({ incident_rules: { guardianHours: 0.5 } }).guardianHours).toBe(24);
 	});
 });
