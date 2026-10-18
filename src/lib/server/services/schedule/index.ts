@@ -1,4 +1,10 @@
-import { addDays } from '../../../domain/index.ts';
+import {
+	addDays,
+	planWeekCopy,
+	shiftAt,
+	shiftIsPast,
+	type CopySkip
+} from '../../../domain/index.ts';
 import { asService, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -66,6 +72,62 @@ export async function setScheduleSlot(
 	const row = await saveSlot(tx, user.agencyId, input);
 	await settleCoverage(tx, user.agencyId, input, input.profileId);
 	return row;
+}
+
+/**
+ * Copies one week's assignments into another week at the same home
+ * (schedule.copyWeek). Only open slots are filled; each copy is checked like
+ * a manual assignment, so someone no longer active, trained here or free
+ * that shift is skipped instead of failing the whole week.
+ */
+export async function copyScheduleWeek(
+	tx: Tx,
+	user: CurrentUser,
+	input: { homeId: string; fromWeek: string; toWeek: string }
+) {
+	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
+	const apart = (Date.parse(input.toWeek) - Date.parse(input.fromWeek)) / 86_400_000;
+	if (!apart || apart % 7 !== 0)
+		throw new ServiceError(
+			'VALIDATION_FAILED',
+			'Copy from a different week, starting on the same weekday'
+		);
+	if (!(await scheduleHome(tx, user.agencyId, input.homeId)))
+		throw new ServiceError('NOT_FOUND', 'Home not found');
+	const week = (start: string) =>
+		weekSlots(tx, user.agencyId, input.homeId, start, addDays(start, 6)).then((rows) =>
+			rows.map((r) => ({ day: r.day, shift: r.shift, assignedTo: r.assigned_to, status: r.status }))
+		);
+	const now = new Date();
+	const plan = planWeekCopy(
+		await week(input.fromWeek),
+		await week(input.toWeek),
+		input.fromWeek,
+		input.toWeek,
+		(day, shift) =>
+			shiftIsPast(day, shift, now, user.timeZone) || startedNow(day, shift, now, user.timeZone)
+	);
+	const skipped: { day: string; shift: 'am' | 'pm' | 'on'; reason: CopySkip | 'unavailable' }[] = [
+		...plan.skipped
+	];
+	let copied = 0;
+	for (const slot of plan.copy) {
+		try {
+			// A savepoint per slot: one unavailable person doesn't undo the rest.
+			await tx.transaction((sp) => setScheduleSlot(sp, user, { homeId: input.homeId, ...slot }));
+			copied++;
+		} catch (e) {
+			if (!(e instanceof ServiceError)) throw e;
+			skipped.push({ day: slot.day, shift: slot.shift, reason: 'unavailable' });
+		}
+	}
+	return { copied, skipped };
+}
+
+/** The shift running right now has started; copying into it would rewrite who is on. */
+function startedNow(day: string, shift: 'am' | 'pm' | 'on', now: Date, timeZone: string) {
+	const current = shiftAt(now, timeZone);
+	return current.day === day && current.shift === shift;
 }
 
 /** A coverage request's status (for replies that arrive after it closed). */

@@ -65,3 +65,66 @@ export function offlinePermissions(
 		medCertified: verified.medCertified && synced.medCertified
 	};
 }
+
+/** Install prompts (frontend-spec-2.md §8.4), counted per device. */
+export interface InstallState {
+	/** App loads on this device. */
+	visits: number;
+	/** Times the install banner was closed without installing. */
+	dismissals: number;
+	installed: boolean;
+	/** "Got it" on the iOS instructions. */
+	iosDone: boolean;
+	/** The welcome shown on first launch of the installed app. */
+	welcomed: boolean;
+}
+export const NEW_INSTALL_STATE: InstallState = {
+	visits: 0,
+	dismissals: 0,
+	installed: false,
+	iosDone: false,
+	welcomed: false
+};
+export function parseInstallState(value: unknown): InstallState {
+	const v = (typeof value === 'object' && value) || {};
+	const count = (n: unknown) =>
+		typeof n === 'number' && Number.isInteger(n) && n >= 0 ? Math.min(n, 1000) : 0;
+	const flag = (b: unknown) => b === true;
+	const r = v as Record<string, unknown>;
+	return {
+		visits: count(r.visits),
+		dismissals: count(r.dismissals),
+		installed: flag(r.installed),
+		iosDone: flag(r.iosDone),
+		welcomed: flag(r.welcomed)
+	};
+}
+export type InstallPromptKind = 'banner' | 'ios-sheet' | 'welcome' | null;
+export function installPrompt(
+	state: InstallState,
+	env: {
+		/** Running as the installed app (display-mode: standalone). */
+		standalone: boolean;
+		/** The browser offered beforeinstallprompt. */
+		canPrompt: boolean;
+		/** Touch-first device; the banner is for phones and tablets. */
+		mobile: boolean;
+		/** Safari on iPhone or iPad, which has no install prompt API. */
+		iosSafari: boolean;
+		/** A prompt was already closed this session. */
+		closedThisSession: boolean;
+	}
+): InstallPromptKind {
+	if (env.standalone) return state.welcomed ? null : 'welcome';
+	if (state.installed || env.closedThisSession) return null;
+	// Not on the first visit: let people use the app before asking.
+	if (env.canPrompt && env.mobile && state.visits >= 2 && state.dismissals < 3) return 'banner';
+	if (env.iosSafari && state.visits >= 3 && !state.iosDone) return 'ios-sheet';
+	return null;
+}
+/** iPhone/iPad Safari, including iPadOS reporting as a Mac. Other iOS browsers can't add to the home screen the same way. */
+export function isIosSafari(userAgent: string, maxTouchPoints: number): boolean {
+	const ios =
+		/iPhone|iPad|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
+	return ios && /Safari\//.test(userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(userAgent);
+}

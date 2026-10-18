@@ -47,6 +47,41 @@
 			busy = false;
 		}
 	}
+	// Fill this week's open slots with last week's assignments (frontend-audit.md finding 17).
+	async function copyLastWeek() {
+		if (!online || !app.homeId || busy) return;
+		const homeId = app.homeId;
+		const operationScope = context;
+		messageScope = operationScope;
+		busy = true;
+		message = '';
+		try {
+			const { copied, skipped } = await trpc.schedule.copyWeek.mutate({
+				homeId,
+				fromWeek: addDays(start, -7),
+				toWeek: start
+			});
+			const unavailable = skipped.filter((s) => s.reason === 'unavailable').length;
+			const kept = skipped.length - unavailable;
+			if (context === operationScope)
+				message = [
+					copied
+						? `Copied ${copied} ${copied === 1 ? 'shift' : 'shifts'} from last week. Updates will appear after sync.`
+						: 'Nothing to copy: last week had no assignments for the open shifts here.',
+					kept ? `${kept} already assigned, being covered or started, left as they were.` : '',
+					unavailable
+						? `${unavailable} left open: the staff member is no longer available for this home or that shift.`
+						: ''
+				]
+					.filter(Boolean)
+					.join(' ');
+		} catch {
+			if (context === operationScope)
+				message = 'Could not copy last week. Reconnect and try again.';
+		} finally {
+			busy = false;
+		}
+	}
 	async function cover(day: string, shift: 'am' | 'pm' | 'on') {
 		if (!online || !app.homeId || busy) return false;
 		const homeId = app.homeId;
@@ -86,7 +121,10 @@
 	</div>
 	{#if manager}<p class="muted">
 			Assignments require a connection. Your saved schedule stays available offline.
-		</p>{/if}
+		</p>
+		<button class="btn sec" disabled={busy || !online || !app.homeId} onclick={copyLastWeek}
+			>Copy last week’s assignments</button
+		>{/if}
 	{#if !online}<p class="callout" role="status">
 			You’re offline. Read saved recent activity; reconnect to change assignments or request
 			coverage.

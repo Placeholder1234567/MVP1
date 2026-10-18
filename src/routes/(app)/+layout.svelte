@@ -5,6 +5,8 @@
 	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
 	import { stopWebPush } from '#lib/pwa/web-push.ts';
 	import InstallCard from '#lib/app/InstallCard.svelte';
+	// Catches the browser's install offer early; Today's banner shows it.
+	import '#lib/pwa/install.svelte.ts';
 	import CommandPalette from '#lib/app/CommandPalette.svelte';
 	import { inspectDevice, deviceIssue } from '#lib/pwa/readiness.ts';
 	import { page } from '$app/state';

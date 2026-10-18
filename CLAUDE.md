@@ -65,7 +65,7 @@ Read `.specify/` for full specs. Key files:
 | `deploy/README.md` | Deploying to Google Cloud: bootstrap and release scripts, first-deploy checks |
 | `.specify/schema.ts` | Database schema (40 Drizzle pgTable definitions, source of truth) |
 | `.specify/services.md` | Service boundaries, data ownership, dependencies |
-| `.specify/trpc-router.md` | tRPC procedure specification (20 routers, all input/output types) |
+| `.specify/trpc-router.md` | tRPC procedure specification (26 routers, all input/output types) |
 | `.specify/charting-ux.md` | Screen specs, component catalog, UX flows, accessibility |
 | `.specify/ai-pipeline.md` | Lomi AI: prompts, models, fallback, rate limits |
 | `.specify/ai-voice-analysis.md` | **Voice architecture decision: batch vs real-time, per-section editing** |

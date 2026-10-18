@@ -5,6 +5,7 @@
 	import { shiftAt, SHIFTS } from '#lib/domain/index.ts';
 	import ClockPanel from '#lib/app/ClockPanel.svelte';
 	import CoverageOffers from '#lib/app/CoverageOffers.svelte';
+	import InstallPrompt from '#lib/app/InstallPrompt.svelte';
 	const app = useSession();
 	let now = $state(new Date());
 	onMount(() => {
@@ -49,6 +50,7 @@
 
 <svelte:head><title>Today · Guad</title></svelte:head>
 <div class="stack">
+	<InstallPrompt />
 	<div class="spread">
 		<div class="stack">
 			<p class="eyebrow">A little care, well recorded</p>
