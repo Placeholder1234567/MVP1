@@ -19,6 +19,8 @@ async function signIn(page: Page) {
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 }
 async function openPerson(page: Page, name: string) {
+	// A restarted tab starts on the first home again; the test people live at Oak House.
+	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
 	await page.getByRole('link', { name: 'Overview', exact: true }).first().click();
 	await page.getByRole('link', { name: 'Care records', exact: true }).first().click();
 	await page.getByRole('link', { name: new RegExp(name) }).click();

@@ -54,7 +54,7 @@
 		const section = current;
 		const personId = clientId;
 		const profileId = app.user.profileId;
-		const db = app.db;
+		const db = app.ready ? app.db : undefined;
 		const scope = `${profileId}:${personId}:${section}`;
 		const preserved = untrack(() => (dirty && latestScope === scope ? latestDraft : null));
 		let alive = true;
