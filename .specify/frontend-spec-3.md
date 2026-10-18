@@ -1625,6 +1625,8 @@ Every component with variants, states, and exact dimensions. A developer should 
 ```
 
 **Line Chart (vital sign trends, future):**
+
+**As built:** `VitalTrend.svelte` on the supervisor person page (`/dashboard/people/[id]`, "Vital trends", `health` feature), rules in `src/lib/domain/vital-trend.ts`. One chart per measurement with readings, from the vitals saved on the device (about 30 days). The normal band and red out-of-range points use the same limits as the health form (VITAL_LIMITS), so only temperature, pulse and blood pressure have them; SpO2, respiratory rate, glucose and weight are charted without a band and say "no alert limits set". Points have a native tooltip; the chart's accessible label lists every value and date.
 ```
   Container: .cv-card, height 140px
   Reference bands: SVG rects with low opacity
