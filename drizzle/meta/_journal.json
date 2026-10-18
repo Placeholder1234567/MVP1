@@ -29,6 +29,13 @@
       "when": 1792206722933,
       "tag": "0003_profile_plan_features",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792291549077,
+      "tag": "0004_health_bowel_tracking",
+      "breakpoints": true
     }
   ]
 }

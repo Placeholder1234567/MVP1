@@ -1,0 +1,1 @@
+ALTER TYPE "public"."health_entry_kind" ADD VALUE 'bowel';

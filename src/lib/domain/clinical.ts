@@ -16,9 +16,11 @@ export const HEALTH_KINDS = [
 	{ key: 'vitals', label: 'Vitals' },
 	{ key: 'seizure', label: 'Seizure' },
 	{ key: 'illness', label: 'Illness' },
-	{ key: 'appointment', label: 'Visit' }
+	{ key: 'appointment', label: 'Visit' },
+	{ key: 'bowel', label: 'Bowel' }
 ] as const;
 export type HealthKind = (typeof HEALTH_KINDS)[number]['key'];
+export const BOWEL_STATUSES = ['Observed', 'Not observed', 'Declined'] as const;
 
 export function healthKindLabel(kind: string | null | undefined): string {
 	return HEALTH_KINDS.find((k) => k.key === kind)?.label ?? 'Health';
@@ -36,6 +38,8 @@ export interface HealthField {
 	/** Shown side by side with the neighbouring half-width field */
 	half?: boolean;
 	required?: boolean;
+	/** False means no automatic clinical alert limits have been configured. */
+	alertConfigured?: boolean;
 }
 
 /**
@@ -55,7 +59,31 @@ export const HEALTH_FIELDS: Record<HealthKind, readonly HealthField[]> = {
 		},
 		{ key: 'pulse', label: 'Pulse', input: 'number', unit: 'bpm', half: true },
 		{ key: 'temp', label: 'Temperature', input: 'number', unit: '°F', decimal: true, half: true },
-		{ key: 'weight', label: 'Weight', input: 'number', unit: 'lb', decimal: true }
+		{ key: 'weight', label: 'Weight', input: 'number', unit: 'lb', decimal: true },
+		{
+			key: 'respiration',
+			label: 'Respiratory rate',
+			input: 'number',
+			unit: 'breaths/min',
+			decimal: true,
+			alertConfigured: false
+		},
+		{
+			key: 'oxygen',
+			label: 'SpO2',
+			input: 'number',
+			unit: '%',
+			decimal: true,
+			alertConfigured: false
+		},
+		{
+			key: 'glucose',
+			label: 'Blood glucose',
+			input: 'number',
+			unit: 'mg/dL',
+			decimal: true,
+			alertConfigured: false
+		}
 	],
 	seizure: [
 		{ key: 'started', label: 'Started at', input: 'time', half: true, required: true },
@@ -102,6 +130,18 @@ export const HEALTH_FIELDS: Record<HealthKind, readonly HealthField[]> = {
 			placeholder: 'Who you told and what you did'
 		}
 	],
+	bowel: [
+		{
+			key: 'status',
+			label: 'Observation',
+			input: 'select',
+			options: BOWEL_STATUSES,
+			required: true
+		},
+		{ key: 'time', label: 'Time of observation or check', input: 'time' },
+		{ key: 'consistency', label: 'Consistency (only if observed)', input: 'text' },
+		{ key: 'notes', label: 'Notes', input: 'textarea' }
+	],
 	appointment: [
 		{ key: 'date', label: 'Date', input: 'date' },
 		{ key: 'provider', label: 'With', input: 'text', required: true },
@@ -119,20 +159,55 @@ export const HEALTH_FIELDS: Record<HealthKind, readonly HealthField[]> = {
  * Typo guard, not a clinical rule: readings outside these bounds are almost
  * certainly mistyped (e.g. 1200 for 120), so the form asks to check them.
  */
-const PLAUSIBLE: Record<string, [number, number]> = {
+export const HEALTH_READING_LIMITS = {
 	systolic: [40, 300],
 	diastolic: [20, 200],
 	pulse: [20, 250],
 	temp: [85, 110],
-	weight: [1, 1000]
-};
+	weight: [1, 1000],
+	// Technical input bounds, not clinical alert limits. Zero is an explicit entry.
+	respiration: [0, 1000],
+	oxygen: [0, 100],
+	glucose: [0, 10000]
+} as const;
+
+/** Accept only entered decimal readings. Blanks/null are absent, never inferred zero. */
+export function healthReading(
+	key: keyof typeof HEALTH_READING_LIMITS,
+	raw: unknown
+): { ok: true; value: number | undefined } | { ok: false } {
+	if (raw == null || (typeof raw === 'string' && !raw.trim()))
+		return { ok: true, value: undefined };
+	if (
+		typeof raw !== 'number' &&
+		(typeof raw !== 'string' || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw.trim()))
+	)
+		return { ok: false };
+	const value = typeof raw === 'number' ? raw : Number(raw.trim());
+	const [lo, hi] = HEALTH_READING_LIMITS[key];
+	return Number.isFinite(value) && value >= lo && value <= hi ? { ok: true, value } : { ok: false };
+}
+
+export function bowelDataError(data: Record<string, unknown>): string | null {
+	if (!(BOWEL_STATUSES as readonly unknown[]).includes(data.status))
+		return 'Choose what was observed or whether the check was declined.';
+	if (
+		data.time &&
+		(typeof data.time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data.time))
+	)
+		return 'Check the observation time.';
+	if (data.status !== 'Observed' && typeof data.consistency === 'string' && data.consistency.trim())
+		return 'Only add consistency when a movement was observed.';
+	return null;
+}
 
 /** Plain-language reason a health entry can't be saved yet (MVP hsave rules). */
 const REQUIRED_MESSAGE: Record<HealthKind, string> = {
 	vitals: 'Enter at least one reading.',
 	seizure: 'Add when it started and what you saw.',
 	illness: 'Describe the symptoms.',
-	appointment: 'Add who the visit was with.'
+	appointment: 'Add who the visit was with.',
+	bowel: 'Choose what was observed or whether the check was declined.'
 };
 
 export type HealthPayload =
@@ -145,19 +220,37 @@ export function healthPayload(
 ): HealthPayload {
 	const data: Record<string, string | number> = {};
 	for (const field of HEALTH_FIELDS[kind]) {
+		const raw = fields[field.key];
+		if (
+			field.input === 'number' &&
+			raw != null &&
+			typeof raw !== 'string' &&
+			typeof raw !== 'number'
+		)
+			return { ok: false, error: `Check the ${field.label.toLowerCase()} reading.` };
 		const value = String(fields[field.key] ?? '').trim();
 		if (!value) {
 			if (field.required) return { ok: false, error: REQUIRED_MESSAGE[kind] };
 			continue;
 		}
 		if (field.input === 'number') {
-			const n = Number(value);
-			const [lo, hi] = PLAUSIBLE[field.key] ?? [-Infinity, Infinity];
-			if (!Number.isFinite(n) || n < lo || n > hi) {
+			const reading = healthReading(
+				field.key as keyof typeof HEALTH_READING_LIMITS,
+				fields[field.key]
+			);
+			if (!reading.ok) {
 				return { ok: false, error: `Check the ${field.label.toLowerCase()} reading.` };
 			}
-			data[field.key] = n;
-		} else data[field.key] = value;
+			if (reading.value !== undefined) data[field.key] = reading.value;
+		} else {
+			if (value.length > 1000)
+				return { ok: false, error: 'Keep each health answer within 1000 characters.' };
+			data[field.key] = value;
+		}
+	}
+	if (kind === 'bowel') {
+		const error = bowelDataError(data);
+		if (error) return { ok: false, error };
 	}
 	if (!Object.keys(data).length) return { ok: false, error: REQUIRED_MESSAGE[kind] };
 	return { ok: true, data };
@@ -214,13 +307,27 @@ export function healthSummary(
 					data.systolic && data.diastolic ? `BP ${s(data.systolic)}/${s(data.diastolic)}` : '',
 					data.pulse ? `Pulse ${s(data.pulse)}` : '',
 					data.temp ? `${s(data.temp)}°F` : '',
-					data.weight ? `${s(data.weight)} lb` : ''
+					data.weight ? `${s(data.weight)} lb` : '',
+					data.respiration != null && data.respiration !== ''
+						? `Respiratory rate ${s(data.respiration)} breaths/min`
+						: '',
+					data.oxygen != null && data.oxygen !== '' ? `SpO2 ${s(data.oxygen)}%` : '',
+					data.glucose != null && data.glucose !== ''
+						? `Blood glucose ${s(data.glucose)} mg/dL`
+						: ''
 				]
-			: kind === 'seizure'
-				? [s(data.duration), s(data.observed ?? data.type)]
-				: kind === 'illness'
-					? [s(data.symptoms), data.contagious === 'Yes' ? 'May be contagious' : '']
-					: [s(data.provider), s(data.reason)];
+			: kind === 'bowel'
+				? [
+						s(data.status),
+						s(data.time),
+						data.status === 'Observed' ? s(data.consistency) : '',
+						s(data.notes)
+					]
+				: kind === 'seizure'
+					? [s(data.duration), s(data.observed ?? data.type)]
+					: kind === 'illness'
+						? [s(data.symptoms), data.contagious === 'Yes' ? 'May be contagious' : '']
+						: [s(data.provider), s(data.reason)];
 	return parts.filter(Boolean).join(' · ');
 }
 
