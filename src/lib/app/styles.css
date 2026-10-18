@@ -599,6 +599,8 @@ label > .input {
 }
 a.row:hover,
 button.row:hover {
+	/* Older Android WebViews lack color-mix() (frontend-spec-3 §13 critical fix 10). */
+	background: var(--sky);
 	background: color-mix(in srgb, var(--sky) 55%, transparent);
 }
 .list.card > .row:first-child {
