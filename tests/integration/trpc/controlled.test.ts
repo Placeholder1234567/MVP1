@@ -81,20 +81,18 @@ beforeAll(async () => {
 			home_ids: homes,
 			med_certified: med
 		});
-		await t
-			.insert(s.profiles)
-			.values([
-				staff(CARA, 'Cara Giver', 'caregiver', [OAK], true),
-				staff(DEV, 'Dev Okafor', 'caregiver', [OAK], true),
-				staff(UNCERTIFIED, 'Una Certified', 'caregiver', [OAK], false),
-				staff(SAM, 'Sam Supervisor', 'supervisor', [OAK, MAPLE], true),
-				staff(MAPLE_CARER, 'Mo Maple', 'caregiver', [MAPLE], true),
-				{
-					...staff(WES, 'Wes Witness', 'caregiver', [OAK], true),
-					auth_uid: wesUid,
-					email: WES_EMAIL
-				}
-			]);
+		await t.insert(s.profiles).values([
+			staff(CARA, 'Cara Giver', 'caregiver', [OAK], true),
+			staff(DEV, 'Dev Okafor', 'caregiver', [OAK], true),
+			staff(UNCERTIFIED, 'Una Certified', 'caregiver', [OAK], false),
+			staff(SAM, 'Sam Supervisor', 'supervisor', [OAK, MAPLE], true),
+			staff(MAPLE_CARER, 'Mo Maple', 'caregiver', [MAPLE], true),
+			{
+				...staff(WES, 'Wes Witness', 'caregiver', [OAK], true),
+				auth_uid: wesUid,
+				email: WES_EMAIL
+			}
+		]);
 		await t
 			.insert(s.clients)
 			.values({ id: PERSON, agency_id: AGENCY, home_id: OAK, name: 'Person Oak' });
@@ -286,9 +284,20 @@ describe('controlled medications', () => {
 		);
 		expect(asks).toEqual([]);
 
+		// One sign-in witnesses one entry.
+		await expect(
+			cara.medication.countEntry(
+				entry({ kind: 'receipt', quantity: 5, witnessId: WES, witnessToken: token })
+			)
+		).rejects.toMatchObject({
+			code: 'BAD_REQUEST',
+			message: expect.stringMatching(/already used/)
+		});
+
 		// The token must belong to the named witness, and be real.
+		const fresh = await emulatorSignIn(WES_EMAIL);
 		for (const bad of [
-			entry({ kind: 'receipt', quantity: 5, witnessId: DEV, witnessToken: token }),
+			entry({ kind: 'receipt', quantity: 5, witnessId: DEV, witnessToken: fresh }),
 			entry({ kind: 'receipt', quantity: 5, witnessId: WES, witnessToken: 'not-a-token' })
 		])
 			await expect(cara.medication.countEntry(bad)).rejects.toMatchObject({
