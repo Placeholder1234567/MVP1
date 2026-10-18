@@ -3,6 +3,7 @@
 export * from './time';
 export * from './care-notices';
 export * from './schedule-copy';
+export * from './note-versions';
 export * from './shifts';
 export * from './dose-slots';
 export * from './note-lifecycle';

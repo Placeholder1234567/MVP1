@@ -5,7 +5,14 @@
 import { z } from 'zod';
 import { asService, type RequestInfo, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
-import { recordAuditView, selectAuditEntries, selectAuditEntry } from './audit.queries';
+import { signedVersions, type NoteState } from '../../../domain/index.ts';
+import {
+	recordAuditView,
+	recordNoteVersionsView,
+	selectAuditEntries,
+	selectAuditEntry,
+	selectNoteStates
+} from './audit.queries';
 
 export const AuditFilterInput = z.object({
 	dateRange: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).optional(),
@@ -44,4 +51,42 @@ export async function getAudit(
 	// audit_log takes no user writes (rls.sql): the trusted server records it.
 	await asService(tx, (t) => recordAuditView(t, agencyId, viewerId, id, request));
 	return entry;
+}
+
+/**
+ * The versions of a note its author signed, from the audit trail
+ * (frontend-audit.md finding 14). Supervisors and admins only: RLS lets
+ * only them read audit_log. The read is itself recorded.
+ */
+export async function noteVersions(
+	tx: Tx,
+	agencyId: string,
+	viewerId: string,
+	noteId: string,
+	request: RequestInfo
+) {
+	const rows = await selectNoteStates(tx, agencyId, noteId);
+	if (!rows.length) throw new ServiceError('NOT_FOUND', 'Note not found');
+	const states: NoteState[] = rows.map((r) => {
+		const values = (r.values ?? {}) as { status?: string; content?: unknown };
+		const raw =
+			typeof values.content === 'string' ? safeJson(values.content) : (values.content ?? {});
+		const content = Object.fromEntries(
+			Object.entries(raw as Record<string, unknown>).map(([k, v]) => [
+				k,
+				typeof v === 'string' ? v : JSON.stringify(v)
+			])
+		);
+		return { at: r.at.toISOString(), by: r.by, status: values.status ?? '', content };
+	});
+	await asService(tx, (t) => recordNoteVersionsView(t, agencyId, viewerId, noteId, request));
+	return { versions: signedVersions(states) };
+}
+
+function safeJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return {};
+	}
 }
