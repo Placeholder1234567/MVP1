@@ -44,6 +44,21 @@ export const intakeRouter = router({
 			})
 		)
 		.mutation(({ ctx, input }) => intake.updateReferral(ctx.db, ctx.user.agencyId, input)),
+	addReferralNote: supervisor
+		.input(z.object({ referralId: z.uuid(), body: z.string().trim().min(1).max(4000) }))
+		.mutation(({ ctx, input }) =>
+			intake.addReferralNote(
+				ctx.db,
+				ctx.user.agencyId,
+				{ profileId: ctx.user.profileId, name: ctx.user.name },
+				input
+			)
+		),
+	listReferralNotes: supervisor
+		.input(z.object({ referralId: z.uuid() }))
+		.query(({ ctx, input }) =>
+			intake.listReferralNotes(ctx.db, ctx.user.agencyId, input.referralId)
+		),
 	convertToClient: supervisor
 		.input(
 			z.object({

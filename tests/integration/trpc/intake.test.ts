@@ -76,6 +76,8 @@ it('blocks caregivers from every intake procedure', async () => {
 		() => api.listReferrals({}),
 		() => api.getReferral({ id: randomUUID() }),
 		() => api.updateReferral({ id: randomUUID(), status: 'accepted' }),
+		() => api.addReferralNote({ referralId: randomUUID(), body: 'x' }),
+		() => api.listReferralNotes({ referralId: randomUUID() }),
 		() => api.convertToClient({ referralId: randomUUID(), homeId: home, name: 'Synthetic' }),
 		() => api.listRooms({}),
 		() => api.createRoom({ homeId: home, name: 'Forbidden' }),
@@ -101,6 +103,30 @@ it('isolates referral reads, writes and home assignments by agency', async () =>
 	});
 	await expect(
 		own.convertToClient({ referralId: id, homeId: foreignHome, name: 'Synthetic' })
+	).rejects.toMatchObject({ code: 'NOT_FOUND' });
+});
+it('keeps notes at each stage, oldest first, for the agency only', async () => {
+	const api = (await as(supervisor)).intake;
+	const row = await api.createReferral({ clientName: 'Synthetic Stage Notes' });
+	const first = await api.addReferralNote({ referralId: row.id, body: 'First call (synthetic).' });
+	expect(first).toMatchObject({ status: 'inquiry', authorName: 'Synthetic Intake Staff' });
+	await api.updateReferral({ id: row.id, status: 'touring' });
+	await api.addReferralNote({ referralId: row.id, body: 'Toured the home (synthetic).' });
+	expect(
+		(await api.listReferralNotes({ referralId: row.id })).map((n) => [n.status, n.body])
+	).toEqual([
+		['inquiry', 'First call (synthetic).'],
+		['touring', 'Toured the home (synthetic).']
+	]);
+	await expect(api.addReferralNote({ referralId: row.id, body: '  ' })).rejects.toMatchObject({
+		code: 'BAD_REQUEST'
+	});
+	const outsiderApi = (await as(outsider)).intake;
+	await expect(outsiderApi.listReferralNotes({ referralId: row.id })).rejects.toMatchObject({
+		code: 'NOT_FOUND'
+	});
+	await expect(
+		outsiderApi.addReferralNote({ referralId: row.id, body: 'x' })
 	).rejects.toMatchObject({ code: 'NOT_FOUND' });
 });
 it('requires acceptance and prevents direct placement or reopening', async () => {

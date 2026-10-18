@@ -933,6 +933,7 @@ npm run test:e2e -- --grep @offline
 | `note_history` | -- | Never synced | -- | -- | -- |
 | `schedule_templates` | -- | Never synced (supervisors manage them online) | -- | -- | -- |
 | `message_photos` | -- | Never synced (photos are fetched when opened, `message.photo`) | -- | -- | -- |
+| `referral_notes` | -- | Never synced (intake is online, `intake.listReferralNotes`) | -- | -- | -- |
 
 ## Appendix B: Error Codes for Failed Writes
 
