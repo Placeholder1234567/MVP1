@@ -5,6 +5,7 @@ import {
 	shiftAt,
 	shiftIsPast,
 	suggestShifts,
+	checkPicks,
 	templateFromWeek,
 	templateToWeek,
 	TEMPLATE_NAME_MAX,
@@ -204,13 +205,40 @@ export async function applyScheduleSuggestions(
 	const last = addDays(input.weekStart, 6);
 	if (input.picks.some((p) => p.day < input.weekStart || p.day > last))
 		throw new ServiceError('VALIDATION_FAILED', 'Suggestions must be for the week shown');
-	const source = input.picks.map((p) => ({
+	// The week may have changed since the suggestion: check the picks again.
+	const data = await eligibilityData(tx, user.agencyId, {
+		homeId: input.homeId,
+		day: input.weekStart,
+		shift: 'am'
+	});
+	const { ok, refused } = checkPicks(
+		input.picks,
+		data.staff,
+		data.scheduled,
+		input.homeId,
+		data.doseTimes
+	);
+	const source = ok.map((p) => ({
 		day: p.day,
 		shift: p.shift,
 		assignedTo: p.profileId,
 		status: 'filled'
 	}));
-	return fillOpenSlots(tx, user, input.homeId, source, input.weekStart, input.weekStart);
+	const result = await fillOpenSlots(
+		tx,
+		user,
+		input.homeId,
+		source,
+		input.weekStart,
+		input.weekStart
+	);
+	return {
+		copied: result.copied,
+		skipped: [
+			...result.skipped,
+			...refused.map((p) => ({ day: p.day, shift: p.shift, reason: 'unavailable' as const }))
+		]
+	};
 }
 
 /** The home's saved weeks (frontend-audit.md finding 17), by name. */

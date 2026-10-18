@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { suggestShifts } from '../../../src/lib/domain/schedule-suggest';
+import { checkPicks, suggestShifts } from '../../../src/lib/domain/schedule-suggest';
 
 const HOME = 'oak';
 const staff = (
@@ -58,5 +58,52 @@ describe('suggestShifts', () => {
 			HOME
 		);
 		expect(s[0]).toMatchObject({ profileId: null, reason: 'not_trained_at_home' });
+	});
+});
+
+describe('checkPicks', () => {
+	const pick = (day: string, shift: 'am' | 'pm' | 'on', profileId: string) => ({
+		day,
+		shift,
+		profileId
+	});
+	it('refuses a pick for someone now working that day', () => {
+		const r = checkPicks(
+			[pick('2026-10-19', 'am', 'a'), pick('2026-10-20', 'am', 'a')],
+			[staff('a')],
+			[{ profileId: 'a', day: '2026-10-19' }],
+			HOME,
+			[]
+		);
+		expect(r.ok.map((p) => p.day)).toEqual(['2026-10-20']);
+		expect(r.refused.map((p) => p.day)).toEqual(['2026-10-19']);
+	});
+	it('counts the picks it accepts, so two on one day or a sixth shift are refused', () => {
+		const week = ['19', '20', '21', '22', '23', '24'].map((d) => pick(`2026-10-${d}`, 'am', 'a'));
+		const r = checkPicks([pick('2026-10-19', 'pm', 'a'), ...week], [staff('a')], [], HOME, []);
+		// Monday AM first (shift order), so Monday PM is the same day; Saturday is the sixth shift.
+		expect(r.ok.map((p) => `${p.day} ${p.shift}`)).toEqual([
+			'2026-10-19 am',
+			'2026-10-20 am',
+			'2026-10-21 am',
+			'2026-10-22 am',
+			'2026-10-23 am'
+		]);
+		expect(r.refused.map((p) => `${p.day} ${p.shift}`)).toEqual(['2026-10-19 pm', '2026-10-24 am']);
+	});
+	it('refuses unknown, inactive or uncertified staff when doses are due', () => {
+		const r = checkPicks(
+			[
+				pick('2026-10-19', 'am', 'ghost'),
+				pick('2026-10-20', 'am', 'gone'),
+				pick('2026-10-21', 'am', 'nomed')
+			],
+			[staff('gone', { active: false }), staff('nomed', { med: false })],
+			[],
+			HOME,
+			['08:00']
+		);
+		expect(r.ok).toEqual([]);
+		expect(r.refused).toHaveLength(3);
 	});
 });
