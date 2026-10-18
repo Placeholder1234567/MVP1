@@ -118,6 +118,14 @@ DELETE FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000';
 SELECT check_eq('only the named witness countersigns; nobody deletes',
   (SELECT count(*) FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000' AND witness_status = 'pending'), 1);
 
+-- 10. A message may name a person from the same home only
+SELECT expect('cg posts a message about a person at Oak',
+  $$INSERT INTO messages (agency_id, home_id, client_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d1000000-0000-0000-0000-000000000000','Cara Giver','Ate well','c1000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('cg cannot name a person from another home',
+  $$INSERT INTO messages (agency_id, home_id, client_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d2000000-0000-0000-0000-000000000000','Cara Giver','Wrong home','c1000000-0000-0000-0000-000000000000')$$, true);
+
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
 SELECT expect('sup cannot rewrite caregiver note content',

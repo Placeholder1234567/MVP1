@@ -181,6 +181,7 @@ const incidents = new Table({
 	staff_action: column.text,
 	medical_followup: column.text,
 	witnesses: column.text,
+	witness_list: column.text,
 	notified_parties: column.text,
 	report_details: column.text,
 	status: column.text,
@@ -245,6 +246,7 @@ const message_reads = new Table({
 const messages = new Table({
 	agency_id: column.text,
 	home_id: column.text,
+	client_id: column.text,
 	from_name: column.text,
 	body: column.text,
 	sent_at: column.text,
