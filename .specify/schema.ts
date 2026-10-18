@@ -1218,6 +1218,9 @@ export const caseNotes = pgTable(
     }),
     author_name: text('author_name'),
     body: text('body').notNull(),
+    // What the note is about (US-15): one of CASE_NOTE_CATEGORIES in
+    // domain/case-notes.ts. Null on notes written before categories existed.
+    category: text('category'),
     created_by: uuid('created_by').references(() => profiles.id, {
       onDelete: 'restrict',
     }),

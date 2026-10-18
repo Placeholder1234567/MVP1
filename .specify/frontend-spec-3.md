@@ -954,6 +954,8 @@ Medication History:
     Reverse chronological
 ```
 
+**As built (US-15):** the form starts with "About" (Care coordination, ISP meeting, Family contact, Other; `CASE_NOTE_CATEGORIES` in `domain/case-notes.ts`, stored in `case_notes.category`), each history row shows its category as a pill, and a "Show" select narrows the loaded history to one kind. Notes written before categories read "Other".
+
 **Person Edit Form (.personForm):**
 
 | Field | Type | Layout |
