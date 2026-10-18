@@ -230,8 +230,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
-| `caseNote.create` | mutation | `{ clientId: uuid, body: string }` | `{ id, clientId, authorName, body, createdAt }` | supervisor | Creates a case management note (distinct from shift/behavior notes). Used for care coordination, ISP meetings, family communication logs. |
-| `caseNote.list` | query | `{ clientId: uuid, limit?: number, offset?: number }` | `Array<{ id, authorName, body, createdAt }>` | supervisor | Returns case notes for a client, newest first. |
+| `caseNote.create` | mutation | `{ clientId: uuid, body: string, category?: 'care_coordination' \| 'isp_meeting' \| 'family_contact' \| 'other' }` (default `'other'`) | `{ id, clientId, authorName, body, category, createdAt }` | supervisor | Creates a case management note (distinct from shift/behavior notes). Used for care coordination, ISP meetings, family communication logs. |
+| `caseNote.list` | query | `{ clientId: uuid, limit?: number, offset?: number }` | `Array<{ id, authorName, body, category, createdAt }>` (`category` is null on notes written before categories) | supervisor | Returns case notes for a client, newest first. |
 
 ### lomi
 

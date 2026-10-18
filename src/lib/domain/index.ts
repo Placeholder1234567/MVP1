@@ -40,4 +40,5 @@ export * from './message-photos';
 export * from './controlled';
 export * from './maintenance';
 export * from './note-review';
+export * from './case-notes';
 export * from './coverage-board';

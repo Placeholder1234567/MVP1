@@ -13,7 +13,15 @@
 	import HealthWatch from '#lib/app/HealthWatch.svelte';
 	import GoalGlance from '#lib/app/GoalGlance.svelte';
 	import { parseJson } from '#lib/app/session.svelte.ts';
-	import { localTime, TREND_SERIES, trendPoints } from '#lib/domain/index.ts';
+	import {
+		CASE_NOTE_CATEGORIES,
+		CASE_NOTE_CATEGORY_LABEL,
+		caseNoteCategoryLabel,
+		localTime,
+		TREND_SERIES,
+		trendPoints,
+		type CaseNoteCategory
+	} from '#lib/domain/index.ts';
 
 	type Note = Awaited<ReturnType<typeof trpc.caseNote.list.query>>[number];
 	const PAGE = 50;
@@ -54,6 +62,12 @@
 
 	let notes = $state<Note[]>([]);
 	let body = $state('');
+	let category = $state<CaseNoteCategory>('care_coordination');
+	// Show one kind of note at a time; '' shows all.
+	let showOnly = $state<CaseNoteCategory | ''>('');
+	const shown = $derived(
+		showOnly ? notes.filter((n) => (n.category ?? 'other') === showOnly) : notes
+	);
 	let busy = $state(false);
 	let loaded = $state(false);
 	let more = $state(false);
@@ -85,7 +99,7 @@
 		busy = true;
 		message = '';
 		try {
-			const created = await trpc.caseNote.create.mutate({ clientId: id, body });
+			const created = await trpc.caseNote.create.mutate({ clientId: id, body, category });
 			notes = [created, ...notes];
 			body = '';
 			message = 'Case note saved.';
@@ -139,6 +153,13 @@
 		</p>
 		<form class="card pad stack" onsubmit={save}>
 			<label
+				>About<select class="input" bind:value={category} disabled={busy}
+					>{#each CASE_NOTE_CATEGORIES as c (c)}<option value={c}
+							>{CASE_NOTE_CATEGORY_LABEL[c]}</option
+						>{/each}</select
+				></label
+			>
+			<label
 				>New case note<textarea
 					class="input"
 					rows="4"
@@ -154,16 +175,27 @@
 		</form>
 		{#if message}<p class="callout" role="status">{message}</p>{/if}
 		{#if !loaded}<Skeleton count={2} label="Loading case notes" />{:else}
+			<label class="filter"
+				>Show<select class="input" bind:value={showOnly}
+					><option value="">All case notes</option>{#each CASE_NOTE_CATEGORIES as c (c)}<option
+							value={c}>{CASE_NOTE_CATEGORY_LABEL[c]}</option
+						>{/each}</select
+				></label
+			>
 			<div class="list card" role="group" aria-label="Case note history">
-				{#each notes as note (note.id)}
+				{#each shown as note (note.id)}
 					<div class="row">
 						<span class="grow"
 							><b>{note.authorName ?? 'Staff'} · {new Date(note.createdAt).toLocaleString()}</b
-							><span class="note-body">{note.body}</span></span
+							><span class="pill">{caseNoteCategoryLabel(note.category)}</span><span
+								class="note-body">{note.body}</span
+							></span
 						>
 					</div>
 				{:else}
-					<div class="row muted">No case notes yet.</div>
+					<div class="row muted">
+						{showOnly ? 'No case notes of this kind loaded.' : 'No case notes yet.'}
+					</div>
 				{/each}
 			</div>
 		{/if}
@@ -180,5 +212,12 @@
 	}
 	.note-body {
 		white-space: pre-wrap;
+	}
+	.grow .pill {
+		align-self: flex-start;
+		margin: 4px 0;
+	}
+	.filter {
+		max-width: 320px;
 	}
 </style>
