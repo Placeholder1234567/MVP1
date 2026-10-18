@@ -8,6 +8,9 @@
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import VitalTrend from '#lib/app/VitalTrend.svelte';
+	import { parseJson } from '#lib/app/session.svelte.ts';
+	import { localTime, TREND_SERIES, trendPoints } from '#lib/domain/index.ts';
 
 	type Note = Awaited<ReturnType<typeof trpc.caseNote.list.query>>[number];
 	const PAGE = 50;
@@ -18,6 +21,30 @@
 	const charting = $derived(
 		((page.data.user?.features ?? []) as readonly string[]).includes('charting')
 	);
+
+	const healthPlan = $derived(
+		((page.data.user?.features ?? []) as readonly string[]).includes('health')
+	);
+	// Vital trends from the entries on this device (30 days of health sync).
+	const trends = $derived.by(() => {
+		const entries = app.health
+			.filter((h) => h.client_id === id && h.kind === 'vitals')
+			.map((h) => ({
+				recorded_at: h.recorded_at,
+				data: parseJson<Record<string, unknown>>(h.data, {})
+			}));
+		return TREND_SERIES.map((series) => ({ series, points: trendPoints(entries, series) })).filter(
+			(t) => t.points.length
+		);
+	});
+	const dayLabel = (iso: string) => {
+		const d = localTime(new Date(iso), app.user.timeZone).day;
+		return new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, {
+			month: 'short',
+			day: 'numeric',
+			timeZone: 'UTC'
+		});
+	};
 
 	let notes = $state<Note[]>([]);
 	let body = $state('');
@@ -77,6 +104,23 @@
 		<a class="btn sec" href={resolve('/(app)/people/[id]', { id })}>Care records</a>
 	</div>
 
+	{#if healthPlan}
+		<h2>Vital trends</h2>
+		{#if trends.length}
+			<p class="muted">
+				Vitals saved on this device (about the last 30 days). Red points are outside the normal
+				range.
+			</p>
+			<div class="trends">
+				{#each trends as t (t.series.key)}<VitalTrend
+						series={t.series}
+						points={t.points}
+						label={dayLabel}
+					/>{/each}
+			</div>
+		{:else}<p class="muted">No vitals recorded in the last 30 days.</p>{/if}
+	{/if}
+
 	{#if !charting}
 		<p class="muted">Case notes are part of the care records plan.</p>
 	{:else}
@@ -119,6 +163,11 @@
 </section>
 
 <style>
+	.trends {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		gap: 12px;
+	}
 	.note-body {
 		white-space: pre-wrap;
 	}
