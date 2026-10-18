@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
-	import { countDue, shiftAt, SHIFTS } from '#lib/domain/index.ts';
+	import { countDue, shiftAt, shiftMinutesLeft, SHIFTS, timeLeftText } from '#lib/domain/index.ts';
 	import ClockPanel from '#lib/app/ClockPanel.svelte';
 	import CoverageOffers from '#lib/app/CoverageOffers.svelte';
 	import InstallPrompt from '#lib/app/InstallPrompt.svelte';
@@ -77,7 +77,12 @@
 		<div class="stack">
 			<p class="eyebrow">A little care, well recorded</p>
 			<h1>Hello, {app.user.name.split(' ')[0]}.</h1>
-			<p class="muted">{shiftName.label} shift · {shiftName.start} to {shiftName.end}</p>
+			<p class="muted">
+				{shiftName.label} shift · {shiftName.start} to {shiftName.end} ·
+				<span data-testid="shift-left"
+					>{timeLeftText(shiftMinutesLeft(now, app.user.timeZone))}</span
+				>
+			</p>
 		</div>
 		<span class="pill">{clock ? 'Clocked in' : 'Not clocked in'}</span>
 	</div>
