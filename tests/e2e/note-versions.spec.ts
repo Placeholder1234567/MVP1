@@ -74,6 +74,14 @@ test('a supervisor compares a resubmitted note with the version they sent back',
 		).toBeVisible();
 		await sign(page, 'Theo ate a full lunch of soup at noon.');
 
+		// Without reloading, the re-signed note can be reviewed again once it syncs.
+		await expect(async () => {
+			await pick();
+			await expect(review.getByRole('button', { name: 'Send back', exact: true })).toBeVisible({
+				timeout: 2000
+			});
+		}).toPass({ timeout: 45000 });
+
 		await review.reload();
 		await review.getByLabel('Device PIN', { exact: true }).fill(PIN);
 		await review.getByRole('button', { name: 'Unlock', exact: true }).click();

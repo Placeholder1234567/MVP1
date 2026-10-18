@@ -45,10 +45,14 @@
 			personName
 		)
 	);
-	/** Notes reviewed on this screen whose new status hasn't synced back yet. */
-	let reviewed = $state<string[]>([]);
-	const awaitingSync = (n: { id: string; status: string | null }) =>
-		n.status === 'submitted' && reviewed.includes(n.id);
+	/**
+	 * Notes reviewed on this screen, with the version reviewed (updated_at). One
+	 * still shows as waiting until sync brings its new status; once the note
+	 * changes (the new status, or the author signing it again) it is reviewable.
+	 */
+	let reviewed = $state<{ id: string; at: string | null }[]>([]);
+	const awaitingSync = (n: { id: string; status: string | null; updated_at: string | null }) =>
+		n.status === 'submitted' && reviewed.some((r) => r.id === n.id && r.at === n.updated_at);
 	const note = $derived(
 		list.find((n) => n.id === selected) ?? list.find((n) => !awaitingSync(n)) ?? list[0]
 	);
@@ -103,7 +107,7 @@
 		}
 	}
 	async function review(action: 'approve' | 'return') {
-		if (!note || busy) return;
+		if (!note || busy || app.privacyLocked) return;
 		if (!app.db?.currentStatus.connected) {
 			message = 'Reconnect to review this note. You can still read it offline.';
 			return;
@@ -116,14 +120,15 @@
 		message = '';
 		try {
 			const done = note.id;
+			const version = note.updated_at;
 			if (action === 'approve') await trpc.note.approve.mutate({ id: done });
 			else await trpc.note.sendBack.mutate({ id: done, comment });
-			reviewed = [...reviewed, done];
+			reviewed = [...reviewed.filter((r) => r.id !== done), { id: done, at: version }];
 			// Approve and next: the next note waiting for review, in list order
 			// (not one already reviewed here whose new status is still syncing).
 			const at = list.findIndex((n) => n.id === done);
 			const waiting = (n: (typeof list)[number]) =>
-				n.status === 'submitted' && !reviewed.includes(n.id);
+				n.status === 'submitted' && n.id !== done && !awaitingSync(n);
 			const next = list.slice(at + 1).find(waiting) ?? list.find(waiting);
 			selected = next?.id ?? '';
 			if (!next) picked = false;
@@ -151,6 +156,8 @@
 		);
 	};
 	function onKey(e: KeyboardEvent) {
+		// Window keys still arrive behind the idle lock (it only makes the page inert).
+		if (app.privacyLocked) return;
 		if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || typing(e.target)) return;
 		const key = e.key.toLowerCase();
 		if (key === 'j' || key === 'k') {
@@ -167,7 +174,7 @@
 			!note ||
 			busy ||
 			note.status !== 'submitted' ||
-			reviewed.includes(note.id) ||
+			awaitingSync(note) ||
 			note.author_id === app.user.profileId
 		)
 			return;
@@ -331,7 +338,7 @@
 									</li>{:else}<li class="muted">No history recorded.</li>{/each}
 							</ol>{/if}
 					</details>{/key}
-				{#if note.status === 'submitted' && !reviewed.includes(note.id)}
+				{#if note.status === 'submitted' && !awaitingSync(note)}
 					<label class="checkline"
 						><input type="checkbox" bind:checked={signature} disabled={busy} />I have read this note
 						and approve this care record.</label
