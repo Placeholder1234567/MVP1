@@ -121,6 +121,7 @@ This is the core charting experience. Every design decision optimizes for this p
 ### Offline behavior
 
 - If offline when the caregiver taps "Done, write my note," the transcript is stored locally and the AI draft is deferred. The caregiver sees: "You're offline. Lomi will write your note when you reconnect, or you can write it yourself now." Two buttons: "Wait for Lomi" (returns to Today, note saved as pending) and "Write it myself" (opens blank review form).
+- **As built:** there is no deferred "Wait for Lomi" draft. Offline, "Prepare a draft" makes the rules-based draft at once (ai-pipeline.md fallback, next point), so the caregiver can review and sign without waiting. A voice recording made offline is kept in the encrypted local database (`pending_recordings`) and transcribed into "Your observations" the next time the composer is open online (frontend-spec-2.md "Offline voice behavior").
 - If the AI call fails (timeout, error), the system falls back to a simple rule-based draft (split transcript into sections by keyword matching) and shows a banner: "Lomi wasn't available, so this draft was sorted by simple rules. Check each section carefully."
 
 ### "Write it myself" path

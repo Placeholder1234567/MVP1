@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
+	KEPT_OFFLINE,
 	MISSING_PART,
 	VoiceCapture,
 	type VoiceDependencies,
@@ -244,5 +245,62 @@ it('a queued stop from an abandoned recording cannot close a newer recording', a
 	expect(f.track.stop).toHaveBeenCalledTimes(stopped);
 	expect(f.deps.state).toHaveBeenLastCalledWith(expect.objectContaining({ recording: true }));
 	expect(f.deps.transcribe).not.toHaveBeenCalled();
+	f.capture.dispose();
+});
+
+it('offline, keeps each part on the device for later instead of losing the recording', async () => {
+	const f = fixture();
+	const kept: [string, string, number][] = [];
+	const deps = f.deps as VoiceDependencies;
+	deps.offline = () => true;
+	deps.keep = async (audio, mime, part) => void kept.push([audio, mime, part]);
+	await f.capture.start(400);
+	f.data();
+	await vi.advanceTimersByTimeAsync(55_000);
+	f.data();
+	f.capture.stop();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(kept).toEqual([
+		['synthetic-audio', 'audio/webm', 0],
+		['synthetic-audio', 'audio/webm', 1]
+	]);
+	expect(f.deps.transcribe).not.toHaveBeenCalled();
+	expect(f.deps.text).not.toHaveBeenCalled();
+	expect(f.deps.state).toHaveBeenLastCalledWith(
+		expect.objectContaining({ busy: false, message: KEPT_OFFLINE })
+	);
+	f.capture.dispose();
+});
+
+it('keeps a part whose upload fails because the connection just dropped', async () => {
+	const f = fixture();
+	let online = true;
+	const deps = f.deps as VoiceDependencies;
+	deps.offline = () => !online;
+	const keep = vi.fn(async () => {});
+	deps.keep = keep;
+	f.deps.transcribe.mockImplementation(async () => {
+		online = false;
+		throw new Error('Network');
+	});
+	await f.capture.start(30);
+	f.data();
+	await vi.advanceTimersByTimeAsync(30_000);
+	expect(keep).toHaveBeenCalledWith('synthetic-audio', 'audio/webm', 0);
+	expect(f.deps.state).toHaveBeenLastCalledWith(expect.objectContaining({ message: KEPT_OFFLINE }));
+	f.capture.dispose();
+});
+
+it('online, a failed transcription is not kept', async () => {
+	const f = fixture();
+	const deps = f.deps as VoiceDependencies;
+	deps.offline = () => false;
+	const keep = vi.fn(async () => {});
+	deps.keep = keep;
+	f.deps.transcribe.mockRejectedValue(new Error('Server'));
+	await f.capture.start(30);
+	f.data();
+	await vi.advanceTimersByTimeAsync(30_000);
+	expect(keep).not.toHaveBeenCalled();
 	f.capture.dispose();
 });

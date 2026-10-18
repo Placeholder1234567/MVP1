@@ -47,10 +47,32 @@ const care_drafts = new Table(
 	},
 	{ localOnly: true }
 );
+/**
+ * Voice recorded offline (frontend-spec-2.md "Offline voice behavior"): each
+ * segment's audio (base64) stays in the encrypted database until it is
+ * transcribed on reconnect, then the rows are deleted. Never uploaded as is.
+ */
+const pending_recordings = new Table(
+	{
+		profile_id: column.text,
+		client_id: column.text,
+		kind: column.text,
+		recording_id: column.text,
+		part: column.integer,
+		mime: column.text,
+		audio: column.text,
+		recorded_at: column.text
+	},
+	{ localOnly: true }
+);
+/** Small per-device flags, e.g. whether Lomi voice is available, so screens look the same offline. */
+const device_flags = new Table({ value: column.text }, { localOnly: true });
 export const DeviceSchema = new Schema({
 	...syncedTables,
 	failed_writes,
 	sync_notices,
 	offline_sessions,
-	care_drafts
+	care_drafts,
+	pending_recordings,
+	device_flags
 });

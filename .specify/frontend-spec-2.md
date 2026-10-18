@@ -1681,6 +1681,7 @@ Total time: 3 minutes. Lomi appears as a 40px lemon in the corner of each step w
 - **Do not use the browser's `SpeechRecognition` / `webkitSpeechRecognition` API.** In Chrome it streams audio to Google's servers (not covered by a BAA, so a PHI leak), and it doesn't work offline anyway.
 - Offline: keep the recording on the device (encrypted local DB) and transcribe it when back online, and show the text input prominently: "Type your note, or keep your recording and Lomi will transcribe it when you're back online." (matches offline-sync.md: "DSP types manually")
 - The "Speak" button is hidden (not disabled with error) when voice is completely unavailable
+- **As built:** offline, each recorded part is saved in the local-only `pending_recordings` table (encrypted with the rest of the device database) and the caregiver sees "You're offline. Your recording is saved on this device, and Lomi will transcribe it when you're back online. You can type in the meantime." The composer counts saved recordings while offline; once online it transcribes them in order, adds the text to "Your observations" (never drafting or signing), and deletes them. A connection that drops mid-upload keeps the part too. Whether voice is available is remembered on the device (`device_flags`), so the mic shows offline. Signing out with an untranscribed recording asks first, since it deletes it.
 
 **Offline AI structuring:**
 

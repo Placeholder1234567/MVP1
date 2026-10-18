@@ -106,3 +106,60 @@ test('a recording longer than 55 seconds is sent in parts and joined in order', 
 	expect(parts).toHaveLength(2);
 	expect(Math.min(...parts)).toBeGreaterThan(0);
 });
+
+test('offline, a recording is kept on the device and transcribed on reconnect', async ({
+	page,
+	context
+}) => {
+	let transcriptions = 0;
+	await page.route(/\/api\/trpc\/lomi\.capabilities(?:\?|$)/, (route) =>
+		route.fulfill({
+			contentType: 'application/json',
+			body: JSON.stringify([{ result: { data: { json: { voice: true } } } }])
+		})
+	);
+	await page.route(/\/api\/trpc\/lomi\.transcribe(?:\?|$)/, async (route) => {
+		transcriptions++;
+		await route.fulfill({
+			contentType: 'application/json',
+			body: JSON.stringify([
+				{ result: { data: { json: { text: 'Synthetic observation recorded offline.' } } } }
+			])
+		});
+	});
+	await page.goto('/login');
+	await page.getByLabel('Email', { exact: true }).fill('cara@guad.test');
+	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
+	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
+	await page.getByLabel('Confirm PIN', { exact: true }).fill('654321');
+	await page.getByRole('button', { name: 'Save PIN and open' }).click();
+	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	await page.getByRole('link', { name: /Rosa Demo/ }).click();
+	await page.getByRole('link', { name: /^Behavior note/ }).click();
+	const observations = page.getByLabel('Your observations', { exact: true });
+	await expect(
+		page.getByRole('button', { name: 'Speak · up to 5 minutes', exact: true })
+	).toBeVisible();
+
+	await context.setOffline(true);
+	try {
+		await page.getByRole('button', { name: 'Speak · up to 5 minutes', exact: true }).click();
+		const stop = page.getByRole('button', { name: 'Stop recording', exact: true });
+		await expect(stop).toBeVisible();
+		await page.waitForTimeout(1100);
+		await stop.click();
+		await expect(
+			page.getByText(/^You’re offline\. Your recording is saved on this device/)
+		).toBeVisible();
+		await expect(page.getByText(/1\s+recording is saved on this device/)).toBeVisible();
+		await expect(observations).toHaveValue('');
+		expect(transcriptions).toBe(0);
+	} finally {
+		await context.setOffline(false);
+	}
+	await expect(observations).toHaveValue('Synthetic observation recorded offline.');
+	await expect(page.getByText(/^Lomi transcribed the recording you saved offline/)).toBeVisible();
+	expect(transcriptions).toBe(1);
+});

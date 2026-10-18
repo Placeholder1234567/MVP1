@@ -8,14 +8,19 @@
 		label,
 		disabled = false,
 		onText,
-		onState
+		onState,
+		saveFor
 	}: {
 		seconds: number;
 		label: string;
 		disabled?: boolean;
 		onText: (text: string) => void;
 		onState?: (state: { recording: boolean; busy: boolean; message: string }) => void;
+		/** Offline, keep the recording for this person and note type (pending_recordings). */
+		saveFor?: { clientId: string; kind: string };
 	} = $props();
+	// Groups the parts of one recording kept offline.
+	let recordingId = crypto.randomUUID();
 	const app = useSession();
 	let voiceState = $state<VoiceState>({
 		recording: false,
@@ -61,6 +66,23 @@
 					})
 				).text,
 			text: (text) => onText(text),
+			offline: () => !!saveFor && !navigator.onLine,
+			keep: async (audio, mime, part) => {
+				if (!saveFor || !app.db) throw new Error('Nowhere to keep it');
+				await app.db.execute(
+					'INSERT INTO pending_recordings (id, profile_id, client_id, kind, recording_id, part, mime, audio, recorded_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)',
+					[
+						app.user.profileId,
+						saveFor.clientId,
+						saveFor.kind,
+						recordingId,
+						part,
+						mime,
+						audio,
+						new Date().toISOString()
+					]
+				);
+			},
 			state: (value) => (voiceState = value),
 			// Long recordings are cut into segments at a pause (voice-capture.ts).
 			listen: (stream) => {
@@ -94,7 +116,10 @@
 	});
 	function speak() {
 		if (voiceState.recording) capture?.stop();
-		else if (!disabled) void capture?.start(seconds);
+		else if (!disabled) {
+			recordingId = crypto.randomUUID();
+			void capture?.start(seconds);
+		}
 	}
 </script>
 
