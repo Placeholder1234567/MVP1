@@ -27,6 +27,7 @@
 	import { clearShellCaches } from '#lib/pwa/cache.ts';
 	import { provideSession } from '#lib/app/session.svelte.ts';
 	import { localTime } from '#lib/domain/time.ts';
+	import { openShiftCount } from '#lib/domain/shifts.ts';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
 	const app = provideSession(untrack(() => data.user));
@@ -182,9 +183,26 @@
 				? app.notes.filter((n) => n.home_id === app.homeId && n.status === 'submitted').length
 				: href === '/messages'
 					? app.unseenMessageCount
-					: 0;
+					: href === '/shifts'
+						? openShiftCount(app.shifts, app.homeId, new Date(), app.user.timeZone)
+						: href === '/dashboard/mar'
+							? app.doses.filter(
+									(d) =>
+										d.home_id === app.homeId &&
+										(d.status === 'refused' || d.status === 'held') &&
+										!d.acknowledged
+								).length
+							: 0;
 	const countWords = (href: string, n: number) =>
-		href === '/messages' ? `${n} unread` : `${n} to review`;
+		href === '/messages'
+			? `${n} unread`
+			: href === '/shifts'
+				? `${n} open ${n === 1 ? 'shift' : 'shifts'}`
+				: href === '/dashboard/mar'
+					? `${n} refused or held to acknowledge`
+					: `${n} to review`;
+	// Red counts: things that need someone (frontend-spec-3.md §3 badge logic).
+	const urgent = (href: string) => href === '/shifts' || href === '/dashboard/mar';
 
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
@@ -406,7 +424,11 @@
 										: undefined}
 									aria-describedby={n ? countId : undefined}
 									>{item.label}{#if needsAttention(item.href)}<span class="dot" aria-hidden="true"
-										></span>{/if}{#if n}<span class="count" aria-hidden="true">{n}</span>{/if}</a
+										></span>{/if}{#if n}<span
+											class="count"
+											class:bad={urgent(item.href)}
+											aria-hidden="true">{n}</span
+										>{/if}</a
 								>{#if n}<span class="sr" id={countId}>{countWords(item.href, n)}</span>{/if}{/each}
 						</div>{/each}
 				</nav>

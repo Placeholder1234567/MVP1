@@ -477,6 +477,11 @@ nav a .count {
 .sidebar nav a[aria-current] .count {
 	background: var(--card);
 }
+nav a .count.bad,
+.sidebar nav a[aria-current] .count.bad {
+	background: var(--bad);
+	color: #fff;
+}
 /* Tab badge (frontend-spec-2.md §3.10): the text says it for screen readers. */
 nav a .dot {
 	display: inline-block;
