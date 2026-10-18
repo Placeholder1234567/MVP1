@@ -5,13 +5,17 @@
 // and doses still unrecorded 30 minutes after their time send med_overdue to
 // the home's supervisors. Alerts name the home only. Each alert references a
 // stable ID made from its type, home, day and dose time, so a home and dose
-// time is alerted once however often the sweep runs.
+// time is alerted once however often the sweep runs. The same sweep asks
+// whoever gave an as-needed dose to record its effect 30 minutes later
+// (prn_followup, referenced by the MAR record, once per dose).
 import { createHash } from 'node:crypto';
 import {
 	addDays,
 	doseAlerts,
 	localTime,
 	OVERDUE_UNTIL_MINUTES,
+	PRN_FOLLOWUP_MINUTES,
+	PRN_FOLLOWUP_UNTIL_MINUTES,
 	shiftAt,
 	type DoseAlert
 } from '../../../domain/index.ts';
@@ -23,6 +27,7 @@ import {
 	assignedCaregivers,
 	doseRecords,
 	homeNamesFor,
+	prnDosesAwaitingEffect,
 	scheduledMeds
 } from './med-reminders.queries';
 
@@ -45,16 +50,42 @@ export function doseAlertId(type: string, d: Pick<DoseAlert, 'homeId' | 'day' | 
 
 export async function sweepMedReminders(
 	now = new Date()
-): Promise<{ due: number; overdue: number }> {
+): Promise<{ due: number; overdue: number; followups: number }> {
 	const agencies = await withService((tx) => agencyClocks(tx));
 	let due = 0;
 	let overdue = 0;
+	let followups = 0;
 	for (const a of agencies) {
 		const sent = await withService((tx) => remindAgency(tx, a.id, a.timeZone, now));
 		due += sent.due;
 		overdue += sent.overdue;
+		followups += await withService((tx) => prnFollowups(tx, a.id, now));
 	}
-	return { due, overdue };
+	return { due, overdue, followups };
+}
+
+/** Asks whoever gave an as-needed dose to record how it worked. */
+export async function prnFollowups(tx: Tx, agencyId: string, now: Date): Promise<number> {
+	const doses = await prnDosesAwaitingEffect(
+		tx,
+		agencyId,
+		minutes(now, -PRN_FOLLOWUP_UNTIL_MINUTES),
+		minutes(now, -PRN_FOLLOWUP_MINUTES)
+	);
+	let sent = 0;
+	for (const d of doses) {
+		if (await alreadySent(tx, agencyId, 'prn_followup', d.id)) continue;
+		await notify(tx, agencyId, [{ id: d.profileId, role: d.role }], {
+			type: 'prn_followup',
+			priority: 3,
+			title: 'A follow-up is due. Tap to record it.',
+			body: 'Record how an as-needed dose worked.',
+			referenceId: d.id,
+			referenceType: 'mar_record'
+		});
+		sent++;
+	}
+	return sent;
 }
 
 export async function remindAgency(

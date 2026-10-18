@@ -396,6 +396,7 @@ Update `notifications.sent_at`
 | `controlled_countersign` | High | Y | N | N | N | None |
 | `med_due_reminder` | Normal | Y | N | N | N | 30 min overdue alert |
 | `med_overdue` | High | Y | N | N | N | None |
+| `prn_followup` | Normal | Y | N | N | N | None (once per as-needed dose, 30 min after it was given, to whoever gave it) |
 | `health_alert` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
 | `incident_reported` | High | Y | Y** | N | Y | Severity-based |
 | `incident_high_severity` | Urgent | Y | Y | N | Y | 15 min, 30 min SMS |
