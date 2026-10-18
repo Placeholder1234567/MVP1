@@ -1566,6 +1566,8 @@ AI-filled sections appear at opacity 0.85 (slightly faded). When the DSP taps in
 | Overnight (11pm-7am) | "Bed routine" "Sleep" "Checks" "Incidents" |
 | Default (no shift / MVP) | "Meals" "Mood" "Goals" "Anything unusual" |
 
+**As built:** the compose screen shows "Try covering:" with these topics under Lomi's prompt (`topicSuggestions()` in `domain/lomi.ts`, ported from the MVP's `.cv-try` tags). Shift notes follow the note's shift; behavior notes show "Before", "What happened", "Your response", "How it ended" as in the MVP. They are reminders only and insert nothing.
+
 ---
 
 ### 6.4 Lomi Brand Presence
