@@ -46,6 +46,11 @@
 		alerts.filter((n) => !unreadOnly || (!n.readAt && !readIds.includes(n.id)))
 	);
 	const unread = $derived(alerts.filter((n) => !n.readAt && !readIds.includes(n.id)));
+	/** A PRN follow-up opens the person's medications, where the effect is recorded. */
+	function followupPerson(alert: Alert) {
+		if (alert.type !== 'prn_followup') return null;
+		return app.doses.find((d) => d.id === alert.referenceId)?.client_id ?? null;
+	}
 	function destination(type: string) {
 		if (type.startsWith('coverage_') || type === 'shift_reminder') return '/(app)/shifts';
 		if (type.startsWith('clock_'))
@@ -132,7 +137,11 @@
 			{#if focused.body}<p class="record-text">{focused.body}</p>{/if}
 			<p class="muted">{focused.createdAt.toLocaleString()}</p>
 			<div class="actions">
-				<a class="btn" href={resolve(destination(focused.type))}>Open related workspace</a
+				<a
+					class="btn"
+					href={followupPerson(focused)
+						? resolve('/(app)/people/[id]/medications', { id: followupPerson(focused)! })
+						: resolve(destination(focused.type))}>Open related workspace</a
 				>{#if !focused.readAt && !readIds.includes(focused.id)}<button
 						class="btn sec"
 						disabled={busy}
@@ -168,7 +177,11 @@
 			{#if alert.body}<p class="record-text">{alert.body}</p>{/if}
 			<p class="muted">{alert.createdAt.toLocaleString()}</p>
 			<div class="actions">
-				<a class="textbtn" href={resolve(destination(alert.type))}>Open related workspace →</a
+				<a
+					class="textbtn"
+					href={followupPerson(alert)
+						? resolve('/(app)/people/[id]/medications', { id: followupPerson(alert)! })
+						: resolve(destination(alert.type))}>Open related workspace →</a
 				>{#if !alert.readAt && !readIds.includes(alert.id)}<button
 						class="btn sec"
 						disabled={busy}

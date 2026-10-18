@@ -234,6 +234,19 @@ export async function respondCoverage(
 		return { id, status: reply === 'accepted' ? ('filled' as const) : ('declined' as const) };
 	});
 }
+/**
+ * Who a coverage request was offered to, why others weren't, and each reply
+ * (coverage.get, US-21). Candidates are never synced to devices, so the
+ * activity log loads them online. The request lookup runs under the caller's
+ * RLS, so supervisors only see requests for homes they can see.
+ */
+export async function coverageDetail(tx: Tx, user: CurrentUser, id: string) {
+	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
+	const row = await q.requestById(tx, user.agencyId, id);
+	if (!row) throw new ServiceError('NOT_FOUND', 'Coverage request not found');
+	const candidates = await q.candidateDetail(tx, user.agencyId, id);
+	return { id: row.id, status: row.status, candidates };
+}
 export const coverageOffers = (tx: Tx, user: CurrentUser) =>
 	q.offeredRequests(tx, user.agencyId, user.profileId);
 export async function coverageTimer(input: { agencyId: string; id: string }, reminder = false) {

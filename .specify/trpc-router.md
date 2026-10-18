@@ -187,7 +187,7 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### coverage
 
-**As built:** the coverage screens read requests, candidates and steps from the synced local database (PowerSync: `coverage_requests`, `coverage_candidates`, `coverage_steps`, offline-sync.md §4), so `coverage.list` and `coverage.get` are not built. `coverage.offers` (query, no input, `coverage` feature) returns the caller's own open offers for the Today screen; accepting and declining still need a connection.
+**As built:** the coverage screens read requests and steps from the synced local database (PowerSync: `coverage_requests`, `coverage_steps`, offline-sync.md §4), so `coverage.list` is not built. Candidates are never synced (offline-sync.md), so `coverage.get` (supervisor, `coverage` feature, online) returns `{ id, status, candidates: Array<{ profileId, name, eligible, reason, reply, repliedAt }> }` for the activity log's "Who was offered"; `reason` is the eligibility code (`ELIGIBILITY_REASON_LABEL` in `domain/eligibility.ts` has the wording) and steps stay on the device. `coverage.offers` (query, no input, `coverage` feature) returns the caller's own open offers for the Today screen; accepting and declining still need a connection.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|

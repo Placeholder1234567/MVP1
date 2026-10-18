@@ -14,7 +14,8 @@ import {
 	applyScheduleSuggestions,
 	startCoverage,
 	respondCoverage,
-	coverageOffers
+	coverageOffers,
+	coverageDetail
 } from '../../services/schedule/index.ts';
 import {
 	acknowledgeClock,
@@ -111,6 +112,9 @@ export const coverageRouter = router({
 		.input(slot.extend({ reason: z.string().trim().max(1000).optional() }))
 		.mutation(({ ctx, input }) => startCoverage(ctx.db, ctx.user, input)),
 	offers: featureProcedure('coverage').query(({ ctx }) => coverageOffers(ctx.db, ctx.user)),
+	get: featureRoleProcedure('coverage', 'supervisor')
+		.input(z.object({ id: z.uuid() }))
+		.query(({ ctx, input }) => coverageDetail(ctx.db, ctx.user, input.id)),
 	accept: featureProcedure('coverage')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(({ ctx, input }) => respondCoverage(ctx.db, ctx.user, input.id, 'accepted')),
