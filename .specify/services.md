@@ -497,7 +497,7 @@ src/lib/server/services/
 
 ### 20. Integration Service
 
-**Responsibility:** The external API (openapi.yaml) for state EVV aggregators, data warehouses and other integrations: agency API keys, EVV visit records and bulk data export. Webhook subscriptions and API report generation belong here too (not built yet).
+**Responsibility:** The external API (openapi.yaml) for state EVV aggregators, data warehouses and other integrations: agency API keys, EVV visit records, bulk data export, webhook subscriptions with signed deliveries (`/api/v1/webhooks`, `integration/webhooks.ts`, SSRF-guarded by `domain/webhooks.ts`) and API report generation (`/api/v1/reports`).
 
 **Owns tables:** `api_keys`, `webhooks`, `webhook_deliveries`, and `report_jobs` for API-requested reports
 
