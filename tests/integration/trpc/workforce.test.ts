@@ -547,3 +547,25 @@ it('suggests eligible staff for open shifts without double-booking, and applies 
 		})
 	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 });
+
+it('a pick for a shift taken since is skipped with its reason and does not block the others', async () => {
+	const supervisor = await as(sam);
+	const week = weekStart(addDays(day, 98));
+	const monday = addDays(week, 1);
+	// After the suggestion, Bea is put on Monday morning by hand.
+	await supervisor.schedule.setSlot({ homeId: oak, day: monday, shift: 'am', profileId: bea });
+	const result = await supervisor.schedule.applySuggestions({
+		homeId: oak,
+		weekStart: week,
+		picks: [
+			{ day: monday, shift: 'am', profileId: eli },
+			{ day: monday, shift: 'pm', profileId: eli }
+		]
+	});
+	expect(result).toEqual({
+		copied: 1,
+		skipped: [{ day: monday, shift: 'am', reason: 'already-assigned' }]
+	});
+	const after = await supervisor.schedule.get({ homeId: oak, weekStart: week });
+	expect(after.slots.find((s) => s.day === monday && s.shift === 'pm')?.assigned_to).toBe(eli);
+});
