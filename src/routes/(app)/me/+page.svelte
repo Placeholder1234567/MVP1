@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	import HelpCard from '#lib/app/HelpCard.svelte';
+	import MyHours from '#lib/app/MyHours.svelte';
 
 	const app = useSession();
 	let error = $state('');
@@ -35,6 +36,7 @@
 		<p><b>Medication certified</b><br />{app.user.medCertified ? 'Yes' : 'No'}</p>
 		<p><b>Time zone</b><br />{app.user.timeZone}</p>
 	</div>
+	{#if app.has('timekeeping')}<MyHours />{/if}
 	<button class="btn sec" onclick={() => app.lock()}>Lock device</button><button
 		class="btn sec"
 		onclick={signOut}>Sign out on all devices</button
