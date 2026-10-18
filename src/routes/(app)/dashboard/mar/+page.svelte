@@ -287,7 +287,7 @@
 	}
 	.mark.given {
 		background: var(--blue);
-		color: #fff;
+		color: var(--ink-inverse);
 	}
 	.mark.refused {
 		background: var(--bad-bg);

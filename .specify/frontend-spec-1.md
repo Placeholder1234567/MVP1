@@ -776,6 +776,8 @@ Dark mode is critical for overnight shifts (11pm-7am), which represent approxima
 | **Dark** | Manual toggle or system preference (`prefers-color-scheme: dark`) | Warm-neutral dark palette. |
 | **Auto** | Time-based or system preference | Suggests dark mode at 8pm via non-blocking toast: "Heading into evening? Switch to dark mode." Requires manual toggle -- never forces. Follows `prefers-color-scheme` if no manual preference set. |
 
+**As built:** the Light / Dark / Auto toggle is in the app bar of the signed-in app (`ThemeToggle.svelte`); Dark sets `data-theme="dark"`, Light sets `data-theme="light"`, and Auto removes the attribute so `prefers-color-scheme` decides. The choice applies at once and is saved with `auth.setTheme` to `user_settings.theme`, which syncs back to the person's other devices. The palette is the MVP's navy one (design-system.md), not the §10.2 warm proposal, which is still unaccepted. Not built yet: the 8pm suggestion toast and Night mode (§10.5). Sign-in and PIN screens follow the device setting, since the saved theme is only known after unlocking.
+
 **Toggle placement:** Three-way toggle (Light / Dark / Auto) in the app bar, accessible with one tap. Not buried in settings. Stored in the user's local preferences (PowerSync `user_settings` table -- not `localStorage`, per CLAUDE.md rules).
 
 **CSS mechanism:** The current `styles.css` uses `data-theme="guad-dark-off"` as the dark mode selector. (Rebuild proposal: rename to `data-theme="dark"` for clarity -- "guad-dark-off" is confusing since it *enables* dark mode.) All color tokens reference CSS custom properties that are overridden in the dark selector.

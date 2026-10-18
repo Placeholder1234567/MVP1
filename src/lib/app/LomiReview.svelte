@@ -375,8 +375,8 @@
 		min-width: 0;
 	}
 	.flagged {
-		background: #ffe9a8;
-		box-shadow: inset 0 -2px 0 #b45a14;
+		background: var(--flag-bg);
+		box-shadow: inset 0 -2px 0 var(--flag-line);
 	}
 	.record-text {
 		overflow-wrap: anywhere;

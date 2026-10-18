@@ -109,7 +109,7 @@
 
 <style>
 	.lomi-panel {
-		border-color: #f2d27a;
+		border-color: var(--lemon-line);
 	}
 	.lemon-orb {
 		display: grid;
