@@ -8,7 +8,7 @@ import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db/index.ts';
 import { pgCode, ServiceError } from '../../errors.ts';
 import type { CurrentUser } from '../../services/auth/index.ts';
-import { createNote, updateNote } from '../../services/charting/index.ts';
+import { createNote, findNoteGoalRow, updateNote } from '../../services/charting/index.ts';
 import { recordCountEntry, recordDose } from '../../services/medication/index.ts';
 import { markRead, sendMessage } from '../../services/message/index.ts';
 import { findAttendanceDay, saveAttendance } from '../../services/attendance/index.ts';
@@ -177,9 +177,18 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 	// Goal trials are rows of their own on the device; on the server they are
 	// part of the note, so they go through the note's update rules.
 	note_goals: {
-		PUT: (tx, user, { data: d = {} }) => saveNoteGoal(tx, user, d!),
-		PATCH: async () => {
-			throw new Reject('NOT_ALLOWED_OFFLINE', 'Re-save the goal with its note.');
+		PUT: (tx, user, { id, data: d = {} }) => saveNoteGoal(tx, user, id, d!),
+		// An edit carries only the changed columns; the row says which note and goal.
+		PATCH: async (tx, user, { id, data: d = {} }) => {
+			const row = await findNoteGoalRow(tx, user.agencyId, id);
+			if (!row) throw new ServiceError('NOT_FOUND', 'Goal entry not found');
+			await saveNoteGoal(tx, user, id, {
+				note_id: row.noteId,
+				goal_id: row.goalId,
+				trials: 'trials' in d! ? d!.trials : (row.trials ?? []),
+				not_attempted: 'not_attempted' in d! ? d!.not_attempted : row.notAttempted ? 1 : 0,
+				reason: 'reason' in d! ? d!.reason : row.reason
+			});
 		}
 	},
 	health_entries: {
@@ -222,7 +231,8 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 	}
 };
 
-async function saveNoteGoal(tx: Tx, user: CurrentUser, d: Record<string, unknown>) {
+async function saveNoteGoal(tx: Tx, user: CurrentUser, id: string, d: Record<string, unknown>) {
+	const goalId = str(d.goal_id)!;
 	await updateNote(
 		tx,
 		user.agencyId,
@@ -231,14 +241,15 @@ async function saveNoteGoal(tx: Tx, user: CurrentUser, d: Record<string, unknown
 		{
 			goals: [
 				{
-					goalId: str(d.goal_id)!,
+					goalId,
 					trials: json(d.trials, []),
 					notAttempted: flag(d.not_attempted),
 					reason: str(d.reason) ?? null
 				}
 			]
 		},
-		{ fromOfflineQueue: true }
+		// Keep the device's row ID so its later edits (PATCH) find this row.
+		{ fromOfflineQueue: true, goalRowIds: { [goalId]: id } }
 	);
 }
 

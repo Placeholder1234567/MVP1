@@ -106,6 +106,9 @@ test('saved goal progress excludes drafts, counts signed trials and preserves st
 		.getByRole('article', { name: 'Stopped goal', exact: true })
 		.filter({ hasText: title });
 	await expect(stopped).toContainText('67% independent');
+	// Signing re-saved the synced draft's trials; the server accepted that edit.
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	await expect(page.getByText(/changes need attention/)).toHaveCount(0);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
 		true
 	);

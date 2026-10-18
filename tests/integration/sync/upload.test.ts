@@ -168,6 +168,67 @@ describe('sync.upload: notes', () => {
 		expect(row.content).toEqual({ activities: 'Walk and lunch' });
 	});
 
+	it('goal trials keep the device row ID, and edits to them (PATCH) are applied by the note rules', async () => {
+		const goal = randomUUID();
+		await withService((t) =>
+			t.insert(s.goals).values({
+				id: goal,
+				agency_id: AGENCY,
+				client_id: OAK_PERSON,
+				home_id: OAK,
+				area: 'Daily living',
+				text: 'Synthetic goal'
+			})
+		);
+		const noteId = randomUUID();
+		const row = randomUUID();
+		const first = await upload(CARA, [
+			{ op: 'PUT', table: 'notes', id: noteId, data: note() },
+			{
+				op: 'PUT',
+				table: 'note_goals',
+				id: row,
+				data: {
+					note_id: noteId,
+					goal_id: goal,
+					trials: JSON.stringify(['Independent']),
+					not_attempted: 0
+				}
+			}
+		]);
+		expect(first.rejected).toEqual([]);
+		// A later edit on the device carries only the changed columns.
+		const edit = await upload(CARA, [
+			{
+				op: 'PATCH',
+				table: 'note_goals',
+				id: row,
+				data: { trials: JSON.stringify(['Independent', 'Refused']), updated_at: 'x' }
+			},
+			{ op: 'PATCH', table: 'notes', id: noteId, data: { status: 'submitted' } }
+		]);
+		expect(edit.rejected).toEqual([]);
+		const rows = await withService((t) =>
+			t.select().from(s.noteGoals).where(eq(s.noteGoals.note_id, noteId))
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ id: row, trials: ['Independent', 'Refused'] });
+		expect(rows[0].not_attempted).toBe(false);
+		// After signing the same edit is refused; someone else can't see the row at all.
+		const late = await upload(CARA, [
+			{ op: 'PATCH', table: 'note_goals', id: row, data: { trials: '[]' } }
+		]);
+		expect(late.rejected.map((r) => r.code)).toEqual(['RULE_VIOLATION']);
+		const other = await upload(DEV, [
+			{ op: 'PATCH', table: 'note_goals', id: row, data: { trials: '[]' } }
+		]);
+		expect(other.rejected.map((r) => r.code)).toEqual(['NOT_FOUND']);
+		const unknown = await upload(CARA, [
+			{ op: 'PATCH', table: 'note_goals', id: randomUUID(), data: { trials: '[]' } }
+		]);
+		expect(unknown.rejected.map((r) => r.code)).toEqual(['NOT_FOUND']);
+	});
+
 	it('a queued sign is refused if the supervisor sent the note back in the meantime', async () => {
 		const id = randomUUID();
 		await upload(CARA, [{ op: 'PUT', table: 'notes', id, data: note({ status: 'submitted' }) }]);
