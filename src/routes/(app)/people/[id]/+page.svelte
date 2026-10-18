@@ -9,6 +9,10 @@
 	const first = $derived(person?.first_name || person?.name?.split(' ')[0] || 'this person');
 	const goals = $derived(app.goals.filter((g) => g.client_id === person?.id && !g.stopped_at));
 	const behaviors = $derived(parseJson<string[]>(person?.behaviors, []));
+	// Recent team messages about this person (frontend-audit.md finding 19).
+	const aboutMessages = $derived(
+		app.messages.filter((m) => person && m.client_id === person.id).slice(0, 5)
+	);
 	const now = shiftAt(new Date(), app.user.timeZone);
 	const note = $derived(
 		app.notes.find(
@@ -132,6 +136,21 @@
 				>{@render chev()}</a
 			>
 		</div>
+
+		{#if aboutMessages.length}<div class="section-title">
+				<h2>Team messages about {first}</h2>
+				<a class="textbtn" href={resolve('/(app)/messages')}>All messages</a>
+			</div>
+			<div class="stack">
+				{#each aboutMessages as m (m.id)}<div class="card pad">
+						<div class="spread">
+							<b>{m.from_name}</b><small class="muted"
+								>{m.sent_at ? new Date(m.sent_at).toLocaleString() : ''}</small
+							>
+						</div>
+						<p class="record-text">{m.body}</p>
+					</div>{/each}
+			</div>{/if}
 
 		<div class="section-title"><h2>{app.labels.goalsNav}</h2></div>
 		{#each goals as goal (goal.id)}<div class="card pad">

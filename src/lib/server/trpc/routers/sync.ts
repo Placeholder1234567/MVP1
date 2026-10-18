@@ -155,6 +155,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 			await sendMessage(tx, user.agencyId, user, {
 				id,
 				homeId: str(d!.home_id)!,
+				clientId: str(d!.client_id) ?? null,
 				body: str(d!.body) ?? '',
 				sentAt: str(d!.sent_at) as unknown as Date | undefined
 			});
@@ -205,6 +206,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				staffAction: str(d!.staff_action),
 				medicalFollowup: str(d!.medical_followup),
 				witnesses: str(d!.witnesses),
+				witnessList: json(d!.witness_list, []),
 				notifiedParties: json(d!.notified_parties, []),
 				reportDetails: json(d!.report_details, {})
 			});

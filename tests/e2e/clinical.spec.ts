@@ -217,6 +217,11 @@ test('incident requires a named signature and local Lomi changes require review 
 	await page
 		.getByLabel('What you did', { exact: true })
 		.fill('Recorded this synthetic workflow for interface verification.');
+	await page.getByRole('button', { name: 'Add a witness', exact: true }).click();
+	await page.getByLabel('Witness 1 name', { exact: true }).fill('Synthetic Witness');
+	await page
+		.getByRole('combobox', { name: 'Witness 1 role', exact: true })
+		.selectOption('Family or visitor');
 	// State-reporting details are optional, but a restraint must be described.
 	await page.getByText('Details for state reporting (optional)', { exact: true }).click();
 	await page

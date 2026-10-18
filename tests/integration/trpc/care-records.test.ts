@@ -695,6 +695,36 @@ describe('incident.*', () => {
 		expect(list[0]).toMatchObject({ type: 'Fall', status: 'reviewed', authorName: 'Cara Giver' });
 	});
 
+	it('keeps each witness’s name and role, with a readable copy', async () => {
+		const r = await (
+			await as(CARA)
+		).incident.create({
+			clientId: PERSON,
+			type: 'Fall',
+			severity: 'Low',
+			occurredAt: new Date(Date.now() - 60_000),
+			description: 'Synthetic fall',
+			witnessList: [
+				{ name: 'Dev Okafor', role: 'Staff' },
+				{ name: '  ', role: 'Staff' },
+				{ name: 'Ann Lee', role: 'Family or visitor' }
+			]
+		});
+		const [row] = await withService((t) =>
+			t
+				.select({ list: s.incidents.witness_list, text: s.incidents.witnesses })
+				.from(s.incidents)
+				.where(eq(s.incidents.id, r.id))
+		);
+		expect(row).toEqual({
+			list: [
+				{ name: 'Dev Okafor', role: 'Staff' },
+				{ name: 'Ann Lee', role: 'Family or visitor' }
+			],
+			text: 'Dev Okafor (Staff); Ann Lee (Family or visitor)'
+		});
+	});
+
 	it('keeps state-reporting details and requires a description of any restraint', async () => {
 		const cara = await as(CARA);
 		const base = {

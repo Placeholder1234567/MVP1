@@ -93,6 +93,10 @@ export const incidentRouter = router({
 				staffAction: z.string().optional(),
 				medicalFollowup: z.string().optional(),
 				witnesses: z.string().optional(),
+				witnessList: z
+					.array(z.object({ name: z.string().max(200), role: z.string().max(50) }))
+					.max(20)
+					.optional(),
 				notifiedParties: z.array(z.string()).optional(),
 				reportDetails: z.record(z.string(), z.unknown()).optional()
 			})

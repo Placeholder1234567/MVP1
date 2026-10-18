@@ -590,6 +590,9 @@ export const incidents = pgTable(
     staff_action: text('staff_action'),
     medical_followup: text('medical_followup'),
     witnesses: text('witnesses'),
+    // Each witness's name and role (domain/incident-details.ts). `witnesses`
+    // keeps a readable copy for exports and older records.
+    witness_list: jsonb('witness_list').notNull().default([]),
     notified_parties: text('notified_parties').array(),
     // Optional details many state IDD reports ask for (frontend-audit.md
     // finding 8): condition now, alone or with staff, restraint, self-injury,
@@ -796,6 +799,9 @@ export const messages = pgTable(
       .references(() => homes.id, { onDelete: 'cascade' }),
     from_name: text('from_name').notNull(),
     body: text('body').notNull(),
+    // The person supported this message is about, if any (frontend-audit.md
+    // finding 19); shown on their page.
+    client_id: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
     sent_at: timestamp('sent_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

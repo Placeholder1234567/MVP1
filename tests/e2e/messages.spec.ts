@@ -37,9 +37,13 @@ test('the author sees who has read a board message, and readers lose the new bad
 	const cara = await signIn(browser, 'cara@guad.test', viewport);
 	await cara.getByRole('link', { name: /^Team messages/ }).click();
 	await cara.getByLabel('Message your team', { exact: true }).fill(text);
+	await cara
+		.getByRole('combobox', { name: 'About (optional)', exact: true })
+		.selectOption({ label: 'Rosa Demo' });
 	await cara.getByRole('button', { name: 'Save message', exact: true }).click();
 	const mine = cara.getByTestId('board').locator('article', { hasText: text });
 	await expect(mine.getByText('Not seen yet', { exact: true })).toBeVisible();
+	await expect(mine.getByRole('link', { name: 'Rosa Demo', exact: true })).toBeVisible();
 	await expect(cara.getByTestId('sync-status')).toHaveText('All changes synced');
 
 	const sam = await signIn(browser, 'supervisor@guad.test', viewport);
@@ -57,4 +61,9 @@ test('the author sees who has read a board message, and readers lose the new bad
 	const axe = await new AxeBuilder({ page: cara }).include('[data-testid="board"]').analyze();
 	expect(axe.violations).toEqual([]);
 	await cara.screenshot({ path: info.outputPath('read-receipts.png'), fullPage: true });
+
+	// The message also shows on the person's page.
+	await mine.getByRole('link', { name: 'Rosa Demo', exact: true }).click();
+	await expect(cara.getByRole('heading', { name: 'Team messages about Rosa' })).toBeVisible();
+	await expect(cara.getByText(text)).toBeVisible();
 });

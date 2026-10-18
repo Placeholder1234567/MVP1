@@ -1,8 +1,11 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { seenBy, seenByLabel, unseenMessages } from '#lib/domain/index.ts';
 	const app = useSession();
 	let draft = $state('');
+	// The person this message is about, if any (shown on their page).
+	let about = $state('');
 	let error = $state('');
 	let busy = $state(false);
 	let visible = $state(typeof document === 'undefined' || document.visibilityState === 'visible');
@@ -39,10 +42,20 @@
 		try {
 			const now = new Date().toISOString();
 			await app.db.execute(
-				'INSERT INTO messages (id, home_id, from_name, body, sent_at, created_by, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?)',
-				[app.homeId, app.user.name, draft.trim(), now, app.user.profileId, now, now]
+				'INSERT INTO messages (id, home_id, client_id, from_name, body, sent_at, created_by, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)',
+				[
+					app.homeId,
+					app.currentPeople.some((p) => p.id === about) ? about : null,
+					app.user.name,
+					draft.trim(),
+					now,
+					app.user.profileId,
+					now,
+					now
+				]
 			);
 			draft = '';
+			about = '';
 		} catch {
 			error = 'Could not save your message. Your text is still here.';
 		} finally {
@@ -60,18 +73,30 @@
 		<label
 			>Message your team<textarea class="input" maxlength="2000" required bind:value={draft}
 			></textarea></label
+		><label
+			>About (optional)<select class="input" bind:value={about}
+				><option value="">Nobody in particular</option>{#each app.currentPeople as p (p.id)}<option
+						value={p.id}>{p.name}</option
+					>{/each}</select
+			></label
 		><button class="btn" disabled={busy || !app.homeId}>Save message</button>
 		<p class="muted">Messages saved offline are sent when you reconnect.</p>
 		{#if error}<p role="alert">{error}</p>{/if}
 	</form>
 	<div data-testid="board" class="stack">
-		{#each messages as message (message.id)}{@const readers = seenBy(message, app.messageReads)}
+		{#each messages as message (message.id)}{@const readers = seenBy(
+				message,
+				app.messageReads
+			)}{@const person = app.people.find((p) => p.id === message.client_id)}
 			<article class="card pad">
 				<div class="spread">
 					<b>{message.from_name}</b><small class="muted"
 						>{message.sent_at ? new Date(message.sent_at).toLocaleString() : ''}</small
 					>
 				</div>
+				{#if person}<p class="s13">
+						About <a href={resolve('/(app)/people/[id]', { id: person.id })}>{person.name}</a>
+					</p>{/if}
 				<p class="record-text">{message.body}</p>
 				{#if message.created_by === app.user.profileId || readers.length}<details class="seen">
 						<summary class="muted s13">{seenByLabel(readers.map((r) => r.name))}</summary>

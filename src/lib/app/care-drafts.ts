@@ -1,4 +1,10 @@
-import { ATTENDANCE_SERVICES, HEALTH_FIELDS, HEALTH_KINDS } from '#lib/domain/index.ts';
+import {
+	ATTENDANCE_SERVICES,
+	HEALTH_FIELDS,
+	HEALTH_KINDS,
+	WITNESS_NAME_MAX,
+	WITNESSES_MAX
+} from '#lib/domain/index.ts';
 
 export type DraftSection = 'health' | 'incident' | 'attendance';
 export type DraftData = Record<string, unknown>;
@@ -78,6 +84,37 @@ export function draftData(section: DraftSection, value: unknown): DraftData | nu
 	)
 		return null;
 	form.told = [...value.form.told];
+	// Added later, so optional: state-reporting details and the witness list.
+	for (const key of [
+		'withStaff',
+		'restraint',
+		'restraintDetail',
+		'selfInjury',
+		'medicationFactor',
+		'environmentFactors',
+		'conditionNow',
+		'correctivePlan'
+	]) {
+		const field = value.form[key];
+		if (typeof field === 'string' && field.length <= 8000) form[key] = field;
+	}
+	const areas = value.form.injuryAreas;
+	if (Array.isArray(areas) && areas.length <= 20 && areas.every((a) => typeof a === 'string'))
+		form.injuryAreas = [...areas];
+	const witnesses = value.form.witnessList;
+	if (
+		Array.isArray(witnesses) &&
+		witnesses.length <= WITNESSES_MAX &&
+		witnesses.every(
+			(w) =>
+				object(w) &&
+				typeof w.name === 'string' &&
+				w.name.length <= WITNESS_NAME_MAX &&
+				typeof w.role === 'string' &&
+				w.role.length <= 50
+		)
+	)
+		form.witnessList = witnesses.map((w) => ({ name: w.name, role: w.role }));
 	return { day: value.day, form, step: [1, 2, 3].includes(Number(value.step)) ? value.step : 1 };
 }
 

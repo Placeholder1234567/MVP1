@@ -114,6 +114,36 @@ it('incident recovery whitelists facts and drops every confirmation flag', () =>
 	expect(data).not.toHaveProperty('done');
 });
 
+it('incident recovery keeps state-reporting details and the witness list', () => {
+	const form = {
+		type: 'Fall',
+		time: '12:00',
+		location: 'Bedroom',
+		description: 'Synthetic',
+		antecedent: '',
+		injured: 'Yes',
+		injuryDetail: '',
+		staffAction: 'Synthetic',
+		medical: 'None needed',
+		witnesses: '',
+		severity: 'Low',
+		told: [],
+		restraint: 'Physical hold',
+		restraintDetail: 'Synthetic hold',
+		injuryAreas: ['Left arm'],
+		witnessList: [{ name: 'Dev Okafor', role: 'Staff', extra: 1 }]
+	};
+	expect(draftData('incident', { day, form, step: 2 })?.form).toMatchObject({
+		restraint: 'Physical hold',
+		restraintDetail: 'Synthetic hold',
+		injuryAreas: ['Left arm'],
+		witnessList: [{ name: 'Dev Okafor', role: 'Staff' }]
+	});
+	expect(
+		draftData('incident', { day, form: { ...form, witnessList: 'nope' }, step: 2 })?.form
+	).not.toHaveProperty('witnessList');
+});
+
 it('does not acknowledge an old write as durable while a newer revision waits', async () => {
 	const { db, execute } = database();
 	let release!: () => void;

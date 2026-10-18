@@ -60,14 +60,12 @@ const note = (data: Record<string, unknown> = {}) => ({
 
 beforeAll(async () => {
 	await withService(async (t) => {
-		await t
-			.insert(s.agencies)
-			.values({
-				id: AGENCY,
-				name: 'Upload Test Agency',
-				subscription_tier: 'complete',
-				slug: `upload-${AGENCY}`
-			});
+		await t.insert(s.agencies).values({
+			id: AGENCY,
+			name: 'Upload Test Agency',
+			subscription_tier: 'complete',
+			slug: `upload-${AGENCY}`
+		});
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }
@@ -371,6 +369,31 @@ describe('sync.upload: messages and everything else', () => {
 			t.select().from(s.messages).where(eq(s.messages.id, id))
 		);
 		expect(row).toMatchObject({ from_name: 'Cara Giver', created_by: CARA, home_id: OAK });
+	});
+
+	it('a message can name a person from the same home only', async () => {
+		const id = randomUUID();
+		const r = await upload(CARA, [
+			{
+				op: 'PUT',
+				table: 'messages',
+				id,
+				data: { home_id: OAK, client_id: OAK_PERSON, body: 'Ate well at lunch' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: randomUUID(),
+				data: { home_id: OAK, client_id: MAPLE_PERSON, body: 'Wrong home' }
+			}
+		]);
+		expect(r.applied).toEqual([id]);
+		expect(r.rejected[0]).toMatchObject({ code: 'VALIDATION_FAILED' });
+		expect(JSON.stringify(r.rejected)).not.toMatch(/Person|Maple/);
+		const [row] = await withService((t) =>
+			t.select().from(s.messages).where(eq(s.messages.id, id))
+		);
+		expect(row.client_id).toBe(OAK_PERSON);
 	});
 
 	it("can't post to another home's board", async () => {

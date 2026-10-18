@@ -107,3 +107,42 @@ export function reportDetailRows(d: ReportDetails): [string, string][] {
 		return [[REPORT_DETAIL_LABELS[k], Array.isArray(v) ? v.join(', ') : v]];
 	});
 }
+
+// ─── Witnesses (frontend-audit.md finding 8: names and roles) ─────────────
+
+export const WITNESS_ROLES = ['Staff', 'Person supported', 'Family or visitor', 'Other'] as const;
+export type WitnessRole = (typeof WITNESS_ROLES)[number];
+export interface Witness {
+	name: string;
+	role: WitnessRole;
+}
+export const WITNESS_NAME_MAX = 100;
+export const WITNESSES_MAX = 10;
+
+/** Witnesses with a name and a known role; blanks and anything else are dropped. */
+export function parseWitnessList(value: unknown): Witness[] {
+	let v = value;
+	if (typeof v === 'string') {
+		try {
+			v = JSON.parse(v);
+		} catch {
+			return [];
+		}
+	}
+	if (!Array.isArray(v)) return [];
+	return v
+		.flatMap((w) => {
+			if (!w || typeof w !== 'object') return [];
+			const r = w as Record<string, unknown>;
+			const name = typeof r.name === 'string' ? r.name.trim().slice(0, WITNESS_NAME_MAX) : '';
+			const role = (WITNESS_ROLES as readonly unknown[]).includes(r.role)
+				? (r.role as WitnessRole)
+				: 'Other';
+			return name ? [{ name, role }] : [];
+		})
+		.slice(0, WITNESSES_MAX);
+}
+
+/** "Dev Okafor (Staff); Ann Lee (Family or visitor)", the readable copy kept in `witnesses`. */
+export const witnessText = (list: readonly Witness[]) =>
+	list.map((w) => `${w.name} (${w.role})`).join('; ');

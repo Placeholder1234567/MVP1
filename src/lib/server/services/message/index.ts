@@ -3,11 +3,14 @@ import { z } from 'zod';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
+import { findVisibleClient } from '../charting/index.ts';
 import { findMessage, insertMessage, insertRead } from './message.queries';
 
 export const NewMessage = z.object({
 	id: z.uuid(),
 	homeId: z.uuid(),
+	/** The person this message is about, if any; must live in this home */
+	clientId: z.uuid().nullish(),
 	body: z.string().trim().min(1, 'Write a message first').max(2000),
 	/** When the caregiver pressed send, possibly offline */
 	sentAt: z.coerce.date().optional()
@@ -24,10 +27,16 @@ export async function sendMessage(
 	if (m.sentAt && m.sentAt.getTime() > Date.now() + 5 * 60_000) {
 		throw new ServiceError('VALIDATION_FAILED', 'The message time is in the future');
 	}
+	if (m.clientId) {
+		const client = await findVisibleClient(tx, agencyId, m.clientId);
+		if (!client || client.homeId !== m.homeId)
+			throw new ServiceError('VALIDATION_FAILED', 'That person is not at this home');
+	}
 	const created = await insertMessage(tx, {
 		id: m.id,
 		agency_id: agencyId,
 		home_id: m.homeId,
+		client_id: m.clientId ?? null,
 		from_name: user.name,
 		body: m.body,
 		sent_at: m.sentAt ?? new Date(),
