@@ -349,5 +349,10 @@ test('a caregiver gives a reason when they can’t make a shift, and the supervi
 	await expect(
 		request.getByRole('listitem').filter({ hasText: 'Cara Giver' }).first()
 	).toContainText('Called out of this shift');
+	// The shift is open again, so the sidebar counts it (desktop sidebar only).
+	if (info.project.name === 'desktop')
+		await expect(
+			page.getByRole('link', { name: 'Schedule', exact: true }).first()
+		).toHaveAccessibleDescription(/^\d+ open shifts?$/);
 	await assignment.selectOption(original);
 });

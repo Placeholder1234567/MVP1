@@ -68,3 +68,28 @@ export function timeLeftText(minutes: number): string {
 	const m = minutes % 60;
 	return [h ? `${h}h` : '', m || !h ? `${m}m` : '', 'left'].filter(Boolean).join(' ');
 }
+
+/**
+ * Open shifts at a home that haven't ended yet (frontend-spec-3.md §3,
+ * "Schedule: open shift count"): slots with nobody assigned.
+ */
+export function openShiftCount(
+	slots: readonly {
+		home_id: string | null;
+		day: string | null;
+		shift: string | null;
+		assigned_to: string | null;
+	}[],
+	homeId: string,
+	at: Date,
+	timeZone: string
+): number {
+	return slots.filter(
+		(s) =>
+			s.home_id === homeId &&
+			!s.assigned_to &&
+			!!s.day &&
+			SHIFTS.some((d) => d.key === s.shift) &&
+			!shiftIsPast(s.day, s.shift as ShiftKey, at, timeZone)
+	).length;
+}
