@@ -48,7 +48,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (!event.locals.user) event.cookies.delete(SESSION_COOKIE, { path: '/' });
 	}
 
-	const response = await resolve(event);
+	// Preload the Figtree file too (SvelteKit's default is JS and CSS only) so
+	// first paint doesn't swap fonts.
+	const response = await resolve(event, { preload: ({ type }) => type !== 'asset' });
 	try {
 		// No caching of anything that might carry client data (security.md).
 		if (event.locals.user) response.headers.set('cache-control', 'private, no-store');

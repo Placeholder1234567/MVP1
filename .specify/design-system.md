@@ -11,7 +11,7 @@
 | `--sans` | `Figtree, 'Segoe UI', system-ui, -apple-system, sans-serif` | All UI text |
 | `--serif` | `Georgia, 'Times New Roman', serif` | Wordmark logo, decorative headings |
 
-Load Figtree from Google Fonts: weights 400, 500, 600, 700.
+Figtree is self-hosted (`src/lib/app/fonts/`): one variable Latin-subset woff2 covering weights 300-900, preloaded on every page. No Google Fonts request.
 
 Base: `font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased`.
 
