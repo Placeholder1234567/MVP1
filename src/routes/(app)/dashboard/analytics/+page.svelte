@@ -5,6 +5,7 @@
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
+	import TrendArrow from '#lib/app/components/TrendArrow.svelte';
 
 	type Weekly = Awaited<ReturnType<typeof trpc.analytics.weekly.query>>;
 	const app = useSession();
@@ -32,11 +33,23 @@
 	const homeName = $derived(app.homes.find((h) => h.id === homeId)?.name ?? 'All homes');
 </script>
 
-{#snippet kpi(label: string, values: (number | null)[], unit = '')}
+<!-- better: whether a rise is good news for this measure (it colours the trend arrow) -->
+{#snippet kpi(
+	label: string,
+	values: (number | null)[],
+	unit = '',
+	better: 'higher' | 'lower' = 'higher'
+)}
 	{@const current = last(values)}
 	{@const max = Math.max(1, ...values.map((v) => v ?? 0))}
 	<article class="card kpi" aria-label={label}>
-		<div class="top"><span class="muted">{label}</span></div>
+		<div class="top">
+			<span class="muted">{label}</span><TrendArrow
+				{values}
+				{label}
+				higherIsBetter={better === 'higher'}
+			/>
+		</div>
 		<span class="num">{current === null ? '—' : `${current}${unit}`}</span>
 		<div
 			class="chart"
@@ -78,24 +91,24 @@
 			<span class="muted">Powered by Lomi</span>
 		</div>
 		<div class="kpis">
-			{@render kpi('Shifts needing cover', data.coverage.needingCover)}
+			{@render kpi('Shifts needing cover', data.coverage.needingCover, '', 'lower')}
 			{@render kpi('Filled', data.coverage.fillRate, '%')}
-			{@render kpi('Average time to fill', data.coverage.avgFillMinutes, ' min')}
+			{@render kpi('Average time to fill', data.coverage.avgFillMinutes, ' min', 'lower')}
 		</div>
 
 		<h2>Documentation</h2>
 		<div class="kpis">
 			{@render kpi('Notes signed', data.documentation.signed)}
 			{@render kpi('Drafted with Lomi', data.documentation.lomiRate, '%')}
-			{@render kpi('Hours to approve', data.documentation.hoursToApprove, ' h')}
-			{@render kpi('Notes sent back', data.documentation.sentBack)}
+			{@render kpi('Hours to approve', data.documentation.hoursToApprove, ' h', 'lower')}
+			{@render kpi('Notes sent back', data.documentation.sentBack, '', 'lower')}
 		</div>
 
 		<h2>Care</h2>
 		<div class="kpis">
 			{@render kpi('Doses given', data.care.dosesGiven)}
-			{@render kpi('Refused or held', data.care.refusedOrHeld)}
-			{@render kpi('Incidents', data.care.incidents)}
+			{@render kpi('Refused or held', data.care.refusedOrHeld, '', 'lower')}
+			{@render kpi('Incidents', data.care.incidents, '', 'lower')}
 			<article class="card kpi" aria-label="Goal progress">
 				<div class="top"><b>Goal progress</b><span class="muted">Independent rate</span></div>
 				{#each data.goalProgress as g (g.goalId)}

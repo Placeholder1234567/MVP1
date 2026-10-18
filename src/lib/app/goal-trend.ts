@@ -70,10 +70,16 @@ export function savedGoalTrend(input: {
 		}
 	}
 	const summary = (source: Record<string, unknown>[]) => goalProgress(source)[0] ?? null;
+	const week2 = addDays(from, 7);
 	return {
 		from,
 		through: input.through,
 		summary: summary(rows),
+		/** Independent percent for the first and second week, for the trend arrow */
+		weeks: [
+			summary(rows.filter((row) => (row.day as string) < week2))?.independentPercent ?? null,
+			summary(rows.filter((row) => (row.day as string) >= week2))?.independentPercent ?? null
+		] as [number | null, number | null],
 		unreadableRecords,
 		days: Array.from({ length: 14 }, (_, index) => {
 			const day = addDays(from, index);
