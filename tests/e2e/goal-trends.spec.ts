@@ -79,6 +79,25 @@ test('saved goal progress excludes drafts, counts signed trials and preserves st
 		accessibility.violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) }))
 	).toEqual([]);
 	await context.setOffline(false);
+	// The person page lists every active goal at a glance from the same saved notes.
+	await page.evaluate(() => {
+		const a = document.createElement('a');
+		a.href = '/dashboard/people';
+		document.body.append(a);
+		a.click();
+		a.remove();
+	});
+	await page
+		.getByRole('link', { name: new RegExp(person) })
+		.first()
+		.click();
+	const glance = page
+		.getByRole('region', { name: 'Goals at a glance', exact: true })
+		.getByRole('listitem')
+		.filter({ hasText: title });
+	await expect(glance.getByRole('img', { name: '67% independent', exact: true })).toBeVisible();
+	await expect(glance).toContainText('2 of 3 trials independent');
+	await goals();
 	const confirmStop = page.waitForEvent('dialog').then((dialog) => dialog.accept());
 	await active.getByRole('button', { name: 'Stop goal', exact: true }).click();
 	await confirmStop;

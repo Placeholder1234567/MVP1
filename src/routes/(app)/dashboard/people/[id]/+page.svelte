@@ -11,6 +11,7 @@
 	import Skeleton from '#lib/app/Skeleton.svelte';
 	import VitalTrend from '#lib/app/VitalTrend.svelte';
 	import HealthWatch from '#lib/app/HealthWatch.svelte';
+	import GoalGlance from '#lib/app/GoalGlance.svelte';
 	import { parseJson } from '#lib/app/session.svelte.ts';
 	import { localTime, TREND_SERIES, trendPoints } from '#lib/domain/index.ts';
 
@@ -24,6 +25,9 @@
 		((page.data.user?.features ?? []) as readonly string[]).includes('charting')
 	);
 
+	const goalsPlan = $derived(
+		((page.data.user?.features ?? []) as readonly string[]).includes('goals')
+	);
 	const healthPlan = $derived(
 		((page.data.user?.features ?? []) as readonly string[]).includes('health')
 	);
@@ -105,6 +109,8 @@
 		</div>
 		<a class="btn sec" href={resolve('/(app)/people/[id]', { id })}>Care records</a>
 	</div>
+
+	{#if goalsPlan && person?.home_id}<GoalGlance clientId={id} homeId={person.home_id} />{/if}
 
 	{#if healthPlan}
 		<HealthWatch clientId={id} />
