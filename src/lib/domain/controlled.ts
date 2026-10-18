@@ -43,7 +43,7 @@ export interface ControlledRules {
 	countersignHours: number;
 }
 
-export const STATE_CODES = ['MN', 'CA', 'NY', 'NJ', 'other'] as const;
+export const STATE_CODES = ['CA', 'FL', 'MA', 'MN', 'NJ', 'NY', 'OH', 'PA', 'other'] as const;
 export type StateCode = (typeof STATE_CODES)[number];
 
 const ALL_WITNESSED: Record<CountKind, boolean> = {
@@ -105,6 +105,50 @@ export const STATE_PRESETS: Record<
 			countersignHours: 24
 		},
 		note: 'N.J.A.C. 10:44A: staff keep keys for accountability checks; DDD asks that controlled medications be double-locked and accounted for.'
+	},
+	MA: {
+		label: 'Massachusetts',
+		rules: {
+			state: 'MA',
+			countEvery: 'shift',
+			witness: ALL_WITNESSED,
+			witnessQualification: 'med_certified',
+			countersignHours: 24
+		},
+		note: 'MAP Policy 10-3: count whenever the medication key changes hands; a one-person count needs a two-person count within 24 hours. Disposal by two certified or licensed staff, one a supervisor.'
+	},
+	FL: {
+		label: 'Florida',
+		rules: {
+			state: 'FL',
+			countEvery: 'shift',
+			witness: ALL_WITNESSED,
+			witnessQualification: 'any_staff',
+			countersignHours: 24
+		},
+		note: 'Rule 65G-7.007: controlled medications double-locked and counted each shift (APD form 65G-7.007 B); destruction signed before a third-party witness (form A).'
+	},
+	PA: {
+		label: 'Pennsylvania',
+		rules: {
+			state: 'PA',
+			countEvery: 'shift',
+			witness: ALL_WITNESSED,
+			witnessQualification: 'med_certified',
+			countersignHours: 24
+		},
+		note: '55 Pa. Code §6100.463: prescription medications kept locked; counts and disposal follow your medication administration policy.'
+	},
+	OH: {
+		label: 'Ohio',
+		rules: {
+			state: 'OH',
+			countEvery: 'shift',
+			witness: ALL_WITNESSED,
+			witnessQualification: 'med_certified',
+			countersignHours: 24
+		},
+		note: 'OAC 5123-6: medications given by DODD-certified staff; counts and disposal follow your medication administration policy.'
 	},
 	other: {
 		label: 'Another state',
