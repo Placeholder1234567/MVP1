@@ -49,3 +49,22 @@ export function shiftAt(at: Date, timeZone: string): { shift: ShiftKey; day: str
 	const day = shift === 'on' && lt.hour < 7 ? addDays(lt.day, -1) : lt.day;
 	return { shift, day };
 }
+
+/**
+ * Wall-clock minutes left in the shift running at `at` (frontend-spec-2.md
+ * §1 greeting countdown, "4h 23m left"). Counted on the clock face, so a
+ * daylight-saving change during an overnight shift is off by an hour.
+ */
+export function shiftMinutesLeft(at: Date, timeZone: string): number {
+	const shift = SHIFTS.find((s) => s.key === shiftAt(at, timeZone).shift)!;
+	const [h, m] = shift.end.split(':').map(Number);
+	const t = localTime(at, timeZone);
+	return (h * 60 + m - (t.hour * 60 + t.minute) + 1440) % 1440 || 1440;
+}
+
+/** 263 -> "4h 23m left", 240 -> "4h left", 45 -> "45m left". */
+export function timeLeftText(minutes: number): string {
+	const h = Math.floor(minutes / 60);
+	const m = minutes % 60;
+	return [h ? `${h}h` : '', m || !h ? `${m}m` : '', 'left'].filter(Boolean).join(' ');
+}
