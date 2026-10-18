@@ -14,6 +14,7 @@ export * from './note-lifecycle';
 export * from './geo';
 export * from './vitals';
 export * from './eligibility';
+export * from './schedule-suggest';
 export * from './charting';
 export * from './notifications';
 export * from './clinical';

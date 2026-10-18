@@ -229,7 +229,7 @@ src/lib/server/services/
 - `fillShift(agencyId, coverageRequestId, filledById): CoverageRequest` — mark shift as filled, update schedule slot, notify family.
 - `getCoverageStatus(agencyId, coverageRequestId): CoverageRequest` — full coverage request with candidates and step log.
 - `getMyShifts(agencyId, profileId, weekStart?, weeks?): ScheduleSlot[]` — returns the caller's own scheduled shifts. Defaults to current week, up to 4 weeks ahead.
-- `copyScheduleWeek()`, `saveScheduleTemplate()`, `applyScheduleTemplate()`, `listScheduleTemplates()`, `deleteScheduleTemplate()` — fill a week's open slots from another week or from a saved template (a home's usual week by weekday, up to 20 per home); each copy goes through the `setSlot` checks (frontend-audit.md finding 17).
+- `copyScheduleWeek()`, `saveScheduleTemplate()`, `applyScheduleTemplate()`, `listScheduleTemplates()`, `deleteScheduleTemplate()` — fill a week's open slots from another week, from a saved template, or from reviewed suggestions (`suggestScheduleWeek()` / `applyScheduleSuggestions()`, the coverage eligibility checks) (a home's usual week by weekday, up to 20 per home); each copy goes through the `setSlot` checks (frontend-audit.md finding 17).
 
 **Depends on:**
 - Auth (staff home assignments, availability)

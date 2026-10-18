@@ -4,6 +4,7 @@ import {
 	planWeekCopy,
 	shiftAt,
 	shiftIsPast,
+	suggestShifts,
 	templateFromWeek,
 	templateToWeek,
 	TEMPLATE_NAME_MAX,
@@ -27,7 +28,7 @@ import {
 	weekSlots
 } from './schedule.queries';
 import { settleCoverage } from './coverage';
-import { requestById } from './coverage.queries';
+import { eligibilityData, requestById } from './coverage.queries';
 export {
 	startCoverage,
 	searchCoverage,
@@ -156,6 +157,60 @@ async function managedHome(tx: Tx, user: CurrentUser, homeId: string) {
 	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
 	if (!(await scheduleHome(tx, user.agencyId, homeId)))
 		throw new ServiceError('NOT_FOUND', 'Home not found');
+}
+
+/**
+ * Suggested staff for the week's open shifts (frontend-audit.md finding 17,
+ * fix 2), with the coverage eligibility checks. Nothing is assigned here.
+ */
+export async function suggestScheduleWeek(
+	tx: Tx,
+	user: CurrentUser,
+	input: { homeId: string; weekStart: string }
+) {
+	await managedHome(tx, user, input.homeId);
+	const now = new Date();
+	const slots = await weekOf(tx, user.agencyId, input.homeId, input.weekStart);
+	const data = await eligibilityData(tx, user.agencyId, {
+		homeId: input.homeId,
+		day: input.weekStart,
+		shift: 'am'
+	});
+	const open = [];
+	for (let d = 0; d < 7; d++) {
+		const day = addDays(input.weekStart, d);
+		for (const shift of ['am', 'pm', 'on'] as const) {
+			const slot = slots.find((x) => x.day === day && x.shift === shift);
+			if (slot?.assignedTo || slot?.status === 'filling') continue;
+			if (shiftIsPast(day, shift, now, user.timeZone) || startedNow(day, shift, now, user.timeZone))
+				continue;
+			open.push({ day, shift, doseTimes: data.doseTimes });
+		}
+	}
+	return suggestShifts(open, data.staff, data.scheduled, input.homeId);
+}
+
+/** Applies the suggestions a supervisor kept, with the same checks as copying a week. */
+export async function applyScheduleSuggestions(
+	tx: Tx,
+	user: CurrentUser,
+	input: {
+		homeId: string;
+		weekStart: string;
+		picks: { day: string; shift: 'am' | 'pm' | 'on'; profileId: string }[];
+	}
+) {
+	await managedHome(tx, user, input.homeId);
+	const last = addDays(input.weekStart, 6);
+	if (input.picks.some((p) => p.day < input.weekStart || p.day > last))
+		throw new ServiceError('VALIDATION_FAILED', 'Suggestions must be for the week shown');
+	const source = input.picks.map((p) => ({
+		day: p.day,
+		shift: p.shift,
+		assignedTo: p.profileId,
+		status: 'filled'
+	}));
+	return fillOpenSlots(tx, user, input.homeId, source, input.weekStart, input.weekStart);
 }
 
 /** The home's saved weeks (frontend-audit.md finding 17), by name. */
