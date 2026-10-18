@@ -3,6 +3,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import GoalTrend from '#lib/app/GoalTrend.svelte';
 	const app = useSession();
 	type Goal = Awaited<ReturnType<typeof trpc.goal.list.query>>[number];
 	type Template = Awaited<ReturnType<typeof trpc.goal.listTemplates.query>>[number];
@@ -303,6 +304,7 @@
 				{#if goal.steps?.length}<ol>
 						{#each goal.steps as step, i (`${goal.id}:${i}`)}<li>{step}</li>{/each}
 					</ol>{/if}
+				<GoalTrend clientId={personId} {homeId} goalId={goal.id} />
 				<div class="actions">
 					<button class="btn sec" disabled={busy} onclick={() => editGoal(goal)}>Edit goal</button
 					><button class="textbtn" disabled={busy} onclick={() => stopGoal(goal)}>Stop goal</button>
@@ -387,6 +389,7 @@
 							Stopped {goal.stoppedAt?.toLocaleString()}. This definition is read-only; recorded
 							trials remain in history.
 						</p>
+						<GoalTrend clientId={personId} {homeId} goalId={goal.id} />
 						{#if goal.steps?.length}<ol>
 								{#each goal.steps as step, i (`${goal.id}:${i}`)}<li>{step}</li>{/each}
 							</ol>{/if}
