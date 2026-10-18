@@ -1,6 +1,11 @@
 // Incident Service (services.md): incident reports (GER in the Therap preset).
 import { z } from 'zod';
-import { INCIDENT_TYPES, incidentNotifyRules } from '../../../domain/index.ts';
+import {
+	INCIDENT_TYPES,
+	incidentNotifyRules,
+	parseReportDetails,
+	reportDetailsError
+} from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -31,7 +36,9 @@ export const NewIncident = z.object({
 	staffAction: text(),
 	medicalFollowup: text(),
 	witnesses: text(500),
-	notifiedParties: z.array(z.string().trim().max(100)).max(20).default([])
+	notifiedParties: z.array(z.string().trim().max(100)).max(20).default([]),
+	/** Optional state-reporting details; unknown fields and values are dropped. */
+	reportDetails: z.unknown().optional().transform(parseReportDetails)
 });
 
 /**
@@ -49,6 +56,8 @@ export async function createIncident(
 	if (i.occurredAt.getTime() > Date.now() + 5 * 60_000) {
 		throw new ServiceError('VALIDATION_FAILED', 'The incident time is in the future');
 	}
+	const detailsError = reportDetailsError(i.reportDetails);
+	if (detailsError) throw new ServiceError('VALIDATION_FAILED', detailsError);
 	const client = await findVisibleClient(tx, agencyId, i.clientId);
 	if (!client) throw new ServiceError('NOT_FOUND', 'That person is not in your homes');
 	const row = await insertIncident(tx, {
@@ -69,7 +78,8 @@ export async function createIncident(
 		staff_action: i.staffAction ?? null,
 		medical_followup: i.medicalFollowup ?? null,
 		witnesses: i.witnesses ?? null,
-		notified_parties: i.notifiedParties
+		notified_parties: i.notifiedParties,
+		report_details: i.reportDetails
 	});
 	if (row) {
 		const high = i.severity === 'High';

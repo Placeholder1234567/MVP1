@@ -34,14 +34,12 @@ const as = async (profileId: string) =>
 
 beforeAll(async () => {
 	await withService(async (t) => {
-		await t
-			.insert(s.agencies)
-			.values({
-				id: AGENCY,
-				name: 'Care Test Agency',
-				subscription_tier: 'complete',
-				slug: `care-${AGENCY}`
-			});
+		await t.insert(s.agencies).values({
+			id: AGENCY,
+			name: 'Care Test Agency',
+			subscription_tier: 'complete',
+			slug: `care-${AGENCY}`
+		});
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }
@@ -405,15 +403,13 @@ describe('mar.* and medication.list', () => {
 		const cara = await as(CARA);
 		const medicationId = randomUUID();
 		await withService((tx) =>
-			tx
-				.insert(s.medications)
-				.values({
-					id: medicationId,
-					agency_id: AGENCY,
-					client_id: PERSON,
-					name: 'Synthetic scheduled medication',
-					scheduled_times: ['12:00']
-				})
+			tx.insert(s.medications).values({
+				id: medicationId,
+				agency_id: AGENCY,
+				client_id: PERSON,
+				name: 'Synthetic scheduled medication',
+				scheduled_times: ['12:00']
+			})
 		);
 		const original = await cara.mar.record({
 			clientId: PERSON,
@@ -521,14 +517,12 @@ describe('mar.* and medication.list', () => {
 		const sam = await as(SAM);
 		const medicationId = randomUUID();
 		await withService((tx) =>
-			tx
-				.insert(s.medications)
-				.values({
-					id: medicationId,
-					agency_id: AGENCY,
-					client_id: MAPLE_PERSON,
-					name: 'Synthetic as-needed medication'
-				})
+			tx.insert(s.medications).values({
+				id: medicationId,
+				agency_id: AGENCY,
+				client_id: MAPLE_PERSON,
+				name: 'Synthetic as-needed medication'
+			})
 		);
 		const original = await sam.mar.record({
 			clientId: MAPLE_PERSON,
@@ -700,6 +694,37 @@ describe('incident.*', () => {
 		const list = await (await as(CARA)).incident.list({ clientId: PERSON });
 		expect(list[0]).toMatchObject({ type: 'Fall', status: 'reviewed', authorName: 'Cara Giver' });
 	});
+
+	it('keeps state-reporting details and requires a description of any restraint', async () => {
+		const cara = await as(CARA);
+		const base = {
+			clientId: PERSON,
+			type: 'Behavior with harm' as const,
+			severity: 'Low' as const,
+			occurredAt: new Date(Date.now() - 60_000),
+			description: 'Upset at dinner'
+		};
+		await expect(
+			cara.incident.create({ ...base, reportDetails: { restraint: 'Physical hold' } })
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		const r = await cara.incident.create({
+			...base,
+			reportDetails: {
+				restraint: 'Physical hold',
+				restraintDetail: 'Two-person escort, 1 minute',
+				injuryAreas: ['Left arm', 'Tail'],
+				withStaff: 'Sometimes'
+			}
+		});
+		const [row] = await withService((t) =>
+			t.select({ d: s.incidents.report_details }).from(s.incidents).where(eq(s.incidents.id, r.id))
+		);
+		expect(row.d).toEqual({
+			restraint: 'Physical hold',
+			restraintDetail: 'Two-person escort, 1 minute',
+			injuryAreas: ['Left arm']
+		});
+	});
 });
 
 describe('attendance.*', () => {
@@ -762,7 +787,8 @@ describe('sync.upload for the new tables', () => {
 						severity: 'Low',
 						occurred_at: new Date().toISOString(),
 						description: 'Lost a shoe',
-						notified_parties: '[]'
+						notified_parties: '[]',
+						report_details: '{"withStaff":"Alone","bogus":1}'
 					}
 				},
 				{
@@ -781,6 +807,13 @@ describe('sync.upload for the new tables', () => {
 		});
 		expect(r.rejected).toEqual([]);
 		expect(r.applied).toHaveLength(4);
+		const [filed] = await withService((t) =>
+			t
+				.select({ d: s.incidents.report_details })
+				.from(s.incidents)
+				.where(eq(s.incidents.id, incident))
+		);
+		expect(filed.d).toEqual({ withStaff: 'Alone' });
 		expect((await cara.note.get({ id: note.id })).goals[0].trials).toEqual(['Model']);
 		expect(
 			(await cara.health.list({ clientId: PERSON })).find((h) => h.id === health)?.flags

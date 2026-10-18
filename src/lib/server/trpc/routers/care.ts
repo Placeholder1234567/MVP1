@@ -93,7 +93,8 @@ export const incidentRouter = router({
 				staffAction: z.string().optional(),
 				medicalFollowup: z.string().optional(),
 				witnesses: z.string().optional(),
-				notifiedParties: z.array(z.string()).optional()
+				notifiedParties: z.array(z.string()).optional(),
+				reportDetails: z.record(z.string(), z.unknown()).optional()
 			})
 		)
 		.mutation(({ ctx, input }) =>

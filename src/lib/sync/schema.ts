@@ -161,6 +161,7 @@ const incidents = new Table({
 	medical_followup: column.text,
 	witnesses: column.text,
 	notified_parties: column.text,
+	report_details: column.text,
 	status: column.text,
 	followup_notes: column.text,
 	created_by: column.text,

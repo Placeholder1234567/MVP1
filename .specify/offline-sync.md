@@ -353,7 +353,7 @@ streams:
   incidents:
     auto_subscribe: true
     query: >-
-      SELECT id, agency_id, client_id, home_id, author_id, author_name, type, severity, occurred_at, location, description, antecedent, injured, injury_detail, staff_action, medical_followup, witnesses, notified_parties, status, followup_notes, created_by, created_at, updated_at FROM incidents
+      SELECT id, agency_id, client_id, home_id, author_id, author_name, type, severity, occurred_at, location, description, antecedent, injured, injury_detail, staff_action, medical_followup, witnesses, notified_parties, report_details, status, followup_notes, created_by, created_at, updated_at FROM incidents
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true AND agency_id IN (SELECT p.agency_id FROM profiles p, json_each(p.plan_features) AS f WHERE p.auth_uid = auth.user_id() AND p.active = true AND f.value = 'incidents')
   mar_records:
     auto_subscribe: true

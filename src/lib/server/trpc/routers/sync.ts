@@ -181,7 +181,8 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				staffAction: str(d!.staff_action),
 				medicalFollowup: str(d!.medical_followup),
 				witnesses: str(d!.witnesses),
-				notifiedParties: json(d!.notified_parties, [])
+				notifiedParties: json(d!.notified_parties, []),
+				reportDetails: json(d!.report_details, {})
 			});
 		}
 	},

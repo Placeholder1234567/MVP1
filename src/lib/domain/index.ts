@@ -28,3 +28,4 @@ export * from './theme';
 export * from './mar-grid';
 export * from './vital-trend';
 export * from './webhooks';
+export * from './incident-details';
