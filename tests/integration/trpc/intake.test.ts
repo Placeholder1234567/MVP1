@@ -145,6 +145,14 @@ it('requires acceptance and prevents direct placement or reopening', async () =>
 		name: 'Synthetic Without Room'
 	});
 	expect(result.clientId).toBeTruthy();
+	// Admitted like any new person: initials and a first name for the app and Lomi.
+	const [person] = await withService((tx) =>
+		tx
+			.select({ initials: s.clients.initials, firstName: s.clients.first_name })
+			.from(s.clients)
+			.where(eq(s.clients.id, result.clientId))
+	);
+	expect(person).toEqual({ initials: 'SR', firstName: 'Synthetic' });
 	await expect(api.updateReferral({ id: row.id, status: 'accepted' })).rejects.toMatchObject({
 		code: 'CONFLICT'
 	});
