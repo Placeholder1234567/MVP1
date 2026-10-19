@@ -79,20 +79,41 @@
 				The server did not accept these. Try one again if what blocked it has changed, or discard
 				it. Keep this device unlocked while you review them.
 			</p>
-			<ul class="list">
-				{#each app.failed as f (f.id)}<li class="row">
-						<span class="grow">
-							<b>{failedLabel(f.table_name)}</b>
-							<span class="muted s13">{when(f.failed_at)} · {f.message}</span>
+			<ul class="failed">
+				{#each app.failed as f (f.id)}<li>
+						<b>{failedLabel(f.table_name)}</b>
+						<span class="s13">{when(f.failed_at)} · {f.message}</span>
+						<span class="actions">
+							<button class="btn sec" disabled={busy !== ''} onclick={() => retry(f)}
+								>Try again</button
+							>
+							<button class="btn sec" disabled={busy !== ''} onclick={() => discard(f)}
+								>Discard</button
+							>
 						</span>
-						<button class="btn sec" disabled={busy !== ''} onclick={() => retry(f)}
-							>Try again</button
-						>
-						<button class="btn sec" disabled={busy !== ''} onclick={() => discard(f)}
-							>Discard</button
-						>
 					</li>{/each}
 			</ul>
 		{/if}
 		{#if status}<p class="s13" role="status">{status}</p>{/if}
 	</div>{/if}
+
+<style>
+	.failed {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.failed li {
+		display: grid;
+		gap: 4px;
+		padding: 10px 0;
+		border-top: 1px solid currentColor;
+		border-top-color: color-mix(in srgb, currentColor 20%, transparent);
+	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 4px;
+	}
+</style>
