@@ -119,3 +119,17 @@ export function activeUidsWithRoles(tx: Tx, agencyId: string, roles: string[]) {
 			)
 		);
 }
+
+/**
+ * Whether any profile, in any agency, uses this sign-in. Only for telling an
+ * orphaned sign-in (left by an invite whose transaction rolled back) from a
+ * real one; nothing about the other profile is returned.
+ */
+export async function signInInUse(tx: Tx, authUid: string) {
+	const [row] = await tx
+		.select({ id: profiles.id })
+		.from(profiles)
+		.where(eq(profiles.auth_uid, authUid))
+		.limit(1);
+	return !!row;
+}
