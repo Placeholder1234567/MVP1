@@ -61,7 +61,14 @@ export async function setEventStatus(
 // ─── Daily digest (notifications.md §2.16, §7) ──────────────────────────────
 
 export function agencyClocks(tx: Tx) {
-	return tx.select({ id: agencies.id, timeZone: agencies.timezone }).from(agencies);
+	return tx
+		.select({
+			id: agencies.id,
+			timeZone: agencies.timezone,
+			tier: agencies.subscription_tier,
+			enabledFeatures: agencies.enabled_features
+		})
+		.from(agencies);
 }
 
 export function digestRecipients(tx: Tx, agencyId: string) {

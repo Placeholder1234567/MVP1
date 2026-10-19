@@ -216,3 +216,41 @@ it('asks whoever gave an as-needed dose to record its effect 30 minutes later, o
 		}
 	]);
 });
+
+it('skips someone still on the schedule who no longer works at the home', async () => {
+	const moved = randomUUID();
+	const nextDay = '2026-03-11';
+	await withService(async (tx) => {
+		await tx.insert(s.profiles).values({
+			id: moved,
+			agency_id: agency,
+			auth_uid: `medrem-${moved}`,
+			email: `${moved}@example.test`,
+			name: 'Synthetic Staff',
+			role: 'caregiver',
+			home_ids: []
+		});
+		await tx.insert(s.scheduleSlots).values([
+			{
+				agency_id: agency,
+				home_id: oak,
+				day: DAY,
+				shift: 'on',
+				assigned_to: carer,
+				status: 'filled'
+			},
+			{
+				agency_id: agency,
+				home_id: oak,
+				day: nextDay,
+				shift: 'am',
+				assigned_to: moved,
+				status: 'filled'
+			}
+		]);
+	});
+	expect(await sweep(new Date(`${nextDay}T06:45:00Z`))).toMatchObject({ due: 1 });
+	const id = doseAlertId('med_due_reminder', { homeId: oak, day: nextDay, time: '07:10' });
+	const rows = (await inbox('med_due_reminder')).filter((r) => r.referenceId === id);
+	expect(rows.map((r) => r.profileId)).toEqual([carer]);
+});
