@@ -2203,6 +2203,8 @@ When the service worker detects a new version is available (via `updatefound` ev
 - "Not now" dismisses; do not re-ask for 30 days
 - If browser permission denied: "Notifications are blocked. To enable them, go to your browser settings." with a link to instructions
 
+**As built:** `PushAsk.svelte` (rules in `domain/push-ask.ts`). "3+ days" counts distinct days the app was opened on this device (`device_flags.use-days`, local only), not sessions. The sheet appears only where push can work (configured for the deployment and the agency, supported by the browser) and while the browser's permission is still undecided; "Not now" is remembered on the device (`push-ask-dismissed`) for 30 days. The reasons follow the role (caregivers: coverage offers, notes sent back, medications due; supervisors and admins: unfilled shifts, notes to review, incidents and health readings). When the browser blocks it, the sheet links to Me → Notifications.
+
 **HIPAA constraints on notification content:**
 
 | Notification type | Lock screen text | In-app text |
