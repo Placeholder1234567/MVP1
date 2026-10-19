@@ -16,6 +16,8 @@
 	type Person = Awaited<ReturnType<typeof trpc.client.list.query>>[number];
 	const app = useSession();
 	const isAdmin = $derived(app.user.role === 'admin');
+	// Health details are charting data (entitlements.md): hidden without it.
+	const charting = $derived(app.has('charting'));
 
 	let people = $state<Person[]>([]);
 	let showArchived = $state(false);
@@ -131,14 +133,14 @@
 					info: orNull(form.info),
 					behaviors: behaviorList()
 				});
-				await trpc.client.updateHealth.mutate({ clientId: editing, ...health() });
+				if (charting) await trpc.client.updateHealth.mutate({ clientId: editing, ...health() });
 			} else {
 				await trpc.client.create.mutate({
 					name: form.name,
 					homeId: form.homeId,
 					info: form.info.trim() || undefined,
 					behaviors: behaviorList(),
-					healthInfo: health()
+					healthInfo: charting ? health() : undefined
 				});
 			}
 			message = 'Saved.';
@@ -203,26 +205,27 @@
 						rows="3"
 						bind:value={form.info}></textarea></label
 				>
-				<div class="grid2">
-					<label>Date of birth<input class="input" type="date" bind:value={form.dob} /></label>
+				{#if charting}<div class="grid2">
+						<label>Date of birth<input class="input" type="date" bind:value={form.dob} /></label>
+						<label
+							>Allergies<input class="input" maxlength="2000" bind:value={form.allergies} /></label
+						>
+					</div>
 					<label
-						>Allergies<input class="input" maxlength="2000" bind:value={form.allergies} /></label
+						>Conditions<input class="input" maxlength="2000" bind:value={form.conditions} /></label
 					>
-				</div>
-				<label
-					>Conditions<input class="input" maxlength="2000" bind:value={form.conditions} /></label
-				>
-				<label>Diet<input class="input" maxlength="2000" bind:value={form.diet} /></label>
-				<div class="grid2">
-					<label>Doctor<input class="input" maxlength="500" bind:value={form.doctor} /></label>
-					<label
-						>Guardian or contact<input
-							class="input"
-							maxlength="500"
-							bind:value={form.guardian}
-						/></label
-					>
-				</div>
+					<label>Diet<input class="input" maxlength="2000" bind:value={form.diet} /></label>
+					<div class="grid2">
+						<label>Doctor<input class="input" maxlength="500" bind:value={form.doctor} /></label>
+						<label
+							>Guardian or contact<input
+								class="input"
+								maxlength="500"
+								bind:value={form.guardian}
+							/></label
+						>
+					</div>
+				{/if}
 				<label
 					>Behaviors in support plan<input
 						class="input"
@@ -230,36 +233,36 @@
 						bind:value={form.behaviors}
 					/></label
 				>
-				<fieldset class="stack">
-					<legend>Vital alert limits</legend>
-					<p class="muted s13">
-						For a nurse or supervisor to set this person's own normal range. Readings outside it
-						alert supervisors. Leave a box blank to use the default shown.
-					</p>
-					{#each VITAL_LIMIT_PAIRS as p (p.lo)}<div class="grid2">
-							<label
-								>{p.label}, low ({p.unit})<input
-									class="input"
-									type="number"
-									step="any"
-									min={p.min}
-									max={p.max}
-									placeholder={String(VITAL_LIMITS[p.lo])}
-									bind:value={form.limits[p.lo]}
-								/></label
-							><label
-								>{p.label}, high ({p.unit})<input
-									class="input"
-									type="number"
-									step="any"
-									min={p.min}
-									max={p.max}
-									placeholder={String(VITAL_LIMITS[p.hi])}
-									bind:value={form.limits[p.hi]}
-								/></label
-							>
-						</div>{/each}
-				</fieldset>
+				{#if charting}<fieldset class="stack">
+						<legend>Vital alert limits</legend>
+						<p class="muted s13">
+							For a nurse or supervisor to set this person's own normal range. Readings outside it
+							alert supervisors. Leave a box blank to use the default shown.
+						</p>
+						{#each VITAL_LIMIT_PAIRS as p (p.lo)}<div class="grid2">
+								<label
+									>{p.label}, low ({p.unit})<input
+										class="input"
+										type="number"
+										step="any"
+										min={p.min}
+										max={p.max}
+										placeholder={String(VITAL_LIMITS[p.lo])}
+										bind:value={form.limits[p.lo]}
+									/></label
+								><label
+									>{p.label}, high ({p.unit})<input
+										class="input"
+										type="number"
+										step="any"
+										min={p.min}
+										max={p.max}
+										placeholder={String(VITAL_LIMITS[p.hi])}
+										bind:value={form.limits[p.hi]}
+									/></label
+								>
+							</div>{/each}
+					</fieldset>{/if}
 				<div class="actions">
 					<button class="btn">Save</button>
 					<button type="button" class="btn sec" onclick={() => (editing = null)}>Cancel</button>
