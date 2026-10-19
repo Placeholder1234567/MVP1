@@ -717,6 +717,17 @@ describe('incident.*', () => {
 			priority: 1,
 			title: 'High-severity incident reported'
 		});
+		// Lomi tells the home's board, without the person's name (frontend-spec-2.md §3.6).
+		const board = await withService((t) =>
+			t
+				.select({ body: s.messages.body, createdBy: s.messages.created_by })
+				.from(s.messages)
+				.where(and(eq(s.messages.home_id, OAK), eq(s.messages.from_name, 'Lomi')))
+		);
+		expect(board).toContainEqual({
+			body: 'Cara reported an incident (fall, high severity). A supervisor will follow up.',
+			createdBy: null
+		});
 
 		const sam = await as(SAM);
 		await sam.incident.markNotified({ id: r.id, party: 'guardian' });

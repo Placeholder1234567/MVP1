@@ -918,6 +918,8 @@ On blur: if value is out of range, field border turns `var(--bad)`, helper text 
 
 **Post-submit:** Lomi posts to the home's team messages: "[DSP name] reported an incident ([type], [severity] severity). A supervisor will follow up." Success screen with green checkmark.
 
+**As built:** `incidentBoardText()` (domain/charting.ts), posted by `createIncident` once per new report, online or synced; reporter's first name, no person's name. Suspected abuse or neglect, suspected exploitation and death are never announced on the board (`UNANNOUNCED_INCIDENT_TYPES`): the report may concern a coworker who reads it, reporters are kept confidential, and a death is told by a supervisor.
+
 **Auto-save (Rebuild target -- not in MVP):** All wizard state persists to PowerSync local DB on every input change (debounced 500ms). On return to the wizard after interruption, restore saved state. Show "Draft saved [timestamp]" indicator at bottom of form. *(Note: IndexedDB/localStorage must NOT be used for PHI-containing data per the project constitution. PowerSync OPFS is the only permitted client-side PHI cache.)*
 
 ---
