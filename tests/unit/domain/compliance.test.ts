@@ -88,3 +88,22 @@ describe('incidentReviewPart', () => {
 		).toEqual({ done: 1, of: 3 });
 	});
 });
+
+describe('incidentReviewPart with reviewed_at', () => {
+	it('measures the first review, not later edits', () => {
+		expect(
+			incidentReviewPart(
+				[
+					{
+						created_at: '2026-10-15T08:00:00Z',
+						reviewed_at: '2026-10-15T10:00:00Z',
+						updated_at: '2026-10-17T09:00:00Z', // follow-up notes edited later
+						status: 'reviewed'
+					}
+				],
+				new Date('2026-10-11T00:00:00Z'),
+				new Date('2026-10-18T12:00:00Z')
+			)
+		).toEqual({ done: 1, of: 1 });
+	});
+});

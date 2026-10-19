@@ -8,9 +8,11 @@
 	const app = useSession();
 	// Who each request was offered to; candidates aren't synced, so this loads online.
 	let details = $state<Record<string, Detail | 'loading' | 'failed'>>({});
+	// Fetched again each time it is opened, so new replies show; the last
+	// answer stays on screen while the new one loads.
 	async function loadDetail(id: string) {
-		if (details[id] && details[id] !== 'failed') return;
-		details[id] = 'loading';
+		if (details[id] === 'loading') return;
+		if (!details[id] || details[id] === 'failed') details[id] = 'loading';
 		try {
 			details[id] = await trpc.coverage.get.query({ id });
 		} catch {

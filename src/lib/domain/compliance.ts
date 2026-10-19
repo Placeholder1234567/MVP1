@@ -76,13 +76,15 @@ export function shiftNotesPart(
 /**
  * Incidents reported since `since`, and how many were reviewed within the
  * review deadline (INCIDENT_REVIEW_AFTER_HOURS after they were reported).
- * Open incidents still inside the deadline are not counted yet. A reviewed
- * incident's last change is taken as its review time.
+ * Open incidents still inside the deadline are not counted yet. The review
+ * time is reviewed_at (the first review); incidents reviewed before that was
+ * recorded fall back to their last change.
  */
 export function incidentReviewPart(
 	incidents: readonly {
 		created_at: string | null;
 		updated_at: string | null;
+		reviewed_at?: string | null;
 		status: string | null;
 	}[],
 	since: Date,
@@ -100,7 +102,8 @@ export function incidentReviewPart(
 			continue;
 		}
 		of++;
-		const reviewed = i.updated_at ? Date.parse(i.updated_at) : NaN;
+		const reviewedAt = i.reviewed_at ?? i.updated_at;
+		const reviewed = reviewedAt ? Date.parse(reviewedAt) : NaN;
 		if (Number.isFinite(reviewed) && reviewed <= due) done++;
 	}
 	return { done, of };

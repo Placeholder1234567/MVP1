@@ -135,7 +135,14 @@ export async function reviewIncident(
 ) {
 	supervisorsOnly(user);
 	const notes = z.string().trim().min(1, 'Add follow-up notes').max(8000).parse(followupNotes);
-	const row = await updateIncident(tx, agencyId, id, { followup_notes: notes, status: 'reviewed' });
+	const before = await findIncident(tx, agencyId, id);
+	if (!before) throw new ServiceError('NOT_FOUND', 'Incident not found');
+	const row = await updateIncident(tx, agencyId, id, {
+		followup_notes: notes,
+		status: 'reviewed',
+		// The first review only: the compliance score measures time to review.
+		...(before.reviewed_at ? {} : { reviewed_at: new Date() })
+	});
 	if (!row) throw new ServiceError('NOT_FOUND', 'Incident not found');
 	return { followupNotes: notes, status: row.status, updatedAt: row.updatedAt };
 }

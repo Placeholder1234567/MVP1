@@ -59,7 +59,7 @@ export async function updateIncident(
 	tx: Tx,
 	agencyId: string,
 	id: string,
-	set: Partial<Pick<typeof incidents.$inferInsert, 'followup_notes' | 'status'>>
+	set: Partial<Pick<typeof incidents.$inferInsert, 'followup_notes' | 'status' | 'reviewed_at'>>
 ) {
 	const [row] = await tx
 		.update(incidents)

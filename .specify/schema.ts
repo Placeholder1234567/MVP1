@@ -600,6 +600,10 @@ export const incidents = pgTable(
     // Shape and allowed values: src/lib/domain/incident-details.ts.
     report_details: jsonb('report_details').notNull().default({}),
     status: incidentStatusEnum('status').notNull().default('open'),
+    // When a supervisor first reviewed it (incident.review); later edits to
+    // the follow-up notes don't move it. Null while open, and on incidents
+    // reviewed before this column existed.
+    reviewed_at: timestamp('reviewed_at', { withTimezone: true }),
     followup_notes: text('followup_notes'),
     created_by: uuid('created_by').references(() => profiles.id, {
       onDelete: 'restrict',

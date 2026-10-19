@@ -6,6 +6,7 @@
 		compliance,
 		dailyCompliance,
 		dosesDue,
+		localInstant,
 		localTime,
 		marGrid
 	} from '#lib/domain/index.ts';
@@ -96,7 +97,7 @@
 			app.has('mar') ? { done: weekScore.given, of: weekScore.due } : { done: 0, of: 0 },
 			incidentReviewPart(
 				app.incidents.filter((i) => i.home_id === app.homeId),
-				new Date(`${week[0]}T00:00:00Z`),
+				localInstant(week[0], '00:00', app.user.timeZone),
 				new Date()
 			)
 		)
