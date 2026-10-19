@@ -1,5 +1,5 @@
 {
-  "id": "f55b62c5-94c2-4784-94ac-a8ccf57d5cd4",
+  "id": "39721302-7494-41ea-9d91-4380602124e5",
   "prevId": "55ec3731-6fd1-47ec-8ce0-dbc632d17e17",
   "version": "7",
   "dialect": "postgresql",
@@ -1962,7 +1962,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "coverage_requests_called_out_by_profiles_id_fk": {
@@ -3337,12 +3337,6 @@
           "notNull": true,
           "default": 150
         },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4514,7 +4508,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "message_photos_uploaded_by_profiles_id_fk": {
@@ -4684,7 +4678,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "message_reads_message_id_messages_id_fk": {
@@ -4870,7 +4864,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "messages_client_id_clients_id_fk": {
@@ -6707,7 +6701,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "rooms_occupied_by_clients_id_fk": {
@@ -6919,7 +6913,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "schedule_slots_assigned_to_profiles_id_fk": {
@@ -7061,7 +7055,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "schedule_templates_created_by_profiles_id_fk": {
@@ -7798,6 +7792,9 @@
         "Left without staff",
         "Behavior with harm",
         "Property damage",
+        "Suspected abuse or neglect",
+        "Suspected exploitation",
+        "Death",
         "Other"
       ]
     },

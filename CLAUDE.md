@@ -85,6 +85,7 @@ Read `.specify/` for full specs. Key files:
 | `.specify/competitive-research.md` | IDD competitor market research |
 | `.specify/therap-research.md` | Deep competitive intel on TherapServices.net |
 | `.specify/AGENTS.md` | Detailed agent instructions, patterns, domain constants |
+| `.specify/research/` | Legal and industry research behind open decisions (incident deadlines, passwords, deactivation, home archive, signup and BAA, placement, staff location, AI suggestions, report tiers). Not legal advice; `[verify]` items need counsel |
 
 ## Rules
 
@@ -172,6 +173,7 @@ PUBLIC_FIREBASE_AUTH_DOMAIN=
 PUBLIC_FIREBASE_PROJECT_ID=
 FIREBASE_AUTH_EMULATOR_HOST=     # Local dev only, e.g. 127.0.0.1:9099 (also turns MFA enforcement off: no TOTP in the emulator)
 MFA_ENFORCE=                     # "off" only before Identity Platform TOTP is enabled; never with real data
+PWNED_PASSWORDS=                 # on | off: breached-password check on /set-password (default on; off with the Auth emulator)
 
 # AI (server-only)
 VERTEX_REGION=                   # Region serving Claude on Vertex AI (or "global")

@@ -6,6 +6,7 @@
 	import { untrack } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import {
+		ABUSE_HOTLINE_MAX,
 		DEFAULT_INCIDENT_RULES,
 		INCIDENT_TYPES,
 		RULE_HOURS_MAX,
@@ -130,6 +131,15 @@
 				/></label
 			>
 		</fieldset>
+		<label
+			>Abuse, neglect and exploitation hotline (shown to staff with those incident types, e.g. your
+			state's APS number)<input
+				class="input"
+				maxlength={ABUSE_HOTLINE_MAX}
+				placeholder="e.g. Adult Protective Services 1-800-…"
+				bind:value={rules.abuseHotline}
+			/></label
+		>
 		{#if error}<p role="alert" class="callout bad">{error}</p>{/if}
 		{#if message}<p role="status" class="callout">{message}</p>{/if}
 		<div class="actions">

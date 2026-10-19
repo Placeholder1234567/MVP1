@@ -74,6 +74,11 @@ export const photoUploads = new RateLimiter({ capacity: 30, refillPerSecond: 30 
 export const signInsByIp = new RateLimiter({ capacity: 20, refillPerSecond: 20 / 60 });
 
 /** openapi.yaml "Rate Limits": 30 a minute per API key, 60 an hour for bulk export. */
+/** Password-reset emails: per IP and per address, so no inbox is flooded. */
+export const resetsByIp = new RateLimiter({ capacity: 5, refillPerSecond: 5 / 900 });
+export const resetsByEmail = new RateLimiter({ capacity: 3, refillPerSecond: 3 / 3600 });
+/** Set-password attempts per IP (each one may call the breach check). */
+export const passwordSetsByIp = new RateLimiter({ capacity: 10, refillPerSecond: 10 / 900 });
 export const apiRequests = new RateLimiter({ capacity: 30, refillPerSecond: 30 / 60 });
 export const apiExports = new RateLimiter({ capacity: 60, refillPerSecond: 60 / 3600 });
 

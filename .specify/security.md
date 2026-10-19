@@ -66,14 +66,16 @@ MFA is implemented with Identity Platform's TOTP multi-factor. SMS codes are not
 
 ### Password Requirements
 
-- Minimum 10 characters.
-- At least one uppercase, one lowercase, one digit.
-- Enforced by Identity Platform's password policy (set to "enforce", so non-compliant passwords are rejected at sign-up and change).
-- Checked against the HaveIBeenPwned breached-password API (k-anonymity model, no plaintext sent).
-- Password history: last 5 passwords cannot be reused.
-- Forced rotation: none (NIST 800-63B guidance). Rotation forced only on suspected compromise.
+Follows NIST SP 800-63B-4 (July 2025), which HHS treats as a recognized security practice. Research and sources: research/compliance-2026-10.md §2.
 
-**Implementation note:** Identity Platform doesn't check breached passwords or password history natively. Both need password changes to go through a server endpoint (check HaveIBeenPwned with k-anonymity, compare against hashed history in a `password_history` table, then call the Admin SDK `updateUser`). They are post-launch hardening items.
+- Minimum **15 characters**, maximum 128, any characters (spaces and emoji count as one character each). 15 because some roles sign in with a password alone; NIST allows 8 only when MFA is required. A few words with spaces work well.
+- **No character-type rules** (upper/lower/digit/symbol). NIST 800-63B-4 says verifiers SHALL NOT impose them.
+- Rejected if it contains the email's name part, or is one character repeated.
+- **Checked against known breached passwords** with the Have I Been Pwned range API: only the first 5 hex characters of the password's SHA-1 leave the server, with response padding. No PHI or user identifier is sent, so no BAA is needed (`src/lib/server/pwned.ts`). Fails open after 2 seconds and logs that the check was skipped (never the password). Off against the local emulator; `PWNED_PASSWORDS=on|off` overrides.
+- No forced rotation. Rotation is forced only on evidence of compromise.
+- No password history (NIST doesn't require it).
+
+**As built:** passwords are set only on Guad's own `/set-password` page, never on Identity Platform's hosted handler. Invite and "Forgot password?" emails link there with Identity Platform's one-time reset code (`identity.ts passwordSetupLink`). The server checks the rules and the breach list, then sets the password through Identity Platform's `accounts:resetPassword` and revokes the account's other sessions. Guad never stores or logs the password. "Forgot password?" answers the same whether or not the address has an account, sends in the background, is rate limited per IP and per address, and builds links from `APP_URL`, never the request's Host header. Identity Platform's own password policy is set to "Require", length only (15), as a second check.
 
 ---
 
@@ -306,6 +308,7 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 | **Google Cloud** | Cloud Run, Cloud SQL, Identity Platform, Vertex AI (Claude), Speech-to-Text, Cloud Storage, Cloud Tasks, Secret Manager, Cloud Logging | Yes — all PHI at rest, auth, the caregiver's transcript and audio, plus the client's first name and goal text in AI prompts. No last names, DOBs, IDs, diagnoses list or guardian info are added to prompts by Guad (ai-pipeline.md PHI Minimization). | Required. Free; accepted in the Cloud console for the organization. Covers only the products on Google's HIPAA covered-products list: **confirm the Claude model and region on Vertex AI are listed.** **Must be accepted before any real client data.** |
 | **AWS** | SES (email), End User Messaging (SMS) | Minimal — message bodies contain no client names or health data (shift times and links only). | Required (belt-and-suspenders). Free; accepted in AWS Artifact. |
 | **Google (Firebase Cloud Messaging)** | Push notification delivery | No — by design. Push payloads carry only a generic title ("Guad: Action needed"), a notification ID and a deep link. The app fetches details after the user opens it and signs in. Incident types, client names and medication details are never in a push payload. | Not required while payloads stay PHI-free. If any PHI is ever added to push payloads, FCM is not BAA-covered and must not be used. |
+| **Have I Been Pwned (Pwned Passwords range API)** | Breached-password check when a password is set | No. Only the first 5 hex characters of the password's SHA-1, with no user identifier, from the server. | Not required: no PHI is sent. Can be replaced by a self-hosted copy of the corpus if an agency wants no outside call. |
 | **PowerSync** (Open Edition, self-hosted) | Offline sync engine | Runs inside our Google Cloud project; PowerSync (the company) never receives data | Not required: no data reaches the vendor. Required only if we move to PowerSync Cloud. |
 
 ### BAA Checklist Before Production

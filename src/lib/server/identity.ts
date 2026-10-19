@@ -160,8 +160,82 @@ export async function createIdentity(user: NewIdentity): Promise<string> {
 }
 
 /** Link the invite email points to, where the user sets a password. */
-export async function passwordSetupLink(email: string, continueUrl: string): Promise<string> {
-	return auth().generatePasswordResetLink(email, { url: continueUrl });
+/**
+ * A link to Guad's own set-password page (/set-password) for this account,
+ * carrying Identity Platform's one-time reset code. Passwords are set there,
+ * not on the hosted handler, so the server can check them first (NIST
+ * 800-63B-4 breached-password check). The code expires in an hour.
+ */
+export async function passwordSetupLink(email: string, appUrl: string): Promise<string> {
+	const hosted = new URL(await auth().generatePasswordResetLink(email));
+	const code = hosted.searchParams.get('oobCode');
+	if (!code) throw new Error('Identity Platform returned a link without a code');
+	const link = new URL('/set-password', appUrl);
+	link.searchParams.set('code', code);
+	return link.toString();
+}
+
+/** null when the account has no usable sign-in (unknown or disabled). */
+export async function activeIdentityByEmail(email: string): Promise<{ uid: string } | null> {
+	try {
+		const user = await auth().getUserByEmail(email);
+		return user.disabled ? null : { uid: user.uid };
+	} catch {
+		return null;
+	}
+}
+
+export class ResetCodeError extends Error {
+	constructor(public readonly code: 'expired' | 'invalid' | 'disabled' | 'weak') {
+		super(`Password reset failed: ${code}`);
+	}
+}
+
+/**
+ * Identity Platform's resetPassword REST call, made from the server. With no
+ * new password it only checks the code and returns the account's email;
+ * with one it sets the password and uses up the code.
+ */
+async function resetPassword(
+	apiKey: string,
+	oobCode: string,
+	newPassword?: string
+): Promise<{ email: string }> {
+	const host = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+	const base = host
+		? `http://${host}/identitytoolkit.googleapis.com/v1`
+		: 'https://identitytoolkit.googleapis.com/v1';
+	const res = await fetch(`${base}/accounts:resetPassword?key=${encodeURIComponent(apiKey)}`, {
+		method: 'POST',
+		headers: {
+			'content-type': 'application/json',
+			// The web API key may be limited to the app's own pages (HTTP referrers).
+			...(process.env.APP_URL ? { referer: `${process.env.APP_URL}/` } : {})
+		},
+		body: JSON.stringify(newPassword ? { oobCode, newPassword } : { oobCode }),
+		signal: AbortSignal.timeout(10_000)
+	});
+	const body = (await res.json().catch(() => ({}))) as {
+		email?: string;
+		error?: { message?: string };
+	};
+	if (res.ok && body.email) return { email: body.email };
+	const reason = body.error?.message ?? '';
+	if (reason.startsWith('EXPIRED_OOB_CODE')) throw new ResetCodeError('expired');
+	if (reason.startsWith('USER_DISABLED')) throw new ResetCodeError('disabled');
+	if (reason.startsWith('WEAK_PASSWORD') || reason.startsWith('PASSWORD_DOES_NOT_MEET'))
+		throw new ResetCodeError('weak');
+	throw new ResetCodeError('invalid');
+}
+
+export const checkResetCode = (apiKey: string, oobCode: string) => resetPassword(apiKey, oobCode);
+
+/** Sets the password, then signs the account out everywhere else. */
+export async function setPasswordWithCode(apiKey: string, oobCode: string, password: string) {
+	const { email } = await resetPassword(apiKey, oobCode, password);
+	const user = await auth().getUserByEmail(email);
+	await auth().revokeRefreshTokens(user.uid);
+	return { email };
 }
 
 /** Reactivation: the account can sign in again (old sessions stay revoked). */

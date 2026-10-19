@@ -456,7 +456,7 @@ When the AI is processing, the entire compose screen is replaced by:
 - **Progress bar.** Horizontal bar showing completion (33% / 67% / 100%).
 
 **Step 1: What happened**
-- **What kind of incident?** Choice group (wrap-flow buttons): Fall, Injury, Seizure, Medication error, Left without staff, Behavior with harm, Property damage, Other.
+- **What kind of incident?** Choice group (wrap-flow buttons): Fall, Injury, Seizure, Medication error, Left without staff, Behavior with harm, Property damage, Suspected abuse or neglect, Suspected exploitation, Death, Other.
 - **Time and Location.** 2-column grid: Time (time input), Where (select: Bedroom, Bathroom, Kitchen, Living room, Outside, Community, Vehicle, Other).
 - **What happened.** Textarea, placeholder: "Describe only what you saw or heard."
 - **What happened right before.** Textarea for antecedent documentation.

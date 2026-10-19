@@ -3,11 +3,30 @@ import {
 	exportPayroll,
 	PayrollExport,
 	exportClinical,
-	ClinicalExport
+	ClinicalExport,
+	BackgroundRequest,
+	BackgroundId,
+	BackgroundRecent,
+	requestBackground,
+	backgroundStatus,
+	recentBackground,
+	downloadBackground
 } from '../../services/report/index.ts';
 import { featureRoleProcedure, router } from '../middleware.ts';
 
 export const reportRouter = router({
+	recentBackground: featureRoleProcedure('reports', 'supervisor')
+		.input(BackgroundRecent)
+		.mutation(({ ctx, input }) => recentBackground(ctx.db, ctx.user, input)),
+	requestBackground: featureRoleProcedure('reports', 'supervisor')
+		.input(BackgroundRequest)
+		.mutation(({ ctx, input }) => requestBackground(ctx.db, ctx.user, input)),
+	backgroundStatus: featureRoleProcedure('reports', 'supervisor')
+		.input(BackgroundId)
+		.mutation(({ ctx, input }) => backgroundStatus(ctx.db, ctx.user, input)),
+	downloadBackground: featureRoleProcedure('reports', 'supervisor')
+		.input(BackgroundId)
+		.mutation(({ ctx, input }) => downloadBackground(ctx.db, ctx.user, input, ctx.request)),
 	exportClinical: featureRoleProcedure('reports', 'supervisor')
 		.input(ClinicalExport)
 		.mutation(({ ctx, input }) => exportClinical(ctx.db, ctx.user, input, ctx.request)),

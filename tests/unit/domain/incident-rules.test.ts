@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_INCIDENT_RULES,
 	incidentNotifyRules,
+	mandatedReportNotice,
 	parseIncidentRules
 } from '../../../src/lib/domain/charting';
 import { missingNotifications, overdueContacts } from '../../../src/lib/domain/clinical';
@@ -99,5 +100,28 @@ describe('overdueContacts', () => {
 			}
 		]);
 		expect(parseIncidentRules({ incident_rules: { guardianHours: 0.5 } }).guardianHours).toBe(24);
+	});
+});
+
+describe('critical incidents', () => {
+	it('send abuse, exploitation and death to the state by default', () => {
+		for (const type of ['Suspected abuse or neglect', 'Suspected exploitation', 'Death'] as const)
+			expect(incidentNotifyRules('Low', type).map((r) => r.who)).toContain(
+				'State reporting system'
+			);
+	});
+	it('remind staff of their own duty to report, with the agency hotline when set', () => {
+		expect(mandatedReportNotice('Fall', DEFAULT_INCIDENT_RULES)).toBeNull();
+		expect(mandatedReportNotice('Death', DEFAULT_INCIDENT_RULES)).toBeNull();
+		const generic = mandatedReportNotice('Suspected abuse or neglect', DEFAULT_INCIDENT_RULES);
+		expect(generic).toMatch(/call 911/);
+		expect(generic).toMatch(/Ask your supervisor for the number/);
+		const rules = parseIncidentRules({
+			incident_rules: { abuseHotline: '  APS 1-800-555-0100 ' }
+		});
+		expect(rules.abuseHotline).toBe('APS 1-800-555-0100');
+		expect(mandatedReportNotice('Suspected exploitation', rules)).toMatch(
+			'Report it yourself too: APS 1-800-555-0100.'
+		);
 	});
 });

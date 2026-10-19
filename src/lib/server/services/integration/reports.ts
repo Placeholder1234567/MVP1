@@ -18,9 +18,11 @@ import { enqueue } from '../../jobs/queue.ts';
 import { PdfUnsupportedText, renderPdf } from '../../pdf.ts';
 import { fileStorage } from '../../storage.ts';
 import { exportCsv } from './export';
+import { generateCareReport } from '../report/index.ts';
 import type { ApiCaller } from './keys';
 import {
 	expiredJobs,
+	clearExpiredPath,
 	insertJob,
 	jobById,
 	PDF_ROW_LIMIT,
@@ -79,6 +81,7 @@ export async function requestReport(caller: ApiCaller, type: ReportType, body: u
 export async function generateReport(input: { id: string }): Promise<{ status: string }> {
 	const job = await withService((tx) => jobById(tx, null, input.id));
 	if (!job || job.status !== 'queued') return { status: job?.status ?? 'gone' };
+	if (job.requested_by) return generateCareReport(input);
 	await withService((tx) => setJob(tx, job.id, { status: 'processing' }));
 	try {
 		const p = job.params as ReportParams;
@@ -154,7 +157,7 @@ export async function generateReport(input: { id: string }): Promise<{ status: s
 
 export async function reportStatus(caller: ApiCaller, type: ReportType, id: string) {
 	const job = await withService((tx) => jobById(tx, caller.agencyId, id));
-	if (!job || job.type !== type) return null;
+	if (!job || job.requested_by || job.type !== type) return null;
 	const expired = job.expires_at !== null && job.expires_at <= new Date();
 	return {
 		report_id: job.id,
@@ -179,7 +182,7 @@ export async function downloadReport(
 	id: string
 ): Promise<DownloadResult> {
 	const job = await withService((tx) => jobById(tx, caller.agencyId, id));
-	if (!job || job.type !== type) return { kind: 'missing' };
+	if (!job || job.requested_by || job.type !== type) return { kind: 'missing' };
 	if (
 		job.status !== 'ready' ||
 		!job.storage_path ||
@@ -206,7 +209,7 @@ export async function cleanupReports(now = new Date()): Promise<{ removed: numbe
 	const jobs = await withService((tx) => expiredJobs(tx, now));
 	for (const j of jobs) {
 		if (j.path) await fileStorage().remove(j.path);
-		await withService((tx) => setJob(tx, j.id, { storage_path: null }));
+		await withService((tx) => clearExpiredPath(tx, j));
 	}
 	return { removed: jobs.length };
 }
