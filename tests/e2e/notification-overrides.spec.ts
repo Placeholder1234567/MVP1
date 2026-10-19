@@ -16,6 +16,7 @@ test('an admin can save agency notification rules without disabling safety alert
 	const form = page.getByRole('form', { name: 'Agency notification rules' });
 	await expect(form).toBeVisible();
 	await expect(form.getByRole('checkbox', { name: 'Health alerts', exact: true })).toHaveCount(0);
+	await expect(form.getByRole('checkbox', { name: 'Coverage offers', exact: true })).toHaveCount(0);
 	const required = form.getByRole('checkbox', { name: 'Require daily summary email', exact: true });
 	const initial = await required.isChecked();
 	try {

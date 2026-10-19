@@ -3,7 +3,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import {
 		notificationOverrides,
-		MANDATORY,
+		AGENCY_REQUIRED_NOTIFICATIONS,
 		NOTIFICATION_TYPES,
 		NOTIFICATION_LABELS,
 		DEFAULT_QUIET_HOURS,
@@ -47,7 +47,8 @@
 <form class="card pad stack" onsubmit={save} aria-labelledby="notification-rules-heading">
 	<h2 id="notification-rules-heading">Agency notification rules</h2>
 	<p class="muted">
-		These rules take precedence over personal preferences. Mandatory safety alerts stay enabled.
+		These rules take precedence over personal preferences. Safety and essential workflow alerts stay
+		enabled.
 	</p>
 	<fieldset class="stack" disabled={saving}>
 		<label class="check"
@@ -82,7 +83,7 @@
 		{/if}
 		<fieldset class="stack">
 			<legend>Disable optional notification types</legend>
-			{#each NOTIFICATION_TYPES.filter((t) => !MANDATORY.has(t)) as type (type)}
+			{#each NOTIFICATION_TYPES.filter((t) => !AGENCY_REQUIRED_NOTIFICATIONS.has(t)) as type (type)}
 				<label class="check"
 					><input type="checkbox" value={type} bind:group={disabled} />{NOTIFICATION_LABELS[
 						type

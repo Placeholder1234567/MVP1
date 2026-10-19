@@ -8,6 +8,7 @@
 	let saved = $state({ start: '', end: '' });
 	let timeZone = $state('');
 	let loaded = $state(false);
+	let agencySet = $state(false);
 	let busy = $state(false);
 	let message = $state('');
 	const dirty = $derived(loaded && (start !== saved.start || end !== saved.end));
@@ -21,6 +22,7 @@
 			end = value.end;
 			saved = { start, end };
 			timeZone = value.timeZone;
+			agencySet = value.agencySet;
 			loaded = true;
 		} catch {
 			message = 'Connect to load your quiet hours. Your delivery preferences are unchanged.';
@@ -36,7 +38,7 @@
 	});
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
-		if (!valid || !dirty || busy) return;
+		if (agencySet || !valid || !dirty || busy) return;
 		busy = true;
 		message = '';
 		try {
@@ -62,7 +64,10 @@
 		Hold normal and low priority push and SMS alerts during a daily period of 4 to 10 hours. High
 		and urgent alerts bypass this period. Email and in-app alerts are unaffected.
 	</p>
-	{#if loaded}<p>Times use your agency’s time zone: <b>{timeZone}</b>.</p>
+	{#if loaded}{#if agencySet}<p class="callout">
+				Your agency sets quiet hours. Ask your administrator to change them.
+			</p>{/if}
+		<p>Times use your agency’s time zone: <b>{timeZone}</b>.</p>
 		<div class="actions">
 			<label
 				>Start time<input
@@ -70,7 +75,7 @@
 					type="time"
 					required
 					bind:value={start}
-					disabled={busy}
+					disabled={busy || agencySet}
 				/></label
 			><label
 				>End time<input
@@ -78,7 +83,7 @@
 					type="time"
 					required
 					bind:value={end}
-					disabled={busy}
+					disabled={busy || agencySet}
 				/></label
 			>
 		</div>
@@ -88,18 +93,19 @@
 				Choose a period between 4 and 10 hours. The end can be the next morning.
 			</p>{/if}
 		<div class="actions">
-			<button class="btn sec" disabled={busy || !dirty || !valid}>Save quiet hours</button
+			<button class="btn sec" disabled={agencySet || busy || !dirty || !valid}
+				>Save quiet hours</button
 			>{#if dirty}<button
 					class="textbtn"
 					type="button"
-					disabled={busy}
+					disabled={busy || agencySet}
 					onclick={() => {
 						start = saved.start;
 						end = saved.end;
 					}}>Discard quiet-hours changes</button
 				>{/if}
 		</div>
-	{:else}<button class="btn sec" type="button" disabled={busy} onclick={load}
+	{:else}<button class="btn sec" type="button" disabled={busy || agencySet} onclick={load}
 			>{busy ? 'Loading quiet hours…' : 'Load quiet hours'}</button
 		>{/if}
 	{#if message}<p role="status">{message}</p>{/if}
