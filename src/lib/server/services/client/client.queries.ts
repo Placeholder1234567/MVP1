@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { caseNotes, clientHealthInfo, clients, goals } from '../../db/schema';
+import { caseNotes, clientHealthInfo, clients, goals, rooms } from '../../db/schema';
 
 const columns = {
 	id: clients.id,
@@ -149,4 +149,16 @@ export async function insertCaseNote(tx: Tx, row: typeof caseNotes.$inferInsert)
 		createdAt: caseNotes.created_at
 	});
 	return created;
+}
+
+/**
+ * Frees the rooms a person occupies, when they move home or are discharged
+ * (rooms are intake's, but nothing else clears occupied_by). Runs as
+ * app_service, like intake's own room changes.
+ */
+export async function releaseRooms(tx: Tx, agencyId: string, clientId: string) {
+	await tx
+		.update(rooms)
+		.set({ occupied_by: null, status: 'available', updated_at: new Date() })
+		.where(and(eq(rooms.agency_id, agencyId), eq(rooms.occupied_by, clientId)));
 }

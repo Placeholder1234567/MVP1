@@ -7,12 +7,13 @@ import {
 	RULE_WHEN_MAX,
 	SESSION_MINUTES_MAX,
 	SESSION_MINUTES_MIN,
-	STATE_CODES
+	STATE_CODES,
+	requiredRolesFromSettings
 } from '../../../domain/index.ts';
 import { NotificationOverridesInput } from '../notification/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
-import { createStaffAccount } from '../auth/index.ts';
+import { createStaffAccount, endSessionsForRoles } from '../auth/index.ts';
 import { seedDefaultTemplates } from '../goal/index.ts';
 import { agencyBySlug, findAgency, insertAgency, updateAgencyRow } from './agency.queries';
 
@@ -113,6 +114,14 @@ export async function updateAgency(tx: Tx, agencyId: string, input: z.infer<type
 			: undefined
 	});
 	if (!row) throw new ServiceError('NOT_FOUND', 'Agency not found');
+	if (data.settings?.mfa_required_roles) {
+		const before = requiredRolesFromSettings(current.settings);
+		await endSessionsForRoles(
+			tx,
+			agencyId,
+			data.settings.mfa_required_roles.filter((r) => !before.includes(r))
+		);
+	}
 	return getAgency(tx, agencyId);
 }
 

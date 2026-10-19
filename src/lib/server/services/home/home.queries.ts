@@ -33,6 +33,20 @@ export async function selectHome(tx: Tx, agencyId: string, id: string) {
 	return row ?? null;
 }
 
+/**
+ * Locks the home row: archiving takes it FOR UPDATE, and adding a person
+ * takes it FOR SHARE, so a person can't be added between the archive's
+ * check that nobody lives there and its update.
+ */
+export async function lockHomeRow(tx: Tx, agencyId: string, id: string, mode: 'update' | 'share') {
+	const [row] = await tx
+		.select(columns)
+		.from(homes)
+		.where(and(eq(homes.agency_id, agencyId), eq(homes.id, id)))
+		.for(mode);
+	return row ?? null;
+}
+
 export async function insertHome(tx: Tx, row: typeof homes.$inferInsert) {
 	const [created] = await tx.insert(homes).values(row).returning(columns);
 	return created;

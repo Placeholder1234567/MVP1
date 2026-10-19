@@ -1,9 +1,16 @@
 // Home Service (services.md §13): homes and their clock-in geofence.
 import { z } from 'zod';
-import type { Tx } from '../../db';
+import { asService, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { localTime } from '../../../domain/index.ts';
-import { homeInUse, insertHome, selectHome, selectHomes, updateHomeRow } from './home.queries';
+import {
+	homeInUse,
+	insertHome,
+	lockHomeRow,
+	selectHome,
+	selectHomes,
+	updateHomeRow
+} from './home.queries';
 
 export function listHomes(tx: Tx, agencyId: string) {
 	return selectHomes(tx, agencyId);
@@ -51,6 +58,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * from today on, so nothing in use is stranded. Reversible with restoreHome.
  */
 export async function archiveHome(tx: Tx, agencyId: string, id: string, timeZone: string) {
+	await asService(tx, (t) => lockHomeRow(t, agencyId, id, 'update'));
 	const home = await selectHome(tx, agencyId, id);
 	if (!home) throw new ServiceError('NOT_FOUND', 'Home not found');
 	if (home.archivedAt) return home;
@@ -69,6 +77,19 @@ export async function restoreHome(tx: Tx, agencyId: string, id: string) {
 	const row = await updateHomeRow(tx, agencyId, id, { archived_at: null });
 	if (!row) throw new ServiceError('NOT_FOUND', 'Home not found');
 	return row;
+}
+
+/**
+ * requireOpenHome for adding a person, holding the home (FOR SHARE) until the
+ * transaction ends so it can't be archived meanwhile. The lock runs as
+ * app_service (RLS only lets admins lock homes); visibility is checked first.
+ */
+export async function lockOpenHome(tx: Tx, agencyId: string, id: string, message?: string) {
+	requireOpenHome(await selectHome(tx, agencyId, id), message);
+	return requireOpenHome(
+		await asService(tx, (t) => lockHomeRow(t, agencyId, id, 'share')),
+		message
+	);
 }
 
 /** Throws unless the home exists and is in use: for every write that adds
