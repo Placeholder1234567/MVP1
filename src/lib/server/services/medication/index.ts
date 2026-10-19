@@ -26,7 +26,8 @@ import {
 	findDoseForEffect,
 	selectMar,
 	selectMedications,
-	setMarFields
+	setMarFields,
+	setEffectOnce
 } from './medication.queries';
 
 export const NewDose = z.object({
@@ -80,13 +81,45 @@ export async function recordDose(
 	const med = await findMedication(tx, agencyId, dose.clientId, dose.medicationId);
 	if (!med) throw new ServiceError('NOT_FOUND', 'That medication is not on this person’s list');
 
+	// The original first: a correction keeps its slot, whatever the schedule is now.
+	let original: Awaited<ReturnType<typeof findMarRecord>> | null = null;
+	if (dose.amendsId) {
+		// The query keeps its agency filter and the caller's RLS visibility.
+		// A visible record for a different person is still not a valid audit link.
+		original = await findMarRecord(tx, agencyId, dose.amendsId);
+		if (!original) throw new ServiceError('NOT_FOUND', 'The record being corrected was not found');
+		// Match PostgreSQL UUID equality for callers using uppercase UUID text.
+		if (
+			original.clientId.toLowerCase() !== dose.clientId.toLowerCase() ||
+			original.medicationId?.toLowerCase() !== dose.medicationId.toLowerCase()
+		)
+			throw new ServiceError(
+				'VALIDATION_FAILED',
+				'A correction must refer to this person’s record of this medication'
+			);
+	}
 	const times = medTimes(med);
-	const isPrn = times.length === 0;
-	const slot = dose.scheduledTime ? hhmm(dose.scheduledTime) : null;
-	if (isPrn && slot)
-		throw new ServiceError('VALIDATION_FAILED', 'As-needed doses have no time slot');
-	if (!isPrn && (!slot || !times.includes(slot))) {
-		throw new ServiceError('VALIDATION_FAILED', 'Pick one of this medication’s scheduled times');
+	let isPrn = times.length === 0;
+	let slot = dose.scheduledTime ? hhmm(dose.scheduledTime) : null;
+	if (original) {
+		isPrn = original.isPrn;
+		slot = original.scheduledTime ? hhmm(original.scheduledTime) : null;
+	} else if (
+		slot &&
+		!times.includes(slot) &&
+		dose.recordedAt &&
+		med.updatedAt &&
+		med.updatedAt > dose.recordedAt
+	) {
+		// Recorded offline before a supervisor changed the times: the dose was
+		// given against the schedule of the moment, so it is kept as recorded.
+		isPrn = false;
+	} else {
+		if (isPrn && slot)
+			throw new ServiceError('VALIDATION_FAILED', 'As-needed doses have no time slot');
+		if (!isPrn && (!slot || !times.includes(slot))) {
+			throw new ServiceError('VALIDATION_FAILED', 'Pick one of this medication’s scheduled times');
+		}
 	}
 	if (doseNeedsReason(dose.status, isPrn, !!dose.amendsId) && !dose.reason) {
 		throw new ServiceError(
@@ -98,19 +131,6 @@ export async function recordDose(
 					: 'Say why the as-needed dose was given'
 		);
 	}
-	if (dose.amendsId) {
-		// The query keeps its agency filter and the caller's RLS visibility.
-		// A visible record for a different person is still not a valid audit link.
-		const original = await findMarRecord(tx, agencyId, dose.amendsId);
-		if (!original) throw new ServiceError('NOT_FOUND', 'The record being corrected was not found');
-		// Match PostgreSQL UUID equality for callers using uppercase UUID text.
-		if (original.clientId.toLowerCase() !== dose.clientId.toLowerCase())
-			throw new ServiceError(
-				'VALIDATION_FAILED',
-				'A correction must refer to this person’s record'
-			);
-	}
-
 	const row = {
 		id: dose.id,
 		agency_id: agencyId,
@@ -139,14 +159,14 @@ export async function recordDose(
 		if (pgCode(e) !== '23505' || pgConstraint(e) !== SLOT_INDEX) throw e;
 	}
 
-	const original = await findSlotOriginal(tx, agencyId, {
+	const first = await findSlotOriginal(tx, agencyId, {
 		clientId: dose.clientId,
 		medicationId: dose.medicationId,
 		day: dose.day,
 		time: slot!
 	});
-	if (!original) throw new ServiceError('RULE_VIOLATION', 'This dose slot is already recorded');
-	await insertMarRecord(tx, { ...row, conflict_with: original.id });
+	if (!first) throw new ServiceError('RULE_VIOLATION', 'This dose slot is already recorded');
+	await insertMarRecord(tx, { ...row, conflict_with: first.id });
 	await notifyHomeSupervisors(tx, agencyId, med.homeId, {
 		type: 'med_possible_double_dose',
 		priority: 1,
@@ -155,14 +175,15 @@ export async function recordDose(
 		referenceId: dose.id,
 		referenceType: 'mar_records'
 	});
-	return { result: 'conflict', conflictWith: original.id, otherName: original.recordedByName };
+	return { result: 'conflict', conflictWith: first.id, otherName: first.recordedByName };
 }
 
 /**
  * Records the observed effect of an as-needed dose, once (mar.recordEffect).
  * Caregivers can't update MAR rows under RLS, so after checking the dose is
- * visible to the caller (their homes), the update runs as app_service; the
- * mar_records_immutable trigger still allows only the effect column, once.
+ * visible to the caller (their homes), the update runs as app_service. The
+ * trigger doesn't check app_service writes, so the update itself only matches
+ * a given as-needed dose with no effect yet.
  */
 export async function recordEffect(
 	tx: Tx,
@@ -181,7 +202,8 @@ export async function recordEffect(
 	if (user.role === 'caregiver' && !user.medCertified) {
 		throw new ServiceError('FORBIDDEN', 'Only med-certified staff can record medications');
 	}
-	const updatedAt = await asService(tx, (t) => setMarFields(t, agencyId, id, { effect: text }));
+	const updatedAt = await asService(tx, (t) => setEffectOnce(t, agencyId, id, text));
+	if (!updatedAt) throw new ServiceError('RULE_VIOLATION', 'The effect was already recorded');
 	return { updatedAt };
 }
 

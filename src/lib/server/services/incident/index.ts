@@ -15,7 +15,7 @@ import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { findVisibleClient } from '../charting/index.ts';
 import { postLomiUpdate } from '../message/index.ts';
-import { notifyHomeSupervisors } from '../notification/index.ts';
+import { incidentReviewed, notifyHomeSupervisors } from '../notification/index.ts';
 import {
 	addNotifiedParty,
 	agencySettings,
@@ -148,6 +148,7 @@ export async function reviewIncident(
 		...(before.reviewed_at ? {} : { reviewed_at: new Date() })
 	});
 	if (!row) throw new ServiceError('NOT_FOUND', 'Incident not found');
+	await incidentReviewed(tx, agencyId, id);
 	return { followupNotes: notes, status: row.status, updatedAt: row.updatedAt };
 }
 

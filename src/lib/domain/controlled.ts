@@ -232,19 +232,31 @@ export interface DoseEntry {
 }
 
 /**
- * Doses that took stock: given, not later corrected to something else, and
- * not a duplicate conflict record. A correction keeps the original's time.
+ * Doses that took stock: given, not a duplicate conflict record, and for a
+ * corrected dose only its latest correction counts (corrections all point at
+ * the original, as on the MAR grid). A correction keeps the original's time.
  */
 export function givenDoseTimes(doses: readonly DoseEntry[]): string[] {
 	const byId = new Map(doses.map((d) => [d.id, d]));
-	const corrected = new Set(doses.map((d) => d.amends_id).filter((x): x is string => !!x));
+	const rootOf = (d: DoseEntry) => {
+		let root = d;
+		for (let i = 0; root.amends_id && byId.has(root.amends_id) && i < doses.length; i++)
+			root = byId.get(root.amends_id)!;
+		return root;
+	};
+	const latest = new Map<string, DoseEntry>();
+	for (const d of doses) {
+		if (!d.amends_id) continue;
+		const root = rootOf(d);
+		const prev = latest.get(root.id);
+		if (!prev || (d.recorded_at ?? '') > (prev.recorded_at ?? '')) latest.set(root.id, d);
+	}
 	const times: string[] = [];
 	for (const d of doses) {
-		if (corrected.has(d.id) || d.conflict_with || d.status !== 'given') continue;
-		let original = d;
-		while (original.amends_id && byId.has(original.amends_id))
-			original = byId.get(original.amends_id)!;
-		if (original.recorded_at) times.push(original.recorded_at);
+		// Corrections count through their original (or alone if it's out of range).
+		if ((d.amends_id && byId.has(d.amends_id)) || d.conflict_with) continue;
+		const effective = latest.get(d.id) ?? d;
+		if (effective.status === 'given' && d.recorded_at) times.push(d.recorded_at);
 	}
 	return times;
 }

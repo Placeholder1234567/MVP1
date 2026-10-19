@@ -257,13 +257,14 @@ it('flags an incident still open after 24 hours to the home’s supervisors and 
 it('reminds supervisors once per contact not marked as told by the agency’s hours', async () => {
 	const nurseLate = randomUUID(),
 		familyLate = randomUUID(),
+		reviewed = randomUUID(),
 		closed = randomUUID();
 	const now = new Date('2026-05-20T12:00:00Z');
 	const incident = (
 		id: string,
 		hoursAgo: number,
 		told: string[],
-		status: 'open' | 'reviewed' = 'open'
+		status: 'open' | 'reviewed' | 'closed' = 'open'
 	) => ({
 		id,
 		agency_id: agency,
@@ -283,7 +284,8 @@ it('reminds supervisors once per contact not marked as told by the agency’s ho
 			.values([
 				incident(nurseLate, 3, []),
 				incident(familyLate, 30, ['Nurse']),
-				incident(closed, 30, [], 'reviewed')
+				incident(reviewed, 30, ['Nurse'], 'reviewed'),
+				incident(closed, 30, [], 'closed')
 			])
 	);
 	const sweep = () => withService((tx) => flagOverdueContacts(tx, agency, 'UTC', now));
@@ -296,9 +298,17 @@ it('reminds supervisors once per contact not marked as told by the agency’s ho
 	expect((await forIncident(familyLate)).map((r) => r.title)).toEqual([
 		'Incident at Oak House from May 19: family or guardian not yet marked as told.'
 	]);
+	// Reviewing doesn't tell the family; only marking them told or closing stops it.
+	expect(await forIncident(reviewed)).toHaveLength(1);
 	expect(await forIncident(closed)).toEqual([]);
-	// Once per incident and contact.
+	// Once per incident and contact, even after the home is renamed.
+	await withService((tx) =>
+		tx.update(s.homes).set({ name: 'Renamed House' }).where(eq(s.homes.id, oak))
+	);
 	await sweep();
+	await withService((tx) =>
+		tx.update(s.homes).set({ name: 'Oak House' }).where(eq(s.homes.id, oak))
+	);
 	expect(await forIncident(nurseLate)).toHaveLength(1);
 	expect(await forIncident(familyLate)).toHaveLength(1);
 });

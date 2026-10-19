@@ -382,6 +382,95 @@ describe('mar.* and medication.list', () => {
 		});
 	});
 
+	it('two people recording the same effect at once: only the first is kept', async () => {
+		const cara = await as(CARA);
+		const prn = await cara.mar.record({
+			clientId: PERSON,
+			medicationId: PRN,
+			day: TODAY,
+			status: 'given',
+			reason: 'Synthetic symptom'
+		});
+		const results = await Promise.allSettled([
+			cara.mar.recordEffect({ id: prn.id, effect: 'First effect' }),
+			(await as(SAM)).mar.recordEffect({ id: prn.id, effect: 'Second effect' })
+		]);
+		expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+		const [row] = await withService((t) =>
+			t.select().from(s.marRecords).where(eq(s.marRecords.id, prn.id))
+		);
+		const kept = results[0].status === 'fulfilled' ? 'First effect' : 'Second effect';
+		expect(row.effect).toBe(kept);
+	});
+
+	it('keeps an offline dose recorded before its time changed, and a correction keeps its slot', async () => {
+		const sam = await as(SAM);
+		const med = randomUUID();
+		const person = randomUUID();
+		await withService(async (t) => {
+			await t
+				.insert(s.clients)
+				.values({ id: person, agency_id: AGENCY, home_id: OAK, name: 'Retimed Person' });
+			await t.insert(s.medications).values({
+				id: med,
+				agency_id: AGENCY,
+				client_id: person,
+				name: 'Synthetic retimed med',
+				scheduled_times: ['08:00']
+			});
+		});
+		const recordedAt = new Date(Date.now() - 60_000);
+		await withService((t) =>
+			t
+				.update(s.medications)
+				.set({ scheduled_times: ['09:00'], updated_at: new Date() })
+				.where(eq(s.medications.id, med))
+		);
+		const given = { id: randomUUID() };
+		const offline = await sam.sync.upload({
+			transactionId: 90,
+			ops: [
+				{
+					op: 'PUT',
+					table: 'mar_records',
+					id: given.id,
+					data: {
+						client_id: person,
+						medication_id: med,
+						day: TODAY,
+						scheduled_time: '08:00',
+						status: 'given',
+						recorded_at: recordedAt.toISOString()
+					}
+				}
+			]
+		});
+		expect(offline.rejected).toEqual([]);
+		// A new dose for the old time is still refused.
+		await expect(
+			sam.mar.record({
+				clientId: person,
+				medicationId: med,
+				day: TODAY,
+				scheduledTime: '08:00',
+				status: 'given'
+			})
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		const fix = await sam.mar.record({
+			clientId: person,
+			medicationId: med,
+			day: TODAY,
+			scheduledTime: '09:00',
+			status: 'refused',
+			reason: 'Synthetic correction',
+			amendsId: given.id
+		});
+		const [row] = await withService((t) =>
+			t.select().from(s.marRecords).where(eq(s.marRecords.id, fix.id))
+		);
+		expect(row).toMatchObject({ scheduled_time: '08:00:00', amends_id: given.id });
+	});
+
 	it('medication.list hides stopped medications unless asked', async () => {
 		await withService((t) =>
 			t.insert(s.medications).values({
@@ -532,7 +621,7 @@ describe('mar.* and medication.list', () => {
 			reason: 'Observed symptom'
 		});
 		for (const [caller, code, message] of [
-			[sam, 'BAD_REQUEST', 'A correction must refer to this person’s record'],
+			[sam, 'BAD_REQUEST', 'A correction must refer to this person’s record of this medication'],
 			[await as(CARA), 'NOT_FOUND', 'The record being corrected was not found']
 		] as const) {
 			await expect(
@@ -740,6 +829,15 @@ describe('incident.*', () => {
 		expect(twice.notifiedParties).toEqual(['guardian']);
 		const reviewed = await sam.incident.review({ id: r.id, followupNotes: 'Checked the rug' });
 		expect(reviewed.status).toBe('reviewed');
+		// Reviewing ends the alert, so its escalation texts stop.
+		const unread = await withService((tx) =>
+			tx
+				.select({ readAt: s.notifications.read_at })
+				.from(s.notifications)
+				.where(and(eq(s.notifications.reference_id, r.id), eq(s.notifications.channel, 'in_app')))
+		);
+		expect(unread.length).toBeGreaterThan(0);
+		expect(unread.every((n) => n.readAt)).toBe(true);
 		// The first review time is kept when the notes are edited again.
 		const firstReview = async () =>
 			(

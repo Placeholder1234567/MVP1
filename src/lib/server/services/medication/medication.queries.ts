@@ -13,6 +13,7 @@ export async function findMedication(
 			id: medications.id,
 			scheduled_times: medications.scheduled_times,
 			stopped_at: medications.stopped_at,
+			updatedAt: medications.updated_at,
 			homeId: clients.home_id
 		})
 		.from(medications)
@@ -30,7 +31,13 @@ export async function findMedication(
 
 export async function findMarRecord(tx: Tx, agencyId: string, id: string) {
 	const [row] = await tx
-		.select({ id: marRecords.id, clientId: marRecords.client_id })
+		.select({
+			id: marRecords.id,
+			clientId: marRecords.client_id,
+			medicationId: marRecords.medication_id,
+			scheduledTime: marRecords.scheduled_time,
+			isPrn: marRecords.is_prn
+		})
 		.from(marRecords)
 		.where(and(eq(marRecords.agency_id, agencyId), eq(marRecords.id, id)))
 		.limit(1);
@@ -99,6 +106,27 @@ export async function setMarFields(
 		.update(marRecords)
 		.set({ ...set, updated_at: new Date() })
 		.where(and(eq(marRecords.agency_id, agencyId), eq(marRecords.id, id)))
+		.returning({ updatedAt: marRecords.updated_at });
+	return row?.updatedAt ?? null;
+}
+
+/**
+ * Sets an as-needed dose's effect only while none is recorded, so two people
+ * recording at once can't replace each other's (null: already recorded).
+ */
+export async function setEffectOnce(tx: Tx, agencyId: string, id: string, effect: string) {
+	const [row] = await tx
+		.update(marRecords)
+		.set({ effect, updated_at: new Date() })
+		.where(
+			and(
+				eq(marRecords.agency_id, agencyId),
+				eq(marRecords.id, id),
+				eq(marRecords.is_prn, true),
+				eq(marRecords.status, 'given'),
+				isNull(marRecords.effect)
+			)
+		)
 		.returning({ updatedAt: marRecords.updated_at });
 	return row?.updatedAt ?? null;
 }
