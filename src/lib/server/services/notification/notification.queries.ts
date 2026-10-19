@@ -1,4 +1,4 @@
-import { and, arrayContains, count, eq, gte, inArray, lt, ne } from 'drizzle-orm';
+import { and, arrayContains, count, eq, gte, inArray, lt, lte, ne, or } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	agencies,
@@ -138,6 +138,41 @@ export async function markDelivery(
 			updated_at: new Date()
 		})
 		.where(eq(notifications.id, id));
+}
+
+/**
+ * Claims a pending delivery just before it is sent, so two dispatches of the
+ * same row (the sweeper and a queue retry, or overlapping sweeps) can't both
+ * send it. A claim stamps updated_at; it is free while updated_at is still
+ * its creation time, or once the claim is older than `lease` (a dispatch that
+ * crashed mid-send). Concurrent claims serialize on the row: the second sees
+ * the first's stamp and gets nothing. Returns whether this dispatch has it.
+ */
+export async function claimDelivery(tx: Tx, id: string, lease: number) {
+	const now = new Date();
+	const claimed = await tx
+		.update(notifications)
+		.set({ updated_at: now })
+		.where(
+			and(
+				eq(notifications.id, id),
+				eq(notifications.status, 'pending'),
+				or(
+					lte(notifications.updated_at, notifications.created_at),
+					lt(notifications.updated_at, new Date(now.getTime() - lease))
+				)
+			)
+		)
+		.returning({ id: notifications.id });
+	return claimed.length > 0;
+}
+
+/** Gives a claim back after a send that will be retried, so the retry can claim it at once. */
+export async function releaseDelivery(tx: Tx, id: string) {
+	await tx
+		.update(notifications)
+		.set({ updated_at: notifications.created_at })
+		.where(and(eq(notifications.id, id), eq(notifications.status, 'pending')));
 }
 
 /** Deliveries still pending after `olderThan` (the sweeper's safety net). */
