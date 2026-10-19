@@ -9,7 +9,9 @@ test('a refused change can be retried or discarded', async ({ page }, info) => {
 	test.skip(info.project.name !== 'desktop', 'One run is enough for the sync banner.');
 	test.setTimeout(180000);
 	page.on('dialog', (d) => d.accept());
-	let refuse = true;
+	// Off until the board is open and synced: opening it saves read receipts
+	// for earlier messages, which would otherwise be refused alongside.
+	let refuse = false;
 	let accepted = 0;
 	await page.route(/\/api\/trpc\/sync\.upload(?:\?|$)/, async (route) => {
 		if (!refuse) {
@@ -67,6 +69,10 @@ test('a refused change can be retried or discarded', async ({ page }, info) => {
 		await page.getByRole('button', { name: 'Save message', exact: true }).click();
 	};
 	const banner = page.getByTestId('failed-writes');
+	await page.getByRole('link', { name: /^Team messages/ }).click();
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	refuse = true;
+	accepted = 0;
 
 	// Refused, with a one-time message alongside.
 	const kept = `Synthetic retry ${Date.now()}`;
