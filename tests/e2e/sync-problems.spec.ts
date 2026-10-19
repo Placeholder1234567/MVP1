@@ -83,19 +83,14 @@ test('a refused change can be retried or discarded', async ({ page }, info) => {
 		(await new AxeBuilder({ page }).include('[data-testid="failed-writes"]').analyze()).violations
 	).toEqual([]);
 
-	// The server accepts it now: trying again saves it. Until the refused row
-	// has left the device, the app asks to wait.
+	// The server accepts it now: trying again saves it. The refused message
+	// leaves the device once it catches up with the server; before that the
+	// app asks to wait.
 	refuse = false;
-	await expect
-		.poll(
-			async () => {
-				if (!(await banner.isVisible())) return 'done';
-				await banner.getByRole('button', { name: 'Try again', exact: true }).click();
-				return (await banner.getByRole('status').textContent()) ?? '';
-			},
-			{ timeout: 30000 }
-		)
-		.toMatch(/Trying again|done/);
+	const board = page.getByTestId('board');
+	await expect(board.locator('article', { hasText: kept })).toHaveCount(0, { timeout: 90000 });
+	await banner.getByRole('button', { name: 'Try again', exact: true }).click();
+	// The last refused change is queued again, so the banner goes.
 	await expect(banner).toHaveCount(0);
 	await expect.poll(() => accepted).toBeGreaterThan(0);
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
