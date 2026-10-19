@@ -44,4 +44,5 @@ export * from './case-notes';
 export * from './coverage-board';
 export * from './compliance';
 export * from './password';
+export * from './sync-backlog';
 export * from './session-length';

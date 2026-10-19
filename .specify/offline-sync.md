@@ -561,6 +561,8 @@ When a write permanently fails:
 
 The queue depth is checked on every write and on a 30-second interval. At 100+ pending writes, the UI warns the user proactively. At the typical write rate (a caregiver doing charting produces approximately 20-40 writes per 8-hour shift), a queue of 100+ indicates the device has been offline for multiple shifts.
 
+**As built:** the top bar always shows "[n] changes waiting to sync". From 101 the app adds the orange banner, and from 500 the red one, both with the wording above (`domain/sync-backlog.ts`, `(app)/+layout.svelte`). The count updates live from PowerSync's upload queue.
+
 ---
 
 ## 7. Data Lifecycle on Device
@@ -598,6 +600,8 @@ The queue depth is checked on every write and on a 30-second interval. At 100+ p
 9. Attendance older than 14 days
 
 Purging removes data from the local wa-sqlite database only. Server data is unaffected. Purged data returns on the next full sync if within the sync window.
+
+**As built:** there's no local purge. PowerSync downloads again any synced row deleted locally, so trimming happens only through the server-side sync windows (`device_sync`) above. Instead, the app checks `navigator.storage.estimate()` at start and every 5 minutes. It shows an orange notice when Guad uses 80 MB or more ("Sync and keep the app open so older records can be cleared"), and a red one when less than 50 MB of the site's quota is free.
 
 ### Logout and Session Events
 
