@@ -5,7 +5,9 @@ test('an admin archives a closed home and it moves under Archived in the switche
 }, info) => {
 	test.setTimeout(180000);
 	const phone = info.project.name === 'phone';
-	const name = `Closed ${info.project.name} ${Date.now() % 100000}`;
+	// Sorts after the seeded homes, and ends archived, so other tests' default
+	// home (the first one in use) doesn't change.
+	const name = `Zz closed ${info.project.name} ${Date.now() % 100000}`;
 	await page.goto('/login');
 	await page.getByLabel('Email', { exact: true }).fill('admin@guad.test');
 	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
@@ -45,4 +47,8 @@ test('an admin archives a closed home and it moves under Archived in the switche
 	await expect(
 		switcher.locator('optgroup[label="Archived"] option', { hasText: name })
 	).toHaveCount(0);
+
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: `Archive ${name}`, exact: true }).click();
+	await expect(page.getByText(`${name} archived.`)).toBeVisible();
 });
