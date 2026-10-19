@@ -29,7 +29,7 @@ import {
 	LomiRateLimitError,
 	transcribeAudio
 } from '../../../src/lib/server/services/lomi';
-const user = { agencyId: 'agency', profileId: 'profile' } as CurrentUser;
+const user = { agencyId: 'agency', profileId: 'profile', features: ['goals'] } as CurrentUser;
 beforeEach(() => {
 	vi.clearAllMocks();
 	f.person.mockResolvedValue({ firstName: 'Synthetic', goals: [] });

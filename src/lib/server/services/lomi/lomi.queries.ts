@@ -39,14 +39,12 @@ export async function invocationCounts(tx: Tx, agencyId: string) {
 		);
 }
 export async function recordInvocation(tx: Tx, agencyId: string, profileId: string, task: string) {
-	await tx
-		.insert(auditLog)
-		.values({
-			agency_id: agencyId,
-			table_name: 'ai_invocations',
-			record_id: crypto.randomUUID(),
-			action: 'INSERT',
-			performed_by: profileId,
-			new_values: { task }
-		});
+	await tx.insert(auditLog).values({
+		agency_id: agencyId,
+		table_name: 'ai_invocations',
+		record_id: crypto.randomUUID(),
+		action: 'INSERT',
+		performed_by: profileId,
+		new_values: { task }
+	});
 }
