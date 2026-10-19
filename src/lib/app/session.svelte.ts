@@ -16,6 +16,8 @@ export interface AppUser {
 	homeIds: string[];
 	timeZone: string;
 	medCertified: boolean;
+	/** The agency's plan features (entitlements.md §7): screens outside the plan are hidden. */
+	features: readonly string[];
 }
 export function parseJson<T>(value: string | null | undefined, fallback: T): T {
 	try {
@@ -84,6 +86,10 @@ export class CareSession {
 	private uploads: UploadStatus | undefined;
 	async refreshUploadStatus(): Promise<void> {
 		await this.uploads?.refresh();
+	}
+	/** Whether the agency's plan includes a feature. */
+	has(feature: string) {
+		return this.user.features.includes(feature);
 	}
 	constructor(user: AppUser) {
 		this.user = user;

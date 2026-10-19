@@ -58,6 +58,8 @@ export type IncidentSeverity = 'Low' | 'Medium' | 'High';
 export interface NotifyRule {
 	who: 'Supervisor' | 'Family or guardian' | 'Nurse' | 'State reporting system';
 	when: string;
+	/** Hours after the incident when supervisors are reminded if not marked as told */
+	hours?: number | null;
 }
 
 /**
@@ -73,7 +75,15 @@ export interface IncidentRules {
 	stateSeverities: IncidentSeverity[];
 	stateTypes: IncidentType[];
 	stateWhen: string;
+	/**
+	 * Hours after the incident by which each contact must be marked as told,
+	 * for reminders. null: no reminder (the written deadline still shows).
+	 */
+	guardianHours: number | null;
+	nurseHours: number | null;
+	stateHours: number | null;
 }
+export const RULE_HOURS_MAX = 720;
 const SEVERITIES: readonly IncidentSeverity[] = ['Low', 'Medium', 'High'];
 export const RULE_WHEN_MAX = 60;
 export const DEFAULT_INCIDENT_RULES: IncidentRules = {
@@ -82,7 +92,10 @@ export const DEFAULT_INCIDENT_RULES: IncidentRules = {
 	nurseWhen: 'Within 2 hours',
 	stateSeverities: ['High'],
 	stateTypes: ['Left without staff'],
-	stateWhen: "Check your state's deadline"
+	stateWhen: "Check your state's deadline",
+	guardianHours: 24,
+	nurseHours: 2,
+	stateHours: null
 };
 
 /** The agency's rules from its settings; any missing or invalid part keeps the default. */
@@ -110,8 +123,19 @@ export function parseIncidentRules(settings: unknown): IncidentRules {
 		nurseWhen: when(raw.nurseWhen, d.nurseWhen),
 		stateSeverities: list(raw.stateSeverities, SEVERITIES, d.stateSeverities),
 		stateTypes: list(raw.stateTypes, INCIDENT_TYPES, d.stateTypes),
-		stateWhen: when(raw.stateWhen, d.stateWhen)
+		stateWhen: when(raw.stateWhen, d.stateWhen),
+		guardianHours: hours(raw.guardianHours, d.guardianHours),
+		nurseHours: hours(raw.nurseHours, d.nurseHours),
+		stateHours: hours(raw.stateHours, d.stateHours)
 	};
+}
+
+/** A whole number of hours, null to switch the reminder off, or the default. */
+function hours(x: unknown, fallback: number | null): number | null {
+	if (x === null) return null;
+	return Number.isInteger(x) && (x as number) >= 1 && (x as number) <= RULE_HOURS_MAX
+		? (x as number)
+		: fallback;
 }
 
 /** Who must be told about an incident, and how soon, under the agency's rules. */
@@ -122,13 +146,13 @@ export function incidentNotifyRules(
 ): NotifyRule[] {
 	const rules: NotifyRule[] = [
 		{ who: 'Supervisor', when: 'Right away' },
-		{ who: 'Family or guardian', when: config.guardianWhen }
+		{ who: 'Family or guardian', when: config.guardianWhen, hours: config.guardianHours }
 	];
 	if (config.nurseTypes.includes(type)) {
-		rules.push({ who: 'Nurse', when: config.nurseWhen });
+		rules.push({ who: 'Nurse', when: config.nurseWhen, hours: config.nurseHours });
 	}
 	if (config.stateSeverities.includes(severity) || config.stateTypes.includes(type)) {
-		rules.push({ who: 'State reporting system', when: config.stateWhen });
+		rules.push({ who: 'State reporting system', when: config.stateWhen, hours: config.stateHours });
 	}
 	return rules;
 }

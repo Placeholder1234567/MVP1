@@ -590,6 +590,9 @@ export const incidents = pgTable(
     staff_action: text('staff_action'),
     medical_followup: text('medical_followup'),
     witnesses: text('witnesses'),
+    // Each witness's name and role (domain/incident-details.ts). `witnesses`
+    // keeps a readable copy for exports and older records.
+    witness_list: jsonb('witness_list').notNull().default([]),
     notified_parties: text('notified_parties').array(),
     // Optional details many state IDD reports ask for (frontend-audit.md
     // finding 8): condition now, alone or with staff, restraint, self-injury,
@@ -597,6 +600,10 @@ export const incidents = pgTable(
     // Shape and allowed values: src/lib/domain/incident-details.ts.
     report_details: jsonb('report_details').notNull().default({}),
     status: incidentStatusEnum('status').notNull().default('open'),
+    // When a supervisor first reviewed it (incident.review); later edits to
+    // the follow-up notes don't move it. Null while open, and on incidents
+    // reviewed before this column existed.
+    reviewed_at: timestamp('reviewed_at', { withTimezone: true }),
     followup_notes: text('followup_notes'),
     created_by: uuid('created_by').references(() => profiles.id, {
       onDelete: 'restrict',
@@ -796,6 +803,20 @@ export const messages = pgTable(
       .references(() => homes.id, { onDelete: 'cascade' }),
     from_name: text('from_name').notNull(),
     body: text('body').notNull(),
+    // The person supported this message is about, if any (frontend-audit.md
+    // finding 19); shown on their page.
+    client_id: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+    // A reply's thread: the first message of the thread, on the same board
+    // (frontend-audit.md finding 19). Replies to a reply join the same thread.
+    reply_to: uuid('reply_to').references((): AnyPgColumn => messages.id, {
+      onDelete: 'set null',
+    }),
+    // The incident a thread follows up on, from the same home.
+    incident_id: uuid('incident_id').references(() => incidents.id, { onDelete: 'set null' }),
+    // A photo shared with the message (message_photos, uploaded online first).
+    photo_id: uuid('photo_id').references((): AnyPgColumn => messagePhotos.id, {
+      onDelete: 'set null',
+    }),
     sent_at: timestamp('sent_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1201,6 +1222,9 @@ export const caseNotes = pgTable(
     }),
     author_name: text('author_name'),
     body: text('body').notNull(),
+    // What the note is about (US-15): one of CASE_NOTE_CATEGORIES in
+    // domain/case-notes.ts. Null on notes written before categories existed.
+    category: text('category'),
     created_by: uuid('created_by').references(() => profiles.id, {
       onDelete: 'restrict',
     }),
@@ -1681,6 +1705,9 @@ export const controlledCounts = pgTable(
     // none | pending | verified
     witness_status: text('witness_status').notNull().default('none'),
     witnessed_at: timestamp('witnessed_at', { withTimezone: true }),
+    // SHA-256 of the witness's ID token when they signed in on this device.
+    // Unique, so one sign-in can witness one entry only.
+    witness_sign_in: text('witness_sign_in'),
     recorded_at: timestamp('recorded_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1698,5 +1725,114 @@ export const controlledCounts = pgTable(
     index('controlled_counts_home_id_idx').on(t.home_id),
     index('controlled_counts_medication_idx').on(t.medication_id, t.recorded_at),
     index('controlled_counts_witness_idx').on(t.witness_id, t.witness_status),
+    uniqueIndex('controlled_counts_witness_sign_in_idx').on(t.witness_sign_in),
+  ],
+);
+
+// ─── 43. schedule_templates ──────────────────────────────────────────────────
+// A home's usual week, saved by a supervisor and applied to fill a week's open
+// shifts (frontend-audit.md finding 17). slots: [{ weekday 0-6 from the week's
+// first day, shift 'am' | 'pm' | 'on', profileId }]; parsed by
+// domain/schedule-templates.ts. Staff names only, no client data. Not synced.
+
+export const scheduleTemplates = pgTable(
+  'schedule_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id')
+      .notNull()
+      .references(() => homes.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    slots: jsonb('slots').notNull().default([]),
+    created_by: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('schedule_templates_agency_id_idx').on(t.agency_id),
+    uniqueIndex('schedule_templates_home_name_idx').on(t.home_id, t.name),
+  ],
+);
+
+// ─── 44. message_photos ──────────────────────────────────────────────────────
+// A photo shared on a home's board (frontend-audit.md finding 19, fix 3),
+// e.g. a rash or a swollen ankle to show the nurse. The image is stored in a
+// private bucket (MEDIA_BUCKET, or .data/media locally) at
+// photos/<agency_id>/<id>.jpg, re-encoded on the device so it carries no
+// location data. Read through message.photo only, which checks access and
+// records the view. Not synced: devices fetch a photo when it is opened.
+
+export const messagePhotos = pgTable(
+  'message_photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id')
+      .notNull()
+      .references(() => homes.id, { onDelete: 'cascade' }),
+    uploaded_by: uuid('uploaded_by')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'restrict' }),
+    content_type: text('content_type').notNull(),
+    bytes: integer('bytes').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('message_photos_agency_id_idx').on(t.agency_id),
+    index('message_photos_home_id_idx').on(t.home_id),
+  ],
+);
+
+// ─── 45. referral_notes ──────────────────────────────────────────────────────
+// Notes at each intake stage (US-29): what happened at a referral's stage
+// (a tour, a call, why it was declined). Each note keeps the stage the
+// referral was at when it was written. Append-only; supervisors and admins
+// only, like referrals. Not synced: intake is online.
+
+export const referralNotes = pgTable(
+  'referral_notes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    referral_id: uuid('referral_id')
+      .notNull()
+      .references(() => referrals.id, { onDelete: 'cascade' }),
+    status: referralStatusEnum('status').notNull(),
+    body: text('body').notNull(),
+    author_id: uuid('author_id').references(() => profiles.id, {
+      onDelete: 'restrict',
+    }),
+    author_name: text('author_name'),
+    created_by: uuid('created_by').references(() => profiles.id, {
+      onDelete: 'restrict',
+    }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('referral_notes_agency_id_idx').on(t.agency_id),
+    index('referral_notes_referral_id_idx').on(t.referral_id),
   ],
 );

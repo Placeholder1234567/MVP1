@@ -29,6 +29,8 @@
 		'api_access',
 		'api_keys',
 		'mfa_resets',
+		'message_photos',
+		'photo_views',
 		'audit_views'
 	];
 
@@ -67,6 +69,38 @@
 		}
 	}
 	onMount(() => void load());
+
+	let exporting = $state(false);
+	/** The filtered list's metadata as CSV (never record values); the download is recorded. */
+	async function download() {
+		message = '';
+		if (!from || !to) {
+			message = 'Choose a From and To date to download.';
+			return;
+		}
+		exporting = true;
+		try {
+			const file = await trpc.audit.export.mutate({
+				tableName: tableName || undefined,
+				action: action || undefined,
+				dateRange: {
+					from: new Date(`${from}T00:00:00`).toISOString(),
+					to: new Date(`${to}T23:59:59`).toISOString()
+				}
+			});
+			const url = URL.createObjectURL(new Blob([file.content], { type: file.contentType }));
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = file.filename;
+			link.click();
+			URL.revokeObjectURL(url);
+			message = `Downloaded ${file.rows} ${file.rows === 1 ? 'entry' : 'entries'}.`;
+		} catch (e) {
+			message = e instanceof Error ? e.message : 'Connect to download the audit log.';
+		} finally {
+			exporting = false;
+		}
+	}
 
 	async function open(id: string) {
 		try {
@@ -126,7 +160,16 @@
 			<label>From<input class="input" type="date" bind:value={from} /></label>
 			<label>To<input class="input" type="date" bind:value={to} /></label>
 		</div>
-		<div class="actions"><button class="btn" disabled={loading}>Show entries</button></div>
+		<div class="actions">
+			<button class="btn" disabled={loading}>Show entries</button>
+			<button type="button" class="btn sec" disabled={exporting} onclick={download}
+				>Download CSV</button
+			>
+		</div>
+		<p class="muted s13">
+			Downloads list who did what and when, for up to 93 days, without record values. Each download
+			is recorded.
+		</p>
 	</form>
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
 
@@ -158,7 +201,7 @@
 	{/if}
 
 	{#if loading && !entries.length}<Skeleton count={5} label="Loading audit entries" />{:else}
-		<div class="list card" aria-label="Audit entries">
+		<div class="list card" role="group" aria-label="Audit entries">
 			{#each entries as e (e.id)}
 				<button class="row" onclick={() => open(e.id)}>
 					<span class="grow"

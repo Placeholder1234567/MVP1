@@ -63,9 +63,14 @@ it('supervisors add case notes and read them newest first', async () => {
 	const sup = await as(SUP);
 	const first = await sup.caseNote.create({
 		clientId: PERSON,
-		body: 'ISP meeting held (synthetic).'
+		body: 'ISP meeting held (synthetic).',
+		category: 'isp_meeting'
 	});
-	expect(first).toMatchObject({ clientId: PERSON, authorName: 'Sam Supervisor' });
+	expect(first).toMatchObject({
+		clientId: PERSON,
+		authorName: 'Sam Supervisor',
+		category: 'isp_meeting'
+	});
 	await sup.caseNote.create({ clientId: PERSON, body: 'Called guardian (synthetic).' });
 	const list = await sup.caseNote.list({ clientId: PERSON });
 	expect(list.map((n) => n.body)).toEqual([
@@ -73,6 +78,11 @@ it('supervisors add case notes and read them newest first', async () => {
 		'ISP meeting held (synthetic).'
 	]);
 	expect((await sup.caseNote.list({ clientId: PERSON, limit: 1, offset: 1 }))[0].id).toBe(first.id);
+	// Each note has a category; without one it is "other".
+	expect(list.map((n) => n.category)).toEqual(['other', 'isp_meeting']);
+	await expect(
+		sup.caseNote.create({ clientId: PERSON, body: 'x', category: 'gossip' as never })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 	await expect(sup.caseNote.create({ clientId: PERSON, body: '   ' })).rejects.toMatchObject({
 		code: 'BAD_REQUEST'
 	});

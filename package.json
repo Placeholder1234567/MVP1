@@ -33,6 +33,7 @@
 		"test:all": "vitest run",
 		"dev:auth": "firebase emulators:start --only auth --project demo-guad",
 		"agency:provision": "tsx --env-file=.env scripts/provision-agency.ts",
+		"maintenance:announce": "tsx --env-file=.env scripts/announce-maintenance.ts",
 		"db:seed": "tsx --env-file=.env src/lib/server/seed.ts",
 		"pretest": "svelte-kit sync",
 		"pretest:integration": "svelte-kit sync",

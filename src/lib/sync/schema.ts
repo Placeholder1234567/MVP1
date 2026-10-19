@@ -95,12 +95,12 @@ const coverage_requests = new Table({
 	day: column.text,
 	shift: column.text,
 	called_out_by: column.text,
-	reason: column.text,
 	status: column.text,
 	filled_by: column.text,
 	created_by: column.text,
 	created_at: column.text,
 	updated_at: column.text,
+	reason: column.text,
 });
 
 const coverage_steps = new Table({
@@ -181,9 +181,11 @@ const incidents = new Table({
 	staff_action: column.text,
 	medical_followup: column.text,
 	witnesses: column.text,
+	witness_list: column.text,
 	notified_parties: column.text,
 	report_details: column.text,
 	status: column.text,
+	reviewed_at: column.text,
 	followup_notes: column.text,
 	created_by: column.text,
 	created_at: column.text,
@@ -245,6 +247,10 @@ const message_reads = new Table({
 const messages = new Table({
 	agency_id: column.text,
 	home_id: column.text,
+	client_id: column.text,
+	reply_to: column.text,
+	incident_id: column.text,
+	photo_id: column.text,
 	from_name: column.text,
 	body: column.text,
 	sent_at: column.text,

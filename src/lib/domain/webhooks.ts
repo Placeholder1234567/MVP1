@@ -202,7 +202,11 @@ export function isPrivateAddress(ip: string): boolean {
 		/^fe[89ab]/.test(v6) || // link-local fe80::/10
 		v6.startsWith('ff') || // multicast
 		v6.startsWith('64:ff9b:') || // NAT64 can reach IPv4 private ranges
-		v6.startsWith('::ffff:') // mapped forms not matched above
+		v6.startsWith('::') || // IPv4-compatible (::a.b.c.d) and mapped forms not matched above
+		v6.startsWith('2002:') || // 6to4 wraps an IPv4 address, private ones included
+		/^2001:0?:/.test(v6) || // Teredo tunnels to IPv4
+		/^2001:0?db8:/.test(v6) || // documentation range
+		/^100::/.test(v6) // discard-only
 	);
 }
 

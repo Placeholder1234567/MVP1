@@ -19,6 +19,13 @@ export interface VoiceDependencies {
 	state: (state: VoiceState) => void;
 	/** Optional: without it, segments are cut at the hard limit only. */
 	listen?: (stream: MediaStream) => VoiceListener;
+	/**
+	 * Optional, for offline use (frontend-spec-2.md "Offline voice behavior"):
+	 * when the device is offline, a segment is kept in the encrypted local
+	 * database to be transcribed on reconnect instead of being lost.
+	 */
+	offline?: () => boolean;
+	keep?: (audio: string, mime: string, part: number) => Promise<void>;
 }
 const MAX_BYTES = 2_500_000;
 /** Speech-to-Text's synchronous recognizer takes at most 60 s per request (ai-pipeline.md). */
@@ -32,6 +39,10 @@ const PRIVACY = 'Recording stopped for privacy. Your typed observations are stil
 const FAILED = 'Could not record or transcribe the clip. Try again or type your observations.';
 const PARTIAL =
 	'Part of the recording could not be transcribed; it is marked in the text. Check it before using it.';
+export const KEPT_OFFLINE =
+	'You’re offline. Your recording is saved on this device, and Lomi will transcribe it when you’re back online. You can type in the meantime.';
+/** A segment saved for later instead of transcribed. */
+const KEPT: unique symbol = Symbol('kept');
 
 interface Segment {
 	recorder: MediaRecorder;
@@ -58,7 +69,7 @@ export class VoiceCapture {
 				segment?: Segment;
 				listener?: VoiceListener;
 				total?: ReturnType<typeof setTimeout>;
-				parts: Promise<string | null>[];
+				parts: Promise<string | null | typeof KEPT>[];
 		  }
 		| undefined;
 	private value: VoiceState = { recording: false, requesting: false, busy: false, message: '' };
@@ -202,36 +213,53 @@ export class VoiceCapture {
 				resolve(new Blob(segment.chunks, { type: segment.recorder.mimeType }));
 		});
 		segment.recorder.stop();
-		active.parts.push(done.then((blob) => this.transcribe(mine, blob)));
+		const part = active.parts.length;
+		active.parts.push(done.then((blob) => this.transcribe(mine, blob, part)));
 		if (!last) return;
 		const parts = active.parts;
 		this.release();
 		this.update({ recording: false, busy: true });
 		void this.finish(mine, parts);
 	}
-	private async transcribe(mine: number, blob: Blob): Promise<string | null> {
+	private async transcribe(
+		mine: number,
+		blob: Blob,
+		part: number
+	): Promise<string | null | typeof KEPT> {
+		let audio: string | undefined;
+		const mime = blob.type.split(';')[0];
 		try {
 			if (!this.current(mine)) return null;
 			if (!blob.size || blob.size > MAX_BYTES) throw new Error('Clip unavailable');
-			const audio = await this.deps.encode(blob);
+			audio = await this.deps.encode(blob);
 			if (!this.current(mine)) return null;
-			return (await this.deps.transcribe(audio, blob.type.split(';')[0])).trim();
+			if (this.deps.keep && this.deps.offline?.()) throw new Error('Offline');
+			return (await this.deps.transcribe(audio, mime)).trim();
 		} catch {
+			// Offline (or the connection dropped): keep the clip for later.
+			if (audio && this.deps.keep && this.deps.offline?.() && this.current(mine))
+				return this.deps
+					.keep(audio, mime, part)
+					.then((): typeof KEPT => KEPT)
+					.catch(() => null);
 			return null;
 		}
 	}
-	private async finish(mine: number, parts: Promise<string | null>[]) {
+	private async finish(mine: number, parts: Promise<string | null | typeof KEPT>[]) {
 		try {
-			const texts = await Promise.all(parts);
+			const results = await Promise.all(parts);
 			if (!this.current(mine)) return;
+			const kept = results.some((t) => t === KEPT);
+			const texts = results.filter((t) => t !== KEPT);
 			const heard = texts.filter((t) => t !== null);
-			if (!heard.length) throw new Error('Nothing transcribed');
+			if (!heard.length && !kept) throw new Error('Nothing transcribed');
 			const text = texts
 				.map((t) => (t === null ? MISSING_PART : t))
 				.filter(Boolean)
 				.join(' ');
 			if (text.trim()) this.deps.text(text.trim());
-			if (heard.length < texts.length) this.update({ message: PARTIAL });
+			if (kept) this.update({ message: KEPT_OFFLINE });
+			else if (heard.length < texts.length) this.update({ message: PARTIAL });
 		} catch {
 			if (this.current(mine)) this.update({ message: FAILED });
 		} finally {

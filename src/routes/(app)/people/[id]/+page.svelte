@@ -9,6 +9,10 @@
 	const first = $derived(person?.first_name || person?.name?.split(' ')[0] || 'this person');
 	const goals = $derived(app.goals.filter((g) => g.client_id === person?.id && !g.stopped_at));
 	const behaviors = $derived(parseJson<string[]>(person?.behaviors, []));
+	// Recent team messages about this person (frontend-audit.md finding 19).
+	const aboutMessages = $derived(
+		app.messages.filter((m) => person && m.client_id === person.id).slice(0, 5)
+	);
 	const now = shiftAt(new Date(), app.user.timeZone);
 	const note = $derived(
 		app.notes.find(
@@ -63,75 +67,106 @@
 
 		<div class="section-title"><h2>Today</h2></div>
 		<div class="list card">
-			<a class="row" href={resolve('/(app)/people/[id]/note', { id: person.id })}
-				><span class="avatar sq" aria-hidden="true">✎</span><span class="grow"
-					><b>{app.labels.shift}</b><span
-						>{note?.status === 'returned'
-							? 'Sent back by your supervisor'
-							: goals.length
-								? `Includes ${goals.length} ${goals.length === 1 ? 'goal' : 'goals'}`
-								: 'Activities, meals, mood and health'}</span
-					></span
-				>{#if !note}<span class="pill due">To do</span>{:else if note.status === 'returned'}<span
-						class="pill bad">Fix</span
-					>{:else if note.status === 'draft'}<span class="pill due">Draft</span>{:else}<span
-						class="pill ok">Done</span
-					>{/if}</a
-			>
-			<a class="row" href={resolve('/(app)/people/[id]/medications', { id: person.id })}
-				><span class="avatar sq" aria-hidden="true">℞</span><span class="grow"
-					><b>{app.labels.medications}</b><span
-						>{slots.length
-							? `${slots.length} scheduled ${slots.length === 1 ? 'dose' : 'doses'}`
-							: 'No scheduled doses'}</span
-					></span
-				>{#if slots.length}{#if due.length}<span class="pill due">{due.length} due</span
-						>{:else}<span class="pill ok">Done</span>{/if}{:else}{@render chev()}{/if}</a
-			>
-			<a class="row" href={resolve('/(app)/people/[id]/attendance', { id: person.id })}
-				><span class="avatar sq" aria-hidden="true">▦</span><span class="grow"
-					><b>Attendance</b><span
-						>{attendance
-							? parseJson<string[]>(attendance.services, []).join(', ')
-							: `Which services did ${first} get today?`}</span
-					></span
-				>{#if attendance}<span class="pill ok">Saved</span>{:else}<span class="pill due">To do</span
-					>{/if}</a
-			>
+			{#if app.has('charting')}<a
+					class="row"
+					href={resolve('/(app)/people/[id]/note', { id: person.id })}
+					><span class="avatar sq" aria-hidden="true">✎</span><span class="grow"
+						><b>{app.labels.shift}</b><span
+							>{note?.status === 'returned'
+								? 'Sent back by your supervisor'
+								: goals.length
+									? `Includes ${goals.length} ${goals.length === 1 ? 'goal' : 'goals'}`
+									: 'Activities, meals, mood and health'}</span
+						></span
+					>{#if !note}<span class="pill due">To do</span>{:else if note.status === 'returned'}<span
+							class="pill bad">Fix</span
+						>{:else if note.status === 'draft'}<span class="pill due">Draft</span>{:else}<span
+							class="pill ok">Done</span
+						>{/if}</a
+				>{/if}
+			{#if app.has('mar')}<a
+					class="row"
+					href={resolve('/(app)/people/[id]/medications', { id: person.id })}
+					><span class="avatar sq" aria-hidden="true">℞</span><span class="grow"
+						><b>{app.labels.medications}</b><span
+							>{slots.length
+								? `${slots.length} scheduled ${slots.length === 1 ? 'dose' : 'doses'}`
+								: 'No scheduled doses'}</span
+						></span
+					>{#if slots.length}{#if due.length}<span class="pill due">{due.length} due</span
+							>{:else}<span class="pill ok">Done</span>{/if}{:else}{@render chev()}{/if}</a
+				>{/if}
+			{#if app.has('charting')}<a
+					class="row"
+					href={resolve('/(app)/people/[id]/attendance', { id: person.id })}
+					><span class="avatar sq" aria-hidden="true">▦</span><span class="grow"
+						><b>Attendance</b><span
+							>{attendance
+								? parseJson<string[]>(attendance.services, []).join(', ')
+								: `Which services did ${first} get today?`}</span
+						></span
+					>{#if attendance}<span class="pill ok">Saved</span>{:else}<span class="pill due"
+							>To do</span
+						>{/if}</a
+				>{/if}
 		</div>
 
 		<div class="section-title"><h2>Record</h2></div>
 		<div class="list card">
-			<a class="row" href={resolve('/(app)/people/[id]/health', { id: person.id })}
-				><span class="avatar sq" aria-hidden="true">♥</span><span class="grow"
-					><b>Health</b><span>Vitals, seizures, illness, visits</span></span
-				>{@render chev()}</a
-			>
-			<a class="row" href={resolve('/(app)/people/[id]/behavior', { id: person.id })}
-				><span class="avatar sq" aria-hidden="true">≈</span><span class="grow"
-					><b>{app.labels.behavior}</b><span
-						>{behaviors.length
-							? `Plan: ${behaviors.join(', ')}`
-							: 'Before, what happened, response and outcome'}</span
-					></span
-				>{@render chev()}</a
-			>
-			<a class="row" href={resolve('/(app)/people/[id]/incident', { id: person.id })}
-				><span class="avatar sq" aria-hidden="true">!</span><span class="grow"
-					><b>{app.labels.reportIncident}</b><span>Falls, injuries, medication errors and more</span
-					></span
-				>{@render chev()}</a
-			>
+			{#if app.has('health')}<a
+					class="row"
+					href={resolve('/(app)/people/[id]/health', { id: person.id })}
+					><span class="avatar sq" aria-hidden="true">♥</span><span class="grow"
+						><b>Health</b><span>Vitals, seizures, illness, visits</span></span
+					>{@render chev()}</a
+				>{/if}
+			{#if app.has('charting')}<a
+					class="row"
+					href={resolve('/(app)/people/[id]/behavior', { id: person.id })}
+					><span class="avatar sq" aria-hidden="true">≈</span><span class="grow"
+						><b>{app.labels.behavior}</b><span
+							>{behaviors.length
+								? `Plan: ${behaviors.join(', ')}`
+								: 'Before, what happened, response and outcome'}</span
+						></span
+					>{@render chev()}</a
+				>{/if}
+			{#if app.has('incidents')}<a
+					class="row"
+					href={resolve('/(app)/people/[id]/incident', { id: person.id })}
+					><span class="avatar sq" aria-hidden="true">!</span><span class="grow"
+						><b>{app.labels.reportIncident}</b><span
+							>Falls, injuries, medication errors and more</span
+						></span
+					>{@render chev()}</a
+				>{/if}
 		</div>
 
 		<div class="section-title"><h2>About {first}</h2></div>
 		<div class="list card">
-			<a class="row" href={resolve('/(app)/people/[id]/summary', { id: person.id })}
-				><span class="avatar sq" aria-hidden="true">▤</span><span class="grow"
-					><b>Health summary</b><span>Allergies, conditions, doctor, guardian</span></span
-				>{@render chev()}</a
-			>
+			{#if app.has('charting')}<a
+					class="row"
+					href={resolve('/(app)/people/[id]/summary', { id: person.id })}
+					><span class="avatar sq" aria-hidden="true">▤</span><span class="grow"
+						><b>Health summary</b><span>Allergies, conditions, doctor, guardian</span></span
+					>{@render chev()}</a
+				>{/if}
 		</div>
+
+		{#if aboutMessages.length}<div class="section-title">
+				<h2>Team messages about {first}</h2>
+				<a class="textbtn" href={resolve('/(app)/messages')}>All messages</a>
+			</div>
+			<div class="stack">
+				{#each aboutMessages as m (m.id)}<div class="card pad">
+						<div class="spread">
+							<b>{m.from_name}</b><small class="muted"
+								>{m.sent_at ? new Date(m.sent_at).toLocaleString() : ''}</small
+							>
+						</div>
+						<p class="record-text">{m.body}</p>
+					</div>{/each}
+			</div>{/if}
 
 		<div class="section-title"><h2>{app.labels.goalsNav}</h2></div>
 		{#each goals as goal (goal.id)}<div class="card pad">

@@ -1,6 +1,6 @@
 import { and, desc, eq, ne } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { clients, clientHealthInfo, homes, referrals, rooms } from '../../db/schema';
+import { clients, clientHealthInfo, homes, referralNotes, referrals, rooms } from '../../db/schema';
 
 export type Referral = typeof referrals.$inferInsert;
 export type Room = typeof rooms.$inferInsert;
@@ -144,4 +144,29 @@ export async function admit(
 		.insert(clientHealthInfo)
 		.values({ agency_id: agencyId, home_id: homeId, client_id: person.id });
 	return person.id;
+}
+
+export async function insertReferralNote(tx: Tx, row: typeof referralNotes.$inferInsert) {
+	const [created] = await tx.insert(referralNotes).values(row).returning({
+		id: referralNotes.id,
+		status: referralNotes.status,
+		body: referralNotes.body,
+		authorName: referralNotes.author_name,
+		createdAt: referralNotes.created_at
+	});
+	return created;
+}
+/** A referral's stage notes, oldest first. */
+export function referralNoteRows(tx: Tx, agencyId: string, referralId: string) {
+	return tx
+		.select({
+			id: referralNotes.id,
+			status: referralNotes.status,
+			body: referralNotes.body,
+			authorName: referralNotes.author_name,
+			createdAt: referralNotes.created_at
+		})
+		.from(referralNotes)
+		.where(and(eq(referralNotes.agency_id, agencyId), eq(referralNotes.referral_id, referralId)))
+		.orderBy(referralNotes.created_at, referralNotes.id);
 }

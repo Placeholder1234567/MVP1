@@ -75,6 +75,11 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 	try {
 		const review = await supervisor.newPage();
 		await signIn(review, 'supervisor@guad.test');
+		// The sidebar counts notes waiting for review (desktop sidebar only).
+		if (info.project.name === 'desktop')
+			await expect(
+				review.getByRole('link', { name: 'Review notes', exact: true }).first()
+			).toHaveAccessibleDescription(/^\d+ to review$/);
 		await review.getByRole('link', { name: 'Review notes', exact: true }).click();
 		await review
 			.getByRole('button', { name: /Marcus Demo/ })
@@ -83,9 +88,51 @@ test('caregiver saves, explicitly signs and receives supervisor approval', async
 		await expect(review.getByText(content, { exact: true })).toBeVisible();
 		await expect(review.getByRole('button', { name: 'Approve note', exact: true })).toBeDisabled();
 		await accessible(review);
-		await review.getByRole('checkbox', { name: /I have read this note/ }).check();
-		await review.getByRole('button', { name: 'Approve note', exact: true }).click();
+		if (info.project.name === 'desktop') {
+			// Keyboard review: A needs the read confirmation first.
+			await review.keyboard.press('a');
+			await expect(review.getByText(/before approving\.$/)).toBeVisible();
+			await review.getByRole('checkbox', { name: /I have read this note/ }).check();
+			await review.keyboard.press('a');
+		} else {
+			await review.getByRole('checkbox', { name: /I have read this note/ }).check();
+			await review.getByRole('button', { name: 'Approve note', exact: true }).click();
+		}
 		await expect(review.getByText('Note approved.', { exact: true })).toBeVisible();
+		// The approved note moves to the Approved filter, and search narrows the list.
+		const author = info.project.name === 'phone' ? 'Dev Okafor' : 'Cara Giver';
+		await review
+			.getByRole('group', { name: 'Show notes', exact: true })
+			.getByRole('button', { name: 'Approved', exact: true })
+			.click();
+		await review.getByLabel('Search', { exact: true }).fill(`marcus ${author.split(' ')[0]}`);
+		const approved = review
+			.getByRole('button', { name: /Marcus Demo/ })
+			.filter({ hasText: author })
+			.first();
+		await expect(approved).toContainText('Approved');
+		await approved.click();
+		await expect(review.getByText('Approved notes are read-only.', { exact: true })).toBeVisible();
+		await expect(review.getByRole('button', { name: 'Approve note', exact: true })).toHaveCount(0);
+		if (info.project.name === 'phone') {
+			// On a phone the note replaces the list; "All notes" goes back.
+			await expect(approved).toBeHidden();
+			await review.getByRole('button', { name: '← All notes', exact: true }).click();
+			await expect(approved).toBeVisible();
+		}
+		await review.getByLabel('Search', { exact: true }).fill('no such person');
+		await expect(review.getByText('No notes match these filters.', { exact: true })).toBeVisible();
+		// The overview's "Signed today" card opens this list for today's shifts.
+		await review.getByRole('link', { name: 'Overview', exact: true }).first().click();
+		await review.getByRole('link', { name: /^Signed today/ }).click();
+		await expect(
+			review
+				.getByRole('group', { name: 'Show notes', exact: true })
+				.getByRole('button', { name: 'All', exact: true })
+		).toHaveAttribute('aria-pressed', 'true');
+		const from = await review.getByLabel('From', { exact: true }).inputValue();
+		expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+		await expect(review.getByLabel('To', { exact: true })).toHaveValue(from);
 		await expect(
 			page.getByText('This note is approved. Signed records are read-only.', { exact: true })
 		).toBeVisible();

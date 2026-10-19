@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
+process.env.FIREBASE_AUTH_EMULATOR_HOST ??= '127.0.0.1:9099';
+process.env.PUBLIC_FIREBASE_PROJECT_ID ??= 'demo-guad';
 
 const { closeDb, withService } = await import('../../../src/lib/server/db');
 const s = await import('../../../src/lib/server/db/schema');
@@ -13,6 +15,7 @@ const { getCurrentUser } = await import('../../../src/lib/server/services/auth')
 const { appRouter } = await import('../../../src/lib/server/trpc/router');
 const { createCallerFactory } = await import('../../../src/lib/server/trpc/middleware');
 const { localTime } = await import('../../../src/lib/domain');
+const identity = await import('../../../src/lib/server/identity');
 
 const createCaller = createCallerFactory(appRouter);
 const AGENCY = randomUUID();
@@ -21,12 +24,36 @@ const MAPLE = randomUUID();
 const PERSON = randomUUID();
 const MED = randomUUID();
 const PLAIN = randomUUID();
-const [CARA, DEV, UNCERTIFIED, SAM, MAPLE_CARER] = Array.from({ length: 5 }, () => randomUUID());
+const [CARA, DEV, UNCERTIFIED, SAM, MAPLE_CARER, WES] = Array.from({ length: 6 }, () =>
+	randomUUID()
+);
+// Wes has a real emulator account, to sign in as a witness on Cara's device.
+const WES_EMAIL = `controlled-wes-${WES}@example.test`;
+const PASSWORD = 'test-only-password-1';
+let wesUid = '';
+async function emulatorSignIn(email: string): Promise<string> {
+	const res = await fetch(
+		`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo-key`,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email, password: PASSWORD, returnSecureToken: true })
+		}
+	);
+	const body = await res.json();
+	if (!res.ok) throw new Error(body.error?.message ?? 'sign-in failed');
+	return body.idToken;
+}
 const uid = (id: string) => `controlled-${id}`;
 const as = async (id: string) => createCaller({ user: await getCurrentUser(uid(id)), request: {} });
 const at = (hoursAgo: number) => new Date(Date.now() - hoursAgo * 3_600_000);
 
 beforeAll(async () => {
+	wesUid = await identity.createIdentity({
+		email: WES_EMAIL,
+		displayName: 'Wes Witness',
+		password: PASSWORD
+	});
 	await withService(async (t) => {
 		await t.insert(s.agencies).values({
 			id: AGENCY,
@@ -54,15 +81,18 @@ beforeAll(async () => {
 			home_ids: homes,
 			med_certified: med
 		});
-		await t
-			.insert(s.profiles)
-			.values([
-				staff(CARA, 'Cara Giver', 'caregiver', [OAK], true),
-				staff(DEV, 'Dev Okafor', 'caregiver', [OAK], true),
-				staff(UNCERTIFIED, 'Una Certified', 'caregiver', [OAK], false),
-				staff(SAM, 'Sam Supervisor', 'supervisor', [OAK, MAPLE], true),
-				staff(MAPLE_CARER, 'Mo Maple', 'caregiver', [MAPLE], true)
-			]);
+		await t.insert(s.profiles).values([
+			staff(CARA, 'Cara Giver', 'caregiver', [OAK], true),
+			staff(DEV, 'Dev Okafor', 'caregiver', [OAK], true),
+			staff(UNCERTIFIED, 'Una Certified', 'caregiver', [OAK], false),
+			staff(SAM, 'Sam Supervisor', 'supervisor', [OAK, MAPLE], true),
+			staff(MAPLE_CARER, 'Mo Maple', 'caregiver', [MAPLE], true),
+			{
+				...staff(WES, 'Wes Witness', 'caregiver', [OAK], true),
+				auth_uid: wesUid,
+				email: WES_EMAIL
+			}
+		]);
 		await t
 			.insert(s.clients)
 			.values({ id: PERSON, agency_id: AGENCY, home_id: OAK, name: 'Person Oak' });
@@ -84,7 +114,10 @@ beforeAll(async () => {
 		]);
 	});
 });
-afterAll(closeDb);
+afterAll(async () => {
+	await identity.deleteIdentity(wesUid).catch(() => {});
+	await closeDb();
+});
 
 const entry = (data: Record<string, unknown>) => ({ id: randomUUID(), medicationId: MED, ...data });
 
@@ -233,6 +266,45 @@ describe('controlled medications', () => {
 		).rejects.toMatchObject({ code: 'FORBIDDEN' });
 	});
 
+	it('a witness who signs in on the same device makes the entry witnessed at once', async () => {
+		const cara = await as(CARA);
+		const token = await emulatorSignIn(WES_EMAIL);
+		const signed = entry({ kind: 'receipt', quantity: 5, witnessId: WES, witnessToken: token });
+		expect(await cara.medication.countEntry(signed)).toMatchObject({
+			created: true,
+			witnessed: true
+		});
+		const [row] = await withService((t) =>
+			t.select().from(s.controlledCounts).where(eq(s.controlledCounts.id, signed.id))
+		);
+		expect(row).toMatchObject({ witness_id: WES, witness_status: 'verified' });
+		expect(row.witnessed_at).toBeInstanceOf(Date);
+		const asks = await withService((t) =>
+			t.select().from(s.notifications).where(eq(s.notifications.reference_id, signed.id))
+		);
+		expect(asks).toEqual([]);
+
+		// One sign-in witnesses one entry.
+		await expect(
+			cara.medication.countEntry(
+				entry({ kind: 'receipt', quantity: 5, witnessId: WES, witnessToken: token })
+			)
+		).rejects.toMatchObject({
+			code: 'BAD_REQUEST',
+			message: expect.stringMatching(/already used/)
+		});
+
+		// The token must belong to the named witness, and be real.
+		const fresh = await emulatorSignIn(WES_EMAIL);
+		for (const bad of [
+			entry({ kind: 'receipt', quantity: 5, witnessId: DEV, witnessToken: fresh }),
+			entry({ kind: 'receipt', quantity: 5, witnessId: WES, witnessToken: 'not-a-token' })
+		])
+			await expect(cara.medication.countEntry(bad)).rejects.toMatchObject({
+				code: 'BAD_REQUEST'
+			});
+	});
+
 	it('offline entries upload through sync.upload; entries are never edited', async () => {
 		const cara = await as(CARA);
 		const id = randomUUID();
@@ -246,7 +318,7 @@ describe('controlled medications', () => {
 					data: {
 						medication_id: MED,
 						kind: 'count',
-						quantity: '23',
+						quantity: '28',
 						witness_id: DEV,
 						recorded_at: new Date().toISOString(),
 						recorded_by: SAM,
@@ -266,7 +338,8 @@ describe('controlled medications', () => {
 			recorded_by: CARA,
 			witness_id: DEV,
 			witness_status: 'pending',
-			expected: 23,
+			// 23 after the disposal, plus Wes's witnessed receipt of 5
+			expected: 28,
 			discrepancy: false,
 			home_id: OAK
 		});

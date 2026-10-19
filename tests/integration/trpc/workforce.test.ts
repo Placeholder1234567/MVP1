@@ -267,6 +267,31 @@ it('offers only eligible caregivers and the first acceptance wins atomically', a
 	expect([eli, bea]).toContain(
 		slots.slots.find((s) => s.day === day && s.shift === 'pm')?.assigned_to
 	);
+	// Lomi posts the offer and the cover on the home's board, without an author.
+	const board = await withService((tx) =>
+		tx
+			.select({ body: s.messages.body, from: s.messages.from_name, by: s.messages.created_by })
+			.from(s.messages)
+			.where(eq(s.messages.home_id, oak))
+	);
+	expect(board.filter((m) => m.from === 'Lomi' && m.by === null).map((m) => m.body)).toEqual(
+		expect.arrayContaining([
+			expect.stringMatching(
+				/^Test can’t make the evening shift on .+\. I’ve offered it to 2 eligible staff members\.$/
+			),
+			expect.stringMatching(/^The evening shift on .+ is covered by Available\.$/)
+		])
+	);
+	// The activity log shows who was offered, why others weren't, and each reply.
+	const detail = await supervisor.coverage.get({ id: request.id });
+	const byId = new Map(detail.candidates.map((c) => [c.profileId, c]));
+	expect(byId.get(cara)).toMatchObject({ eligible: false, reason: 'called_out' });
+	expect(byId.get(dev)).toMatchObject({ eligible: false, reason: 'not_trained_at_home' });
+	expect([byId.get(eli)?.reply, byId.get(bea)?.reply]).toContain('accepted');
+	expect(detail.candidates.find((c) => c.reply === 'accepted')?.repliedAt).toBeInstanceOf(Date);
+	await expect(original.coverage.get({ id: request.id })).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
 });
 
 it('sends a reminder once and a timed-out request becomes a supervisor action', async () => {
@@ -424,4 +449,148 @@ it('copies last week into open slots, keeps assigned ones and skips double booki
 	expect(
 		(await supervisor.schedule.copyWeek({ homeId: oak, fromWeek: from, toWeek: to })).copied
 	).toBe(0);
+});
+
+it('saves a week as a template and applies it to the open slots of another week', async () => {
+	const supervisor = await as(sam);
+	const from = weekStart(addDays(day, 56));
+	const to = addDays(from, 14);
+	await supervisor.schedule.setSlot({
+		homeId: oak,
+		day: addDays(from, 0),
+		shift: 'am',
+		profileId: cara
+	});
+	await supervisor.schedule.setSlot({
+		homeId: oak,
+		day: addDays(from, 3),
+		shift: 'pm',
+		profileId: sam
+	});
+
+	await expect(
+		(await as(cara)).schedule.saveTemplate({ homeId: oak, name: 'Usual week', fromWeek: from })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	await expect(
+		supervisor.schedule.saveTemplate({ homeId: oak, name: 'Empty', fromWeek: addDays(from, 70) })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	const saved = await supervisor.schedule.saveTemplate({
+		homeId: oak,
+		name: 'Usual week',
+		fromWeek: from
+	});
+	expect(saved.shifts).toBe(2);
+	// Saving under the same name replaces it.
+	expect(
+		(await supervisor.schedule.saveTemplate({ homeId: oak, name: 'Usual week', fromWeek: from })).id
+	).toBe(saved.id);
+	expect(await supervisor.schedule.templates({ homeId: oak })).toEqual([
+		expect.objectContaining({ id: saved.id, name: 'Usual week', shifts: 2 })
+	]);
+	expect(await supervisor.schedule.templates({ homeId: maple })).toEqual([]);
+
+	// Thursday evening in the target week is already Cara's: it stays.
+	await supervisor.schedule.setSlot({
+		homeId: oak,
+		day: addDays(to, 3),
+		shift: 'pm',
+		profileId: cara
+	});
+	const result = await supervisor.schedule.applyTemplate({ id: saved.id, toWeek: to });
+	expect(result.copied).toBe(1);
+	expect(result.skipped).toEqual([
+		{ day: addDays(to, 3), shift: 'pm', reason: 'already-assigned' }
+	]);
+	const week = await supervisor.schedule.get({ homeId: oak, weekStart: to });
+	const by = (d: number, shift: string) =>
+		week.slots.find((s) => s.day === addDays(to, d) && s.shift === shift)?.assigned_to ?? null;
+	expect([by(0, 'am'), by(3, 'pm')]).toEqual([cara, cara]);
+
+	await expect(supervisor.schedule.deleteTemplate({ id: saved.id })).resolves.toEqual({
+		deleted: true
+	});
+	await expect(
+		supervisor.schedule.applyTemplate({ id: saved.id, toWeek: to })
+	).rejects.toMatchObject({ code: 'NOT_FOUND' });
+});
+
+it('suggests eligible staff for open shifts without double-booking, and applies only what is kept', async () => {
+	const supervisor = await as(sam);
+	const week = weekStart(addDays(day, 84));
+	await expect(
+		(await as(cara)).schedule.suggest({ homeId: oak, weekStart: week })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+	const suggestions = await supervisor.schedule.suggest({ homeId: oak, weekStart: week });
+	expect(suggestions).toHaveLength(21);
+	const picked = suggestions.filter((x) => x.profileId);
+	// Only caregivers trained at Oak; never twice in a day; at most five shifts each.
+	expect(new Set(picked.map((x) => x.profileId))).toEqual(new Set([eli, bea, cara]));
+	for (const d of new Set(picked.map((x) => x.day))) {
+		const that = picked.filter((x) => x.day === d).map((x) => x.profileId);
+		expect(new Set(that).size).toBe(that.length);
+	}
+	for (const id of [eli, bea, cara])
+		expect(picked.filter((x) => x.profileId === id).length).toBeLessThanOrEqual(5);
+	expect(suggestions.filter((x) => !x.profileId).every((x) => x.reason)).toBe(true);
+	// Nothing was assigned by suggesting.
+	expect(
+		(await supervisor.schedule.get({ homeId: oak, weekStart: week })).slots.filter(
+			(s) => s.assigned_to
+		)
+	).toEqual([]);
+
+	const keep = picked
+		.slice(0, 2)
+		.map((x) => ({ day: x.day, shift: x.shift, profileId: x.profileId! }));
+	expect(
+		(await supervisor.schedule.applySuggestions({ homeId: oak, weekStart: week, picks: keep }))
+			.copied
+	).toBe(2);
+	const after = await supervisor.schedule.get({ homeId: oak, weekStart: week });
+	for (const k of keep)
+		expect(after.slots.find((s) => s.day === k.day && s.shift === k.shift)?.assigned_to).toBe(
+			k.profileId
+		);
+	// A stale pick is checked again: the person now works that day, so it is skipped.
+	const taken = new Set(keep.filter((k) => k.day === keep[0].day).map((k) => k.shift));
+	const free = (['am', 'pm', 'on'] as const).find((sh) => !taken.has(sh))!;
+	const stale = await supervisor.schedule.applySuggestions({
+		homeId: oak,
+		weekStart: week,
+		picks: [{ day: keep[0].day, shift: free, profileId: keep[0].profileId }]
+	});
+	expect(stale).toEqual({
+		copied: 0,
+		skipped: [{ day: keep[0].day, shift: free, reason: 'unavailable' }]
+	});
+	await expect(
+		supervisor.schedule.applySuggestions({
+			homeId: oak,
+			weekStart: week,
+			picks: [{ day: addDays(week, 7), shift: 'am', profileId: eli }]
+		})
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+});
+
+it('a pick for a shift taken since is skipped with its reason and does not block the others', async () => {
+	const supervisor = await as(sam);
+	const week = weekStart(addDays(day, 98));
+	const monday = addDays(week, 1);
+	// After the suggestion, Bea is put on Monday morning by hand.
+	await supervisor.schedule.setSlot({ homeId: oak, day: monday, shift: 'am', profileId: bea });
+	const result = await supervisor.schedule.applySuggestions({
+		homeId: oak,
+		weekStart: week,
+		picks: [
+			{ day: monday, shift: 'am', profileId: eli },
+			{ day: monday, shift: 'pm', profileId: eli }
+		]
+	});
+	expect(result).toEqual({
+		copied: 1,
+		skipped: [{ day: monday, shift: 'am', reason: 'already-assigned' }]
+	});
+	const after = await supervisor.schedule.get({ homeId: oak, weekStart: week });
+	expect(after.slots.find((s) => s.day === monday && s.shift === 'pm')?.assigned_to).toBe(eli);
 });

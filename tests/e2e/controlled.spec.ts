@@ -71,6 +71,7 @@ test('a witnessed count book: receipt, blind count, countersign and a mismatch',
 	await card
 		.getByRole('combobox', { name: 'Witness', exact: true })
 		.selectOption({ label: 'Cara Giver' });
+	await card.getByRole('radio', { name: /^Confirms later/ }).check();
 	await card.getByRole('button', { name: 'Save to count book', exact: true }).click();
 	await expect(sam.getByText(/^Saved\. Your witness confirms it/)).toBeVisible();
 	await expect(card.getByText('On hand: 30', { exact: true })).toBeVisible();
@@ -83,6 +84,7 @@ test('a witnessed count book: receipt, blind count, countersign and a mismatch',
 	await card
 		.getByRole('combobox', { name: 'Witness', exact: true })
 		.selectOption({ label: 'Cara Giver' });
+	await card.getByRole('radio', { name: /^Confirms later/ }).check();
 	await card.getByRole('button', { name: 'Save to count book', exact: true }).click();
 	await expect(sam.getByText(/^Saved\. Your witness confirms it/)).toBeVisible();
 	await synced(sam);
@@ -102,13 +104,32 @@ test('a witnessed count book: receipt, blind count, countersign and a mismatch',
 		await expect(rows).toHaveCount(1 - i, { timeout: 30000 });
 	}
 
-	await card.getByRole('button', { name: 'Count', exact: true }).click();
-	await card.getByLabel('How many are on hand?', { exact: true }).fill('29');
+	// Cara is standing next to Sam: she signs in on his device to witness waste.
+	await card.getByRole('button', { name: 'Wasted', exact: true }).click();
+	await card.getByLabel('How many were wasted?', { exact: true }).fill('1');
+	await card
+		.getByRole('combobox', { name: 'Why', exact: true })
+		.selectOption('Dropped or contaminated');
 	await card
 		.getByRole('combobox', { name: 'Witness', exact: true })
 		.selectOption({ label: 'Cara Giver' });
+	await expect(card.getByRole('radio', { name: 'Signs in here now' })).toBeChecked();
+	await card.getByLabel(/^Witness password/).fill('not-her-password');
 	await card.getByRole('button', { name: 'Save to count book', exact: true }).click();
-	await expect(sam.getByText(/^Counted 29, but 30 should be on hand/)).toBeVisible();
+	await expect(card.getByRole('alert')).toHaveText(/didn’t work for the witness/);
+	await card.getByLabel(/^Witness password/).fill('guad-dev-only-1');
+	await card.getByRole('button', { name: 'Save to count book', exact: true }).click();
+	await expect(sam.getByText('Saved and witnessed.', { exact: true })).toBeVisible();
+	await expect(card.getByText('On hand: 29', { exact: true })).toBeVisible();
+
+	await card.getByRole('button', { name: 'Count', exact: true }).click();
+	await card.getByLabel('How many are on hand?', { exact: true }).fill('28');
+	await card
+		.getByRole('combobox', { name: 'Witness', exact: true })
+		.selectOption({ label: 'Cara Giver' });
+	await card.getByRole('radio', { name: /^Confirms later/ }).check();
+	await card.getByRole('button', { name: 'Save to count book', exact: true }).click();
+	await expect(sam.getByText(/^Counted 28, but 29 should be on hand/)).toBeVisible();
 	await expect(sam.getByRole('link', { name: 'Report an incident', exact: true })).toBeVisible();
 	await card.getByText(/^Count book \(\d+\)$/).click();
 	await expect(card.getByText(/witnessed by Cara Giver/).first()).toBeVisible({ timeout: 30000 });

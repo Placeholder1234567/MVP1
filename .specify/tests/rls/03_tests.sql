@@ -118,8 +118,59 @@ DELETE FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000';
 SELECT check_eq('only the named witness countersigns; nobody deletes',
   (SELECT count(*) FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000' AND witness_status = 'pending'), 1);
 
+-- 10. A message may name a person from the same home only
+SELECT expect('cg posts a message about a person at Oak',
+  $$INSERT INTO messages (agency_id, home_id, client_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d1000000-0000-0000-0000-000000000000','Cara Giver','Ate well','c1000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('cg cannot name a person from another home',
+  $$INSERT INTO messages (agency_id, home_id, client_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','d2000000-0000-0000-0000-000000000000','Cara Giver','Wrong home','c1000000-0000-0000-0000-000000000000')$$, true);
+
+-- 11. Threads: a reply joins a thread on the same board; incidents from the same home
+SELECT expect('cg replies to an Oak message',
+  $$INSERT INTO messages (id, agency_id, home_id, reply_to, from_name, body, created_by)
+    VALUES ('f8200000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8000000-0000-0000-0000-000000000000','Cara Giver','Will do','c1000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('a reply must be on the thread''s own board',
+  $$INSERT INTO messages (agency_id, home_id, reply_to, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f9000000-0000-0000-0000-000000000000','Cara Giver','Wrong board','c1000000-0000-0000-0000-000000000000')$$, true);
+SELECT expect('a reply points at the first message, not another reply',
+  $$INSERT INTO messages (agency_id, home_id, reply_to, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8200000-0000-0000-0000-000000000000','Cara Giver','Nested','c1000000-0000-0000-0000-000000000000')$$, true);
+SELECT expect('a thread cannot name an unknown incident',
+  $$INSERT INTO messages (agency_id, home_id, incident_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f8300000-0000-0000-0000-000000000000','Cara Giver','Follow-up','c1000000-0000-0000-0000-000000000000')$$, true);
+
+-- 12. Schedule templates are for supervisors and admins only
+SELECT expect('cg cannot save a schedule template',
+  $$INSERT INTO schedule_templates (agency_id, home_id, name, slots, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Mine','[]','c1000000-0000-0000-0000-000000000000')$$, true);
+
+-- 13. Board photos: the uploader's own row, attached only by its uploader
+SELECT expect('cg records a photo for an Oak message',
+  $$INSERT INTO message_photos (id, agency_id, home_id, uploaded_by, content_type, bytes)
+    VALUES ('f6000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','c1000000-0000-0000-0000-000000000000','image/jpeg',100)$$, false);
+SELECT expect('cg cannot record a photo as someone else',
+  $$INSERT INTO message_photos (agency_id, home_id, uploaded_by, content_type, bytes)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','c2000000-0000-0000-0000-000000000000','image/jpeg',100)$$, true);
+SELECT expect('cg shares their photo on the Oak board',
+  $$INSERT INTO messages (agency_id, home_id, photo_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f6000000-0000-0000-0000-000000000000','Cara Giver','See photo','c1000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('nobody changes a photo row',
+  $$UPDATE message_photos SET bytes = 1 WHERE id = 'f6000000-0000-0000-0000-000000000000'$$, false);
+SELECT check_eq('the photo row is unchanged',
+  (SELECT count(*) FROM message_photos WHERE id = 'f6000000-0000-0000-0000-000000000000' AND bytes = 100), 1);
+
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
+SELECT expect('a photo is attached only by the person who uploaded it',
+  $$INSERT INTO messages (agency_id, home_id, photo_id, from_name, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f6000000-0000-0000-0000-000000000000','Sue Pervisor','Mine now','c2000000-0000-0000-0000-000000000000')$$, true);
+SELECT expect('sup saves a schedule template for a home in the agency',
+  $$INSERT INTO schedule_templates (id, agency_id, home_id, name, slots, created_by)
+    VALUES ('f7000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Usual week','[]','c2000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('a template names its own author',
+  $$INSERT INTO schedule_templates (agency_id, home_id, name, slots, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','Other','[]','c1000000-0000-0000-0000-000000000000')$$, true);
 SELECT expect('sup cannot rewrite caregiver note content',
   $$UPDATE notes SET content = '{"activities":"rewritten"}' WHERE id = 'aa000000-0000-0000-0000-000000000000'$$, true);
 SELECT expect('sup cannot send back without comment',
@@ -149,6 +200,27 @@ SELECT expect('a countersigned entry is final',
   $$UPDATE controlled_counts SET witness_status = 'pending' WHERE id = 'fc000000-0000-0000-0000-000000000000'$$, false);
 SELECT check_eq('countersigned once and still verified',
   (SELECT count(*) FROM controlled_counts WHERE id = 'fc000000-0000-0000-0000-000000000000' AND witness_status = 'verified'), 1);
+
+SELECT expect('sup records a referral',
+  $$INSERT INTO referrals (id, agency_id, client_name, created_by)
+    VALUES ('fd000000-0000-0000-0000-000000000000','a1000000-0000-0000-0000-000000000000','Synthetic Referral','c2000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('sup adds a note at the referral''s stage',
+  $$INSERT INTO referral_notes (agency_id, referral_id, status, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','fd000000-0000-0000-0000-000000000000','inquiry','Called the family','c2000000-0000-0000-0000-000000000000')$$, false);
+SELECT expect('a stage note names its own author',
+  $$INSERT INTO referral_notes (agency_id, referral_id, status, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','fd000000-0000-0000-0000-000000000000','inquiry','Not mine','c1000000-0000-0000-0000-000000000000')$$, true);
+SELECT expect('nobody changes a stage note',
+  $$UPDATE referral_notes SET body = 'rewritten'$$, false);
+SELECT check_eq('the stage note is unchanged',
+  (SELECT count(*) FROM referral_notes WHERE body = 'Called the family'), 1);
+
+SELECT set_config('app.claims', :'cg', false);
+SELECT check_eq('caregivers see no schedule templates', (SELECT count(*) FROM schedule_templates), 0);
+SELECT check_eq('caregivers see no referral notes', (SELECT count(*) FROM referral_notes), 0);
+SELECT expect('caregivers cannot add a referral note',
+  $$INSERT INTO referral_notes (agency_id, referral_id, status, body, created_by)
+    VALUES ('a1000000-0000-0000-0000-000000000000','fd000000-0000-0000-0000-000000000000','inquiry','x','c1000000-0000-0000-0000-000000000000')$$, true);
 
 RESET ROLE;
 SELECT check_eq('note history written by trigger (created x2, signed, approved)', (SELECT count(*) FROM note_history), 4);

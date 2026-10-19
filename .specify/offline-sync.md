@@ -339,7 +339,7 @@ streams:
   messages:
     auto_subscribe: true
     query: >-
-      SELECT id, agency_id, home_id, from_name, body, sent_at, created_by, created_at, updated_at FROM messages
+      SELECT id, agency_id, home_id, client_id, reply_to, incident_id, photo_id, from_name, body, sent_at, created_by, created_at, updated_at FROM messages
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
   message_reads:
     auto_subscribe: true
@@ -359,7 +359,7 @@ streams:
   incidents:
     auto_subscribe: true
     query: >-
-      SELECT id, agency_id, client_id, home_id, author_id, author_name, type, severity, occurred_at, location, description, antecedent, injured, injury_detail, staff_action, medical_followup, witnesses, notified_parties, report_details, status, followup_notes, created_by, created_at, updated_at FROM incidents
+      SELECT id, agency_id, client_id, home_id, author_id, author_name, type, severity, occurred_at, location, description, antecedent, injured, injury_detail, staff_action, medical_followup, witnesses, witness_list, notified_parties, report_details, status, reviewed_at, followup_notes, created_by, created_at, updated_at FROM incidents
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true AND agency_id IN (SELECT p.agency_id FROM profiles p, json_each(p.plan_features) AS f WHERE p.auth_uid = auth.user_id() AND p.active = true AND f.value = 'incidents')
   mar_records:
     auto_subscribe: true
@@ -384,8 +384,13 @@ streams:
   coverage_requests:
     auto_subscribe: true
     query: >-
+      SELECT id, agency_id, home_id, day, shift, called_out_by, status, filled_by, created_by, created_at, updated_at FROM coverage_requests
+      WHERE home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true AND p.role = 'caregiver') AND device_sync = true
+  coverage_requests_supervisors:
+    auto_subscribe: true
+    query: >-
       SELECT id, agency_id, home_id, day, shift, called_out_by, reason, status, filled_by, created_by, created_at, updated_at FROM coverage_requests
-      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')) AND device_sync = true
   coverage_steps:
     auto_subscribe: true
     query: >-
@@ -459,6 +464,7 @@ PowerSync applies this model automatically. The write queue replays mutations th
 | **Clock out** | Caregiver clocks out offline. Meanwhile, supervisor manually overrides the clock record. | Server state wins. The supervisor's manual override is authoritative. The caregiver's clock-out may be applied to the overridden record or rejected. | Caregiver sees the corrected times on sync. `manual_override = true` and `acknowledged = false` -- caregiver must acknowledge. |
 | **Send message** | Caregiver sends a home message offline. | Write accepted on sync. Messages are append-only -- no conflict possible (each message has a unique ID). | Message appears in the home board after sync. Timestamp reflects `sent_at` captured locally. Messages may appear out of chronological order if multiple users are offline. |
 | **Record health entry** | Two caregivers record vitals for the same client at the same time while both offline. | Both accepted -- different `health_entry.id` UUIDs, no conflict. Duplicate vital entries for the same time may indicate re-measurement and are reviewed by supervisor. | Both entries appear in the health log. Supervisor reviews and may flag duplicate readings for the same time window. |
+| **Controlled count** | A count is made on one device while another device still holds a dose recorded offline. | The count is accepted. Its expected amount is worked out from what the server has when the count arrives, so it can show a mismatch until the late dose syncs. | Supervisors get the discrepancy alert; the next count clears it. Recount before treating it as missing medication. |
 | **Read receipt** | The same person reads a message on two devices while offline. | The unique index on `(message_id, profile_id)` keeps the first receipt; the second upload is a no-op, not a rejection. | Nothing to show: the message reads "Seen by" the person once. |
 | **Update attendance** | Two caregivers record attendance for the same client on the same day. | The unique index on `(client_id, day)` keeps one row. `sync.upload` merges the two service lists (union) rather than overwriting, and both caregivers are recorded in the audit log. Attendance is a billing document, so it is never silently replaced. | UI shows "Attendance already recorded by [name]" before editing an existing record. |
 
@@ -507,6 +513,8 @@ The PowerSync write queue processes mutations in strict FIFO (first-in, first-ou
 
 If the note creation fails, dependent note_goals writes are also rejected. The queue does not skip ahead to independent writes -- strict ordering prevents orphaned child records.
 
+**As built:** a goal-trial row keeps the ID the device gave it, and a later edit to it (`UPDATE note_goals`, uploaded as a PATCH with only the changed columns) is looked up by that ID and applied through the note's update rules, so it is refused once the note is signed or for anyone but the author (who can't see the row: NOT_FOUND).
+
 ### Dependent Write Ordering Rules
 
 | Parent Write | Child Write | Ordering Rule |
@@ -535,7 +543,7 @@ Non-retryable errors (constraint violations, RLS rejections, 4xx HTTP status) ar
 When a write permanently fails:
 
 1. The mutation is removed from the active queue to prevent blocking subsequent writes.
-2. The failed mutation metadata (table, operation, error reason) is stored in the local-only `failed_writes` table (`src/lib/sync/app-schema.ts`). Notices such as `MAR_CONFLICT` go to the local-only `sync_notices` table.
+2. The failed mutation metadata (table, operation, error reason) is stored in the local-only `failed_writes` table (`src/lib/sync/app-schema.ts`). Notices such as `MAR_CONFLICT` go to the local-only `sync_notices` table. Voice recorded offline waits in the local-only `pending_recordings` table until it is transcribed (frontend-spec-2.md "Offline voice behavior").
 3. The UI shows a persistent banner: "1 change could not be saved. Tap to review."
 4. The user can view the failed write details and either discard or retry manually.
 5. Failed writes are logged with enough context to diagnose the issue without exposing PHI in the error message.
@@ -879,6 +887,8 @@ Every feature that touches synced data must pass this checklist before shipping:
 | 11 | **PWA installed + offline** | Install PWA via "Add to Home Screen." Go offline. Open PWA. | App shell loads from service worker cache. PowerSync provides local data. Full offline functionality. |
 | 12 | **Dependent writes** | Create a note with goal trials offline (note + note_goals). Go online. | Note syncs first, then note_goals. FK constraint is satisfied. Both records appear on server. |
 
+**As built (test 10):** PowerSync runs with `enableMultiTabs: false`, so only one tab opens the OPFS file. `openDb` (`src/lib/sync/db.ts`) holds a Web Lock named after the database file while it is open. A second tab that unlocks sees the lock taken and shows "Guad is open in another tab. Lock or close it there and this tab opens by itself." instead of hanging on "Opening…"; it opens as soon as the first tab locks, signs out or closes (`tests/e2e/multi-tab.spec.ts`). Tab B does not mirror tab A's records live; it is one tab at a time. A wait is cancelled when the tab signs out, locks or leaves the page, so it never opens the database later; and an open for a different person never joins or reuses another person's open or pending database (`openDb` closes it first). The idle lock's unlock shows the same message.
+
 ### CI Integration
 
 Offline tests run in the Playwright CI pipeline using `context.setOffline(true)` and `page.route('**/*', route => route.abort())` for more granular network control. The test suite includes a dedicated "offline" test tag:
@@ -911,7 +921,7 @@ npm run test:e2e -- --grep @offline
 | `controlled_counts` | home_data | 30 days | Assigned homes | All homes | Yes (new entries; the witness countersigns online) |
 | `health_entries` | home_data | 30 days | Assigned homes | All homes | Yes |
 | `attendance` | home_data | 30 days | Assigned homes | All homes | Yes |
-| `coverage_requests` | home_data | 7 days | Assigned homes | All homes | No |
+| `coverage_requests` | home_data | 7 days | Assigned homes, without `reason` (the callout reason is for supervisors only) | All homes, with `reason` (`coverage_requests_supervisors`) | No |
 | `coverage_steps` | home_data | 7 days (via request) | Assigned homes | All homes | No |
 | `clock_records` | user_data + admin_clock_data | 30 days | Own records (user_data) | Own records (user_data) + all agency records (admin_clock_data) | Yes |
 | `notifications` | user_data | 7 days | Own records | Own records | No |
@@ -926,6 +936,9 @@ npm run test:e2e -- --grep @offline
 | `coverage_candidates` | -- | Never synced | -- | -- | -- |
 | `case_notes` | -- | Never synced | -- | -- | -- |
 | `note_history` | -- | Never synced | -- | -- | -- |
+| `schedule_templates` | -- | Never synced (supervisors manage them online) | -- | -- | -- |
+| `message_photos` | -- | Never synced (photos are fetched when opened, `message.photo`) | -- | -- | -- |
+| `referral_notes` | -- | Never synced (intake is online, `intake.listReferralNotes`) | -- | -- | -- |
 
 ## Appendix B: Error Codes for Failed Writes
 

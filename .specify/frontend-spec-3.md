@@ -70,6 +70,8 @@ SECTION LABEL STYLE:
 | | Reports | file/download | -- |
 | | Setup | gear | -- |
 
+**As built:** the supervisor and admin sidebar is grouped under Today (Overview, Schedule, Messages), Care records (Review notes, Care records, MAR grid, Controlled meds, Goals) and Management (People, Staff, Timesheets, Intake, Analytics, Reports, and for admins Audit log, API keys, Setup), with Me last. Items outside the plan stay hidden. Review notes shows the count of notes to review at the current home and Messages the unread count, from the device; the count is the link's description ("3 to review"), so the link's name stays the label. Schedule shows the open shifts at the current home that haven't ended (`openShiftCount()`, "2 open shifts") and MAR grid the refused or held doses not yet acknowledged, both as red counts. Icons and the Overview count are not built (there is no single "attention" total yet), and there are no separate Incidents or Health links to badge; those items appear on the overview itself. The phone bar keeps Overview, Review notes, Schedule and Me.
+
 **Nav Item Styling:**
 ```
   border: 0
@@ -173,6 +175,8 @@ SECTION LABEL STYLE:
 | Open Incidents | 1 | Open incidents | Incidents tab, open filter |
 | Doses Due | 3 | Doses not recorded | Medications tab |
 
+**As built:** Notes to review opens note review; Signed today counts signed notes for today's shifts (the note's shift day) and opens note review with All and today's dates (`/dashboard/notes?show=all&from=…&to=…`); Open incidents jumps to "Needs your attention" on the same page, where incidents are reviewed; Doses not recorded links its 7-day "Given" line to the MAR grid (plans with `mar`).
+
 > *(Rebuild target -- not in MVP)* The following stat cards are planned enhancements requiring new computed properties in O.stats():
 >
 > | Card | Label | Requires |
@@ -205,6 +209,8 @@ Display as a progress ring (SVG donut, 48px diameter, stroke-width 5):
 - `< 70%`: stroke var(--bad) #B42318
 
 > *Note: These compliance-specific thresholds (90/70) differ from the generic progress ring thresholds (80/50) in section 5.5. The compliance score uses stricter thresholds because regulatory standards typically require >=90% documentation compliance.*
+
+**As built:** a "Compliance, 7 days" card on the overview (`domain/compliance.ts`, from the device, current home, the last seven local days in the agency time zone) with the ring at 90/70. The three parts, each shown as "X of Y": shifts with a signed note (worked shifts, an assigned slot whose shift has ended, where the person on shift signed a note for it; "on time" is not measured because signing times are not synced), scheduled doses given (as on the MAR grid; plans with `mar`), and incidents reviewed within a day (`INCIDENT_REVIEW_AFTER_HOURS`; open incidents still inside the day are not counted yet; the review time is `incidents.reviewed_at`, set by the first `incident.review` and kept when the notes are edited, with the last change standing in for incidents reviewed before that column existed). A part with nothing to measure is left out of the average; with nothing at all the card is hidden. No delta arrow yet.
 
 **Attention Queue (severity-tiered, replaces current flat list):**
 
@@ -370,6 +376,8 @@ The notes screen uses a split-pane layout on desktop (list left, detail right) a
 ```
 
 **Approve and next:** after approving or sending back, the detail pane moves to the next note waiting for review. There is no "approve all": approving notes nobody read defeats the review step.
+
+**As built:** `/dashboard/notes` filters the signed notes saved on the device (about 30 days; drafts never show): To review (default), All, Approved, Sent back, a search over the person's and author's names (every word must match, accents ignored), From/To dates and newest or oldest first (`reviewList()` in `domain/note-review.ts`). Each row shows the note type, author, day and a status pill; the detail shows the status, the supervisor's comment on a sent-back note, and review actions only for notes to review. After approving or sending back, the next note waiting for review in the list opens. Under 900px the list and the note take turns, with "← All notes" to go back (frontend-audit finding 20). Keyboard: `J` / `K` move to the next or previous note in the list, `A` approves once "I have read this note" is ticked (otherwise it says so), `S` sends back once feedback is written (otherwise it moves to the feedback box); the keys are ignored while typing in a field, and the hint is hidden under 900px. The audit trail is a collapsed "History" section in the detail: opening it loads `note.get` (online) and lists each `note_history` entry (time, who, and created, signed, edited, approved, returned or resubmitted), which the database writes itself (`notes_write_history`, rls.sql).
 
 **ASCII Wireframe -- Note Review (Desktop):**
 
@@ -589,6 +597,8 @@ A four-section analytics dashboard with KPI cards containing embedded bar charts
 | **Coverage** (subtitle: "Powered by Lomi") | Shifts needing cover, Fill rate %, Average time to fill (min) |
 | **Documentation** | Notes signed, Drafted with Lomi %, Minutes to chart, Notes sent back |
 | **Care** | Doses given, Refused or held, Incidents, Goal progress (independent rate per goal) |
+
+**As built (US-38):** Documentation also has **Shifts with a signed note** (%): of the shifts worked that week (an assigned schedule slot whose shift has ended), the share where the person on shift signed at least one note at that home for that day and shift (`weeklyNoteCompleteness`). Care also has **Scheduled doses given** (%), the medication compliance: scheduled doses given out of those due, where a dose is due once its time has passed while the medication was running and a corrected dose counts as its latest correction (`weeklyDoseCompliance`, both in `domain/analytics.ts`). Weeks with nothing to measure show "—".
 
 **Goal Progress Card (special layout within Care section):**
 ```
@@ -945,6 +955,8 @@ Medication History:
     Each row: author + date (bold) + note text (white-space normal)
     Reverse chronological
 ```
+
+**As built (US-15):** the form starts with "About" (Care coordination, ISP meeting, Family contact, Other; `CASE_NOTE_CATEGORIES` in `domain/case-notes.ts`, stored in `case_notes.category`), each history row shows its category as a pill, and a "Show" select narrows the loaded history to one kind. Notes written before categories read "Other".
 
 **Person Edit Form (.personForm):**
 
@@ -1498,6 +1510,8 @@ Every component with variants, states, and exact dimensions. A developer should 
   Shows: "Showing X of Y items"
   NOT auto-infinite-scroll (causes scroll position confusion)
 ```
+
+**As built:** `LoadMore.svelte` (`src/lib/app/components`) under the note review list, People and Staff: 25 rows first (`LIST_PAGE`), 25 more per press, "Showing X of Y" above the button. The note open in review always stays in the list, so J/K and approve-and-next can move past the shown rows. Lists that already page on the server (alert inbox, case notes, audit log, referrals) keep their own "Older"/"Load" buttons.
 
 ---
 
@@ -2296,10 +2310,10 @@ Based on thorough analysis of the prototype codebase at `/Users/amekonnen/Downlo
 | 27 | Analytics dashboard with charts | P1 | 4-week trend bar charts. Coverage, documentation, care sections. SVG sparklines on KPI cards. |
 | 28 | Reports with PDF generation | P1 | 7 CSV reports (already built). Add PDF for ISP meetings and guardian updates. |
 | 29 | Staff and agency management | P1 | Staff roster, certifications, home assignments. Agency settings. |
-| 30 | Data visualization: sparklines, progress rings, trend arrows | P1 | SVG-based, zero library dependency. Goal trends, vital trends, compliance. |
+| 30 | Data visualization: sparklines, progress rings, trend arrows | P1 | SVG-based, zero library dependency. Goal trends, vital trends, compliance. As built: `Sparkline.svelte` and `TrendArrow.svelte` (`src/lib/app/components`, rules in `domain/trend.ts`). Every analytics card has a trend arrow (the last full week against the average of the two full weeks before it, `fullWeekTrend()`, so the unfinished current week never reads as a drop; ±5% is steady); measures where less is better (shifts needing cover, time to fill, hours to approve, notes sent back, refused or held, incidents) show a fall in green. The overview's "Doses not recorded" card adds "Given, 7 days" with a daily sparkline from the MAR on the device (scheduled doses given out of those due, as on the MAR grid; plans with `mar`). Saved goal progress (`GoalTrend.svelte`, supervisor goals page) shows a `ProgressRing.svelte` (goal thresholds 80/50), a 14-day daily sparkline once two days have trials, and an arrow for this week against last (`savedGoalTrend().weeks`). Vital trends are `VitalTrend.svelte`. The compliance-score ring is not built (no compliance score, see §4.1). |
 | 31 | MAR grid view (supervisor desktop) | P2 | Traditional nursing MAR grid. Toggle alongside existing card view. |
 | 32 | Additional vitals: respiratory rate, SpO2, blood glucose, bowel tracking | P1 | Closes gap with Therap. Bowel tracking is critical for Fatal Five monitoring. |
-| 33 | Controlled substance two-staff witness in MAR | P2 | Required by state regulations for Schedule II-V medications. As built: a count book rather than a witness on every dose, which is how US developmental-disability programs and Therap do it. Supervisors mark medications as controlled (with schedule and units per dose); staff record receipts, blind shift counts, waste and disposal on the Controlled meds page with a witness; given doses lower the expected count, which the MAR line shows. A witness countersigns from their own device, a count that doesn't match alerts supervisors, and Setup holds per-state presets (MN, CA, NY, NJ) for who witnesses what. |
+| 33 | Controlled substance two-staff witness in MAR | P2 | Required by state regulations for Schedule II-V medications. As built: a count book rather than a witness on every dose, which is how US developmental-disability programs and Therap do it. Supervisors mark medications as controlled (with schedule and units per dose); staff record receipts, blind shift counts, waste and disposal on the Controlled meds page with a witness; given doses lower the expected count, which the MAR line shows. The witness signs in on the same device (their own Identity Platform sign-in, authenticator code included, used once and never kept) or, offline or if they weren't there, countersigns from their own device. A count that doesn't match alerts supervisors, and Setup holds per-state presets (CA, FL, MA, MN, NJ, NY, OH, PA, and another state) for who witnesses what. |
 | 34 | PWA install flow | P1 | Prompt on mobile browsers. "Add to home screen" banner. |
 | 35 | Performance optimization for budget devices | P0 | Remove backdrop-filter:blur. Add color-mix() fallbacks. Test on Samsung Galaxy A14 (2GB RAM). Target: FCP < 2s, TTI < 3s on 3G. |
 | 36 | ~~Configurable note templates~~ | Post-v1 | Out of scope for v1 (prd.md non-goal 7: no custom form builder). Revisit after launch. |

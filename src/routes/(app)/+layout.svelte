@@ -3,6 +3,7 @@
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import PushNotice from '#lib/app/PushNotice.svelte';
 	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
+	import EveningSuggestion from '#lib/app/EveningSuggestion.svelte';
 	import { stopWebPush } from '#lib/pwa/web-push.ts';
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	// Catches the browser's install offer early; Today's banner shows it.
@@ -25,6 +26,8 @@
 	import { trpc } from '#lib/trpc.ts';
 	import { clearShellCaches } from '#lib/pwa/cache.ts';
 	import { provideSession } from '#lib/app/session.svelte.ts';
+	import { localTime } from '#lib/domain/time.ts';
+	import { openShiftCount } from '#lib/domain/shifts.ts';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
 	const app = provideSession(untrack(() => data.user));
@@ -53,6 +56,8 @@
 	let again = $state('');
 	let message = $state('');
 	let busy = $state(false);
+	/** Another tab has the device database open; this one opens when it's free. */
+	let waiting = $state(false);
 	let unsupported = $state(false);
 	let key: Uint8Array | undefined;
 	// Items outside the agency's plan are hidden, not greyed out (entitlements.md §7).
@@ -65,25 +70,61 @@
 					{ href: '/me', label: 'Me' }
 				]
 			: [
-					{ href: '/dashboard', label: 'Overview' },
-					{ href: '/dashboard/notes', label: 'Review notes', feature: 'note_review' },
-					{ href: '/today', label: 'Care records', feature: 'charting' },
-					{ href: '/dashboard/mar', label: 'MAR grid', feature: 'mar' },
-					{ href: '/controlled', label: 'Controlled meds', feature: 'mar' },
-					{ href: '/shifts', label: 'Schedule', feature: 'scheduling' },
-					{ href: '/dashboard/timesheets', label: 'Timesheets', feature: 'timekeeping' },
-					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake' },
-					{ href: '/dashboard/people', label: 'People' },
-					{ href: '/dashboard/goals', label: app.labels.goalsNav, feature: 'goals' },
-					{ href: '/dashboard/analytics', label: 'Analytics', feature: 'analytics' },
-					{ href: '/dashboard/reports', label: 'Reports', feature: ['reports', 'reports_basic'] },
-					{ href: '/dashboard/staff', label: 'Staff' },
-					{ href: '/messages', label: 'Messages', feature: 'messaging' },
+					// Grouped as in frontend-spec-3.md §3 "Sidebar Sections".
+					{ href: '/dashboard', label: 'Overview', section: 'Today' },
+					{ href: '/shifts', label: 'Schedule', feature: 'scheduling', section: 'Today' },
+					{ href: '/messages', label: 'Messages', feature: 'messaging', section: 'Today' },
+					{
+						href: '/dashboard/notes',
+						label: 'Review notes',
+						feature: 'note_review',
+						section: 'Care records'
+					},
+					{ href: '/today', label: 'Care records', feature: 'charting', section: 'Care records' },
+					{ href: '/dashboard/mar', label: 'MAR grid', feature: 'mar', section: 'Care records' },
+					{
+						href: '/controlled',
+						label: 'Controlled meds',
+						feature: 'mar',
+						section: 'Care records'
+					},
+					{
+						href: '/dashboard/goals',
+						label: app.labels.goalsNav,
+						feature: 'goals',
+						section: 'Care records'
+					},
+					{ href: '/dashboard/people', label: 'People', section: 'Management' },
+					{ href: '/dashboard/staff', label: 'Staff', section: 'Management' },
+					{
+						href: '/dashboard/timesheets',
+						label: 'Timesheets',
+						feature: 'timekeeping',
+						section: 'Management'
+					},
+					{ href: '/dashboard/intake', label: 'Intake', feature: 'intake', section: 'Management' },
+					{
+						href: '/dashboard/analytics',
+						label: 'Analytics',
+						feature: 'analytics',
+						section: 'Management'
+					},
+					{
+						href: '/dashboard/reports',
+						label: 'Reports',
+						feature: ['reports', 'reports_basic'],
+						section: 'Management'
+					},
 					...(data.user.role === 'admin'
 						? [
-								{ href: '/dashboard/audit', label: 'Audit log', feature: 'audit_log' },
-								{ href: '/dashboard/api-keys', label: 'API keys' },
-								{ href: '/dashboard/setup', label: 'Setup' }
+								{
+									href: '/dashboard/audit',
+									label: 'Audit log',
+									feature: 'audit_log',
+									section: 'Management'
+								},
+								{ href: '/dashboard/api-keys', label: 'API keys', section: 'Management' },
+								{ href: '/dashboard/setup', label: 'Setup', section: 'Management' }
 							]
 						: []),
 					{ href: '/me', label: 'Me' }
@@ -94,6 +135,75 @@
 			return [item.feature].flat().some((f) => has.includes(f));
 		})
 	);
+	// Tab badges (frontend-spec-2.md §3.10): a red dot on Notes when one of
+	// the caregiver's notes was sent back today, and on Shifts while a coverage
+	// offer is waiting for them. Offers aren't synced, so they are polled.
+	const returnedToday = $derived.by(() => {
+		const today = localTime(new Date(), app.user.timeZone).day;
+		return app.notes.some(
+			(n) =>
+				n.author_id === app.user.profileId &&
+				n.status === 'returned' &&
+				!!n.updated_at &&
+				localTime(new Date(n.updated_at), app.user.timeZone).day === today
+		);
+	});
+	let offersWaiting = $state(false);
+	$effect(() => {
+		if (data.user.role !== 'caregiver' || !nav.some((item) => item.href === '/shifts')) return;
+		const check = () =>
+			trpc.coverage.offers
+				.query()
+				.then((offers) => (offersWaiting = offers.length > 0))
+				.catch(() => {});
+		void check();
+		const timer = setInterval(check, 60000);
+		return () => clearInterval(timer);
+	});
+	const needsAttention = (href: string) =>
+		data.user.role === 'caregiver' &&
+		((href === '/notes' && returnedToday) || (href === '/shifts' && offersWaiting));
+
+	/** The sidebar's sections, in order; items without one (Me) come last, unlabelled. */
+	const navGroups = $derived.by(() => {
+		const groups: { label: string; items: typeof nav }[] = [];
+		for (const item of nav) {
+			const label = (item as { section?: string }).section ?? '';
+			const group = groups.find((g) => g.label === label);
+			if (group) group.items.push(item);
+			else groups.push({ label, items: [item] });
+		}
+		return groups.sort((a, b) => Number(!a.label) - Number(!b.label));
+	});
+	/** Counts beside supervisor links (frontend-spec-3.md §3), from the device. */
+	const count = (href: string) =>
+		data.user.role === 'caregiver'
+			? 0
+			: href === '/dashboard/notes'
+				? app.notes.filter((n) => n.home_id === app.homeId && n.status === 'submitted').length
+				: href === '/messages'
+					? app.unseenMessageCount
+					: href === '/shifts'
+						? openShiftCount(app.shifts, app.homeId, new Date(), app.user.timeZone)
+						: href === '/dashboard/mar'
+							? app.doses.filter(
+									(d) =>
+										d.home_id === app.homeId &&
+										(d.status === 'refused' || d.status === 'held') &&
+										!d.acknowledged
+								).length
+							: 0;
+	const countWords = (href: string, n: number) =>
+		href === '/messages'
+			? `${n} unread`
+			: href === '/shifts'
+				? `${n} open ${n === 1 ? 'shift' : 'shifts'}`
+				: href === '/dashboard/mar'
+					? `${n} refused or held to acknowledge`
+					: `${n} to review`;
+	// Red counts: things that need someone (frontend-spec-3.md §3 badge logic).
+	const urgent = (href: string) => href === '/shifts' || href === '/dashboard/mar';
+
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
 		key = Uint8Array.from(atob(result.key.replace(/-/g, '+').replace(/_/g, '/')), (c) =>
@@ -142,7 +252,9 @@
 		try {
 			const unlocked = step === 'set-pin' ? key! : await unwrapKey(pin, app.user.profileId);
 			if (step === 'set-pin') await wrapKey(unlocked, pin, app.user.profileId);
-			const database = await openDb(unlocked, app.user.profileId);
+			const database = await openDb(unlocked, app.user.profileId, {
+				onWait: () => (waiting = true)
+			});
 			app.connect(database);
 			// Only a fresh server response can renew saved access; an offline PIN unlock cannot.
 			void Promise.all([trpc.auth.me.query(), trpc.agency.get.query()])
@@ -160,7 +272,8 @@
 						role: profile.role,
 						homeIds: profile.homeIds,
 						medCertified: profile.medCertified,
-						timeZone: agency.timezone
+						timeZone: agency.timezone,
+						features: agency.features
 					};
 					await database.execute(
 						'INSERT OR REPLACE INTO offline_sessions (id, user_json) VALUES (?, ?)',
@@ -180,6 +293,7 @@
 			pin = '';
 			again = '';
 			busy = false;
+			waiting = false;
 		}
 	}
 	async function lock() {
@@ -195,6 +309,17 @@
 				message = 'This device is locked. Unlock and let your changes sync before signing out.';
 				return;
 			}
+			// Voice kept offline lives only on this device (LomiComposer transcribes it later).
+			const kept = await app.db
+				.get<{ n: number }>('SELECT count(*) AS n FROM pending_recordings')
+				.catch(() => ({ n: 0 }));
+			if (
+				kept.n &&
+				!confirm(
+					'A recording you made offline hasn’t been transcribed yet. Signing out deletes it from this device. Sign out anyway?'
+				)
+			)
+				return;
 			await app.db.disconnectAndClear();
 		}
 		await stopWebPush(app.user.profileId);
@@ -251,6 +376,9 @@
 						>{busy ? 'Opening…' : step === 'set-pin' ? 'Save PIN and open' : 'Unlock'}</button
 					>
 				</form>{/if}
+			{#if waiting}<p role="status" class="callout">
+					Guad is open in another tab. Lock or close it there and this tab opens by itself.
+				</p>{/if}
 			{#if message}<p role="alert" class="callout bad">{message}</p>
 				<button class="textbtn" onclick={() => location.reload()}>Try again</button>{/if}
 			<button class="textbtn" onclick={signOut}>Sign out</button>
@@ -270,8 +398,8 @@
 			app.dispose();
 			await closeDb();
 		}}
-		onUnlock={async (key) => {
-			app.connect(await openDb(key, app.user.profileId));
+		onUnlock={async (key, onWait) => {
+			app.connect(await openDb(key, app.user.profileId, { onWait }));
 		}}
 	>
 		<a class="skip-link" href="#main">Skip to content</a>
@@ -280,10 +408,29 @@
 				<a class="wordmark" href={resolve('/')}>Guad<span class="lemon-dot">●</span></a>
 				<p class="eyebrow">Your workspace</p>
 				<nav aria-label="Main navigation">
-					{#each nav as item (item.href)}<a
-							href={resolve(('/(app)' + item.href) as '/(app)/today')}
-							aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
-						>{/each}
+					{#each navGroups as group (group.label)}<div
+							class="nav-group"
+							role={group.label ? 'group' : undefined}
+							aria-label={group.label || undefined}
+						>
+							{#if group.label}<p class="nav-section" aria-hidden="true">{group.label}</p>{/if}
+							{#each group.items as item (item.href)}{@const n = count(
+									item.href
+								)}{@const countId = `nav-count-${item.href.replace(/\W+/g, '-')}`}<a
+									href={resolve(('/(app)' + item.href) as '/(app)/today')}
+									aria-current={page.url.pathname === item.href ? 'page' : undefined}
+									aria-label={needsAttention(item.href)
+										? `${item.label}, needs attention`
+										: undefined}
+									aria-describedby={n ? countId : undefined}
+									>{item.label}{#if needsAttention(item.href)}<span class="dot" aria-hidden="true"
+										></span>{/if}{#if n}<span
+											class="count"
+											class:bad={urgent(item.href)}
+											aria-hidden="true">{n}</span
+										>{/if}</a
+								>{#if n}<span class="sr" id={countId}>{countWords(item.href, n)}</span>{/if}{/each}
+						</div>{/each}
 				</nav>
 				<div class="sidebar-bottom">
 					<b>{data.user.name}</b><span class="muted">{data.user.role}</span><button
@@ -324,6 +471,7 @@
 				</header>
 				<main id="main" class="main-content" tabindex="-1">
 					<PushNotice />
+					<EveningSuggestion />
 					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
 					{#if app.failed.length}<div class="callout bad" role="alert">
 							<b>{app.failed.length} changes need attention</b>
@@ -339,9 +487,12 @@
 				</main>
 			</div>
 			<nav class="mobile-nav" aria-label="Mobile navigation">
-				{#each data.user.role === 'caregiver' ? nav : [...new Set( [nav[0], nav[1], nav.find((item) => item.href === '/shifts'), nav.find((item) => item.href === '/me')] )].filter((item) => item !== undefined) as item (item.href)}<a
+				{#each data.user.role === 'caregiver' ? nav : ['/dashboard', '/dashboard/notes', '/shifts', '/me'].flatMap( (href) => nav.filter((item) => item.href === href) ) as item (item.href)}<a
 						href={resolve(('/(app)' + item.href) as '/(app)/today')}
-						aria-current={page.url.pathname === item.href ? 'page' : undefined}>{item.label}</a
+						aria-current={page.url.pathname === item.href ? 'page' : undefined}
+						aria-label={needsAttention(item.href) ? `${item.label}, needs attention` : undefined}
+						>{item.label}{#if needsAttention(item.href)}<span class="dot" aria-hidden="true"
+							></span>{/if}</a
 					>{/each}
 			</nav>
 		</div>

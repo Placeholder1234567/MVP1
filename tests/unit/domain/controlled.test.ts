@@ -163,3 +163,22 @@ describe('entries', () => {
 		);
 	});
 });
+
+describe('state presets', () => {
+	it('each preset names its own state and survives a save and load', () => {
+		for (const [code, preset] of Object.entries(STATE_PRESETS)) {
+			expect(preset.rules.state).toBe(code);
+			expect(preset.note.length).toBeGreaterThan(20);
+			expect(parseControlledRules({ controlled_rules: preset.rules })).toEqual(preset.rules);
+		}
+	});
+
+	it('Massachusetts asks for certified witnesses; Florida lets any staff witness', () => {
+		expect(parseControlledRules({ controlled_rules: { state: 'MA' } }).witnessQualification).toBe(
+			'med_certified'
+		);
+		expect(parseControlledRules({ controlled_rules: { state: 'FL' } }).witnessQualification).toBe(
+			'any_staff'
+		);
+	});
+});

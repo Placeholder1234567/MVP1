@@ -55,6 +55,11 @@ test('a supervisor compares a resubmitted note with the version they sent back',
 		await expect(
 			review.getByText('This is the first signed version; there is nothing earlier to compare.')
 		).toBeVisible();
+		// The note's history lists who did what, from the server.
+		await review.getByText('History', { exact: true }).click();
+		await expect(
+			review.getByRole('listitem').filter({ hasText: /Lena Park · signed/ })
+		).toBeVisible();
 		await review.getByLabel('Feedback for the author', { exact: true }).fill('What did Theo eat?');
 		await review.getByRole('button', { name: 'Send back', exact: true }).click();
 		await expect(
@@ -63,7 +68,19 @@ test('a supervisor compares a resubmitted note with the version they sent back',
 
 		// The author revises and signs again (a returned note signs online).
 		await expect(page.getByText('What did Theo eat?')).toBeVisible();
+		// The caregiver's Notes tab carries a red dot while a note sent back today waits.
+		await expect(
+			page.getByRole('link', { name: 'Notes, needs attention', exact: true }).first()
+		).toBeVisible();
 		await sign(page, 'Theo ate a full lunch of soup at noon.');
+
+		// Without reloading, the re-signed note can be reviewed again once it syncs.
+		await expect(async () => {
+			await pick();
+			await expect(review.getByRole('button', { name: 'Send back', exact: true })).toBeVisible({
+				timeout: 2000
+			});
+		}).toPass({ timeout: 45000 });
 
 		await review.reload();
 		await review.getByLabel('Device PIN', { exact: true }).fill(PIN);

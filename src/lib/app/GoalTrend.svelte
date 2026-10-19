@@ -2,6 +2,10 @@
 	import { useSession } from './session.svelte';
 	import { savedGoalTrend } from './goal-trend';
 	import { localTime } from '#lib/domain/time.ts';
+	import { trendChange } from '#lib/domain/trend.ts';
+	import ProgressRing from './components/ProgressRing.svelte';
+	import Sparkline from './components/Sparkline.svelte';
+	import TrendArrow from './components/TrendArrow.svelte';
 	let { clientId, homeId, goalId }: { clientId: string; homeId: string; goalId: string } = $props();
 	const app = useSession();
 	const trend = $derived(
@@ -16,6 +20,7 @@
 		})
 	);
 	const summary = $derived(trend.summary);
+	const daily = $derived(trend.days.map((d) => d.summary?.independentPercent ?? null));
 </script>
 
 <section class="stack trend" aria-label="Saved goal progress">
@@ -25,19 +30,28 @@
 		Missing days are not failures. Reconnect for updates; use Care reports for a server export.
 	</p>
 	{#if summary?.independentPercent !== null && summary?.independentPercent !== undefined}
-		<p>
-			<b>{summary.independentPercent}% independent</b> · {summary.independentTrials} of {summary.recordedTrials}
-			recorded trials. Refused trials stay in the denominator.
-		</p>
-		<div
-			class="progress"
-			role="progressbar"
-			aria-label="Independent recorded trials"
-			aria-valuenow={summary.independentPercent}
-			aria-valuemin="0"
-			aria-valuemax="100"
-		>
-			<span style:width="{summary.independentPercent}%"></span>
+		<div class="glance">
+			<ProgressRing
+				percent={summary.independentPercent}
+				label="{summary.independentPercent}% independent"
+			/>
+			<p class="grow">
+				<b>{summary.independentPercent}% independent</b> · {summary.independentTrials} of {summary.recordedTrials}
+				recorded trials. Refused trials stay in the denominator.
+				{#if trendChange(trend.weeks)}<span class="week"
+						>This week against last: <TrendArrow
+							values={trend.weeks}
+							label="Independent trials"
+							against="this week against last"
+						/></span
+					>{/if}
+			</p>
+			{#if daily.filter((v) => v !== null).length > 1}<Sparkline
+					values={daily}
+					label="Independent by day: {trend.days
+						.map((d, i) => `${d.day.slice(5)} ${daily[i] === null ? 'none' : `${daily[i]}%`}`)
+						.join(', ')}"
+				/>{/if}
 		</div>
 	{:else}<p>No recorded attempted trials in this saved period.</p>{/if}
 	{#if summary}<p class="muted">
@@ -73,16 +87,22 @@
 		margin: 0;
 		font-size: 16px;
 	}
-	.progress {
-		height: 10px;
-		overflow: hidden;
-		background: var(--sky);
-		border-radius: 8px;
+	.glance {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 12px;
 	}
-	.progress span {
-		display: block;
-		height: 100%;
-		background: var(--blue);
+	.glance p {
+		margin: 0;
+		min-width: 200px;
+	}
+	.week {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-top: 4px;
+		font-size: 13px;
 	}
 	summary {
 		min-height: 44px;

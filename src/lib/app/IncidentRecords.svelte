@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { onDestroy, untrack } from 'svelte';
 	import type { DraftData } from './care-drafts.ts';
 	import { useSession } from './session.svelte';
@@ -13,6 +14,12 @@
 		incidentOccurredAt,
 		parseReportDetails,
 		reportDetailsError,
+		parseWitnessList,
+		witnessText,
+		WITNESS_NAME_MAX,
+		WITNESS_ROLES,
+		WITNESSES_MAX,
+		type Witness,
 		BODY_AREAS,
 		RESTRAINT,
 		WITH_STAFF,
@@ -52,6 +59,7 @@
 		staffAction: '',
 		medical: 'None needed' as string,
 		witnesses: '',
+		witnessList: [] as Witness[],
 		severity: 'Low' as IncidentSeverity,
 		told: [] as string[],
 		// Optional state-reporting details (domain/incident-details.ts)
@@ -65,6 +73,7 @@
 		conditionNow: '',
 		correctivePlan: ''
 	});
+	const witnessList = () => parseWitnessList(form.witnessList);
 	const details = () =>
 		parseReportDetails({
 			...form,
@@ -133,7 +142,10 @@
 				injury_detail: form.injured === 'Yes' ? form.injuryDetail.trim() || null : null,
 				staff_action: form.staffAction.trim(),
 				medical_followup: form.medical,
-				witnesses: form.witnesses.trim() || null,
+				witnesses: witnessList().length
+					? witnessText(witnessList())
+					: form.witnesses.trim() || null,
+				witness_list: JSON.stringify(witnessList()),
 				notified_parties: JSON.stringify(told),
 				report_details: JSON.stringify(details()),
 				status: 'open',
@@ -254,7 +266,41 @@
 				{@render choice('Medical follow-up', MEDICAL_FOLLOWUP, form.medical, (v) => {
 					form.medical = v;
 				})}
-				<label>Witnesses<input class="input" maxlength="500" bind:value={form.witnesses} /></label>
+				<fieldset class="stack">
+					<legend class="fieldlabel">Witnesses</legend>
+					{#each form.witnessList as w, i (i)}<div class="witness-row">
+							<label
+								>Witness {i + 1} name<input
+									class="input"
+									maxlength={WITNESS_NAME_MAX}
+									bind:value={w.name}
+								/></label
+							><label
+								>Witness {i + 1} role<select class="input" bind:value={w.role}
+									>{#each WITNESS_ROLES as role (role)}<option value={role}>{role}</option
+										>{/each}</select
+								></label
+							><button
+								type="button"
+								class="textbtn"
+								onclick={() => {
+									form.witnessList.splice(i, 1);
+									onDirty?.();
+								}}>Remove witness {i + 1}</button
+							>
+						</div>{/each}
+					{#if form.witnessList.length < WITNESSES_MAX}<button
+							type="button"
+							class="btn sec"
+							onclick={() => {
+								form.witnessList.push({ name: '', role: 'Staff' });
+								onDirty?.();
+							}}>Add a witness</button
+						>{/if}
+					{#if form.witnesses.trim() && !form.witnessList.length}<p class="muted s13">
+							Noted earlier: {form.witnesses}
+						</p>{/if}
+				</fieldset>
 				<details class="state-details">
 					<summary>Details for state reporting (optional)</summary>
 					<p class="muted s13">Fill these in if your agency’s state report asks for them.</p>
@@ -372,6 +418,8 @@
 						><b>{row.type}, {(row.severity ?? '').toLowerCase()} severity</b><span
 							>{dayTimeOf(row.occurred_at, tz)} · {row.author_name}</span
 						></span
+					><a class="textbtn" href="{resolve('/(app)/messages')}?incident={row.id}"
+						>Discuss<span class="visually-hidden"> this report with the team</span></a
 					><span class="pill" class:bad={row.status === 'open'} class:ok={row.status !== 'open'}
 						>{row.status === 'open' ? 'Open' : 'Reviewed'}</span
 					>
@@ -399,6 +447,12 @@
 		display: flex;
 		align-items: center;
 		cursor: pointer;
+	}
+	.witness-row {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		gap: 8px 12px;
+		align-items: end;
 	}
 	.areas {
 		display: grid;

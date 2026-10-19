@@ -17,9 +17,12 @@
 		type,
 		onUse,
 		onDirty,
-		voice = false
+		voice = false,
+		said = ''
 	}: {
 		result: DraftResult;
+		/** What the caregiver typed or said, shown under "What I said" (frontend-spec-2 §6) */
+		said?: string;
 		clientId: string;
 		type: NoteKind;
 		voice?: boolean;
@@ -43,6 +46,9 @@
 	// Vague phrases the caregiver chose to keep ("Keep as is"), per section.
 	let kept = $state(new Set<string>());
 	let voiceBusy = $state(false);
+	// Sections the caregiver has tapped into: Lomi's text there is now theirs
+	// (frontend-spec-2 §6 ghost text). Untouched ones stay slightly faded.
+	let owned = $state<string[]>([]);
 	let voiceMessage = $state('');
 	const fields: Record<string, HTMLTextAreaElement | undefined> = {};
 	const openFlags = $derived(openSectionFlags(content, kept));
@@ -133,7 +139,11 @@
 	}
 </script>
 
-<div class="stack" aria-label="Review Lomi draft">
+<div class="stack" role="group" aria-label="Review Lomi draft">
+	{#if said.trim()}<details class="said">
+			<summary>What I said</summary>
+			<p class="said-text">{said}</p>
+		</details>{/if}
 	<p class="callout warn">
 		{usedAi
 			? 'AI-generated draft. Check every section against what actually happened.'
@@ -147,7 +157,11 @@
 				>{labels[section] ?? section}<textarea
 					class="input"
 					class:flagged={flags.length > 0}
+					class:ghost={!owned.includes(section)}
 					maxlength="10000"
+					onfocus={() => {
+						if (!owned.includes(section)) owned = [...owned, section];
+					}}
 					bind:this={fields[section]}
 					bind:value={content[section]}
 					disabled={busy || voiceBusy}
@@ -374,11 +388,32 @@
 	.stack {
 		min-width: 0;
 	}
+	/* Lomi's words until the caregiver taps in: opacity only, no badge or icon. */
+	.ghost {
+		opacity: 0.85;
+	}
+	textarea {
+		transition: opacity 150ms ease;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		textarea {
+			transition: none;
+		}
+	}
 	.flagged {
 		background: var(--flag-bg);
 		box-shadow: inset 0 -2px 0 var(--flag-line);
 	}
 	.record-text {
+		overflow-wrap: anywhere;
+	}
+	/* The original words, for checking the draft against (frontend-spec-2 §6). */
+	.said-text {
+		margin: 0;
+		font-size: 14px;
+		color: var(--muted);
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 	}
 </style>

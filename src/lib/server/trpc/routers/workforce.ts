@@ -1,14 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { localTime, weekStart } from '../../../domain/index.ts';
+import { localTime, TEMPLATE_NAME_MAX, weekStart } from '../../../domain/index.ts';
 import {
 	getSchedule,
 	myShifts,
 	setScheduleSlot,
 	copyScheduleWeek,
+	listScheduleTemplates,
+	saveScheduleTemplate,
+	applyScheduleTemplate,
+	deleteScheduleTemplate,
+	suggestScheduleWeek,
+	applyScheduleSuggestions,
 	startCoverage,
 	respondCoverage,
-	coverageOffers
+	coverageOffers,
+	coverageDetail
 } from '../../services/schedule/index.ts';
 import {
 	acknowledgeClock,
@@ -59,13 +66,55 @@ export const scheduleRouter = router({
 		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, { ...input, profileId: null })),
 	copyWeek: featureRoleProcedure('scheduling', 'supervisor')
 		.input(z.object({ homeId: z.uuid(), fromWeek: z.iso.date(), toWeek: z.iso.date() }))
-		.mutation(({ ctx, input }) => copyScheduleWeek(ctx.db, ctx.user, input))
+		.mutation(({ ctx, input }) => copyScheduleWeek(ctx.db, ctx.user, input)),
+	suggest: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ homeId: z.uuid(), weekStart: z.iso.date() }))
+		.query(({ ctx, input }) => suggestScheduleWeek(ctx.db, ctx.user, input)),
+	applySuggestions: featureRoleProcedure('scheduling', 'supervisor')
+		.input(
+			z.object({
+				homeId: z.uuid(),
+				weekStart: z.iso.date(),
+				picks: z
+					.array(
+						z.object({
+							day: z.iso.date(),
+							shift: z.enum(['am', 'pm', 'on']),
+							profileId: z.uuid()
+						})
+					)
+					.min(1)
+					.max(21)
+			})
+		)
+		.mutation(({ ctx, input }) => applyScheduleSuggestions(ctx.db, ctx.user, input)),
+	templates: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ homeId: z.uuid() }))
+		.query(({ ctx, input }) => listScheduleTemplates(ctx.db, ctx.user, input.homeId)),
+	saveTemplate: featureRoleProcedure('scheduling', 'supervisor')
+		.input(
+			z.object({
+				homeId: z.uuid(),
+				name: z.string().trim().min(1).max(TEMPLATE_NAME_MAX),
+				fromWeek: z.iso.date()
+			})
+		)
+		.mutation(({ ctx, input }) => saveScheduleTemplate(ctx.db, ctx.user, input)),
+	applyTemplate: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ id: z.uuid(), toWeek: z.iso.date() }))
+		.mutation(({ ctx, input }) => applyScheduleTemplate(ctx.db, ctx.user, input)),
+	deleteTemplate: featureRoleProcedure('scheduling', 'supervisor')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) => deleteScheduleTemplate(ctx.db, ctx.user, input.id))
 });
 export const coverageRouter = router({
 	callout: featureProcedure('coverage')
 		.input(slot.extend({ reason: z.string().trim().max(1000).optional() }))
 		.mutation(({ ctx, input }) => startCoverage(ctx.db, ctx.user, input)),
 	offers: featureProcedure('coverage').query(({ ctx }) => coverageOffers(ctx.db, ctx.user)),
+	get: featureRoleProcedure('coverage', 'supervisor')
+		.input(z.object({ id: z.uuid() }))
+		.query(({ ctx, input }) => coverageDetail(ctx.db, ctx.user, input.id)),
 	accept: featureProcedure('coverage')
 		.input(z.object({ id: z.uuid() }))
 		.mutation(({ ctx, input }) => respondCoverage(ctx.db, ctx.user, input.id, 'accepted')),

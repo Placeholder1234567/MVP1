@@ -215,7 +215,7 @@ src/lib/server/services/
 
 **Responsibility:** Shift calendar management across all homes, slot assignment, and the Lomi coverage engine — the automated callout-to-coverage workflow. When a caregiver calls out (via SMS or app), Lomi identifies trained, available candidates nearby, texts them shift offers, and fills the slot when someone accepts. The scheduler retains final authority.
 
-**Owns tables:** `schedule_slots`, `coverage_requests`, `coverage_candidates`, `coverage_steps`
+**Owns tables:** `schedule_slots`, `schedule_templates`, `coverage_requests`, `coverage_candidates`, `coverage_steps`
 
 **Key functions:**
 - `getWeekSchedule(agencyId, homeId, weekStart): ScheduleGrid` — 7-day x 3-shift grid with assigned staff and statuses.
@@ -229,6 +229,7 @@ src/lib/server/services/
 - `fillShift(agencyId, coverageRequestId, filledById): CoverageRequest` — mark shift as filled, update schedule slot, notify family.
 - `getCoverageStatus(agencyId, coverageRequestId): CoverageRequest` — full coverage request with candidates and step log.
 - `getMyShifts(agencyId, profileId, weekStart?, weeks?): ScheduleSlot[]` — returns the caller's own scheduled shifts. Defaults to current week, up to 4 weeks ahead.
+- `copyScheduleWeek()`, `saveScheduleTemplate()`, `applyScheduleTemplate()`, `listScheduleTemplates()`, `deleteScheduleTemplate()` — fill a week's open slots from another week, from a saved template, or from reviewed suggestions (`suggestScheduleWeek()` / `applyScheduleSuggestions()`, the coverage eligibility checks) (a home's usual week by weekday, up to 20 per home); each copy goes through the `setSlot` checks (frontend-audit.md finding 17).
 
 **Depends on:**
 - Auth (staff home assignments, availability)
@@ -274,7 +275,7 @@ src/lib/server/services/
 
 **Responsibility:** Referral pipeline management, room availability tracking, client-home-caregiver matching. Covers the flow from initial inquiry through placement in the right home.
 
-**Owns tables:** `referrals`, `rooms`
+**Owns tables:** `referrals`, `referral_notes`, `rooms`
 
 **Key functions:**
 - `createReferral(agencyId, data): Referral` — log a new referral/inquiry with contact info and source.
@@ -405,15 +406,17 @@ src/lib/server/services/
 
 **Responsibility:** Home-scoped message board for shift handoff communication and coverage announcements. New messages reach devices through PowerSync sync (typically within a few seconds while online).
 
-**Owns tables:** `messages`, `message_reads`
+**Owns tables:** `messages`, `message_reads`, `message_photos`
 
 **Key functions:**
-- `sendMessage(agencyId, homeId, fromUserId, body): Message` — post a message to a home's board.
+- `sendMessage(agencyId, homeId, fromUserId, body, clientId?, replyTo?, incidentId?): Message` — post a message to a home's board, optionally naming the person it is about (someone at the same home; Charting Service `findVisibleClient`), replying in a thread on the same board (stored against the thread's first message) or following up on an incident from the same home.
 - `getMessages(agencyId, homeId, limit?, before?): Message[]` — paginated message history for a home.
+- `uploadPhoto(agencyId, user, { id, homeId, data })` / `getPhoto(agencyId, user, id)` — board photos (JPEG only, metadata stripped, stored in `MEDIA_BUCKET`); each view is audited.
 - `markRead(agencyId, user, { id, messageId, readAt? }): { created }` — record that the caller has seen a board message (idempotent per reader; none for the author). Written offline, applied through `sync.upload`.
 - `postCoverageAnnouncement(agencyId, homeId, text): Message` — system-generated message about coverage changes (called by Schedule Service).
 
-**Depends on:**
+- Auth (sender identity, home access check)
+- Charting (checks the person a message names is at the same home)
 - Auth (sender identity, home access check)
 - Audit (log messages for compliance)
 
@@ -485,6 +488,8 @@ src/lib/server/services/
 - `getAuditByUser(agencyId, userId, dateRange): AuditEntry[]` — all actions by a specific user.
 - `getAuditReport(agencyId, dateRange): AuditReport` — compliance report for agency admins.
 
+**As built:** `listAudit()` and `getAudit()` back `/dashboard/audit` (metadata in the list; one entry's values at a time, each view recorded), and `exportAudit()` downloads the list's metadata as CSV for up to 93 days, recorded as a `report_exports` entry (trpc-router.md `audit.export`).
+
 **Depends on:**
 - Auth (performer identity resolution)
 
@@ -492,7 +497,7 @@ src/lib/server/services/
 
 ### 20. Integration Service
 
-**Responsibility:** The external API (openapi.yaml) for state EVV aggregators, data warehouses and other integrations: agency API keys, EVV visit records and bulk data export. Webhook subscriptions and API report generation belong here too (not built yet).
+**Responsibility:** The external API (openapi.yaml) for state EVV aggregators, data warehouses and other integrations: agency API keys, EVV visit records, bulk data export, webhook subscriptions with signed deliveries (`/api/v1/webhooks`, `integration/webhooks.ts`, SSRF-guarded by `domain/webhooks.ts`) and API report generation (`/api/v1/reports`).
 
 **Owns tables:** `api_keys`, `webhooks`, `webhook_deliveries`, and `report_jobs` for API-requested reports
 

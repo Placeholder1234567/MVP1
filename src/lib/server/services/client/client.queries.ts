@@ -127,6 +127,7 @@ export function selectCaseNotes(
 			id: caseNotes.id,
 			authorName: caseNotes.author_name,
 			body: caseNotes.body,
+			category: caseNotes.category,
 			createdAt: caseNotes.created_at
 		})
 		.from(caseNotes)
@@ -142,6 +143,7 @@ export async function insertCaseNote(tx: Tx, row: typeof caseNotes.$inferInsert)
 		clientId: caseNotes.client_id,
 		authorName: caseNotes.author_name,
 		body: caseNotes.body,
+		category: caseNotes.category,
 		createdAt: caseNotes.created_at
 	});
 	return created;

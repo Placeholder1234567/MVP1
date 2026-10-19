@@ -174,7 +174,7 @@
 		width: 40px;
 		height: 40px;
 		background: var(--lemon);
-		color: var(--ink);
+		color: #1c1b4b;
 		border-radius: 50%;
 		font-size: 26px;
 	}

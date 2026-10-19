@@ -61,6 +61,23 @@ export async function createSession(
 }
 
 /**
+ * Verifies a witness's ID token from a sign-in on someone else's device
+ * (controlled medication count book). It must be a sign-in from the last five
+ * minutes; the token is used once and never stored. Returns null if invalid.
+ */
+export async function verifyWitnessSignIn(
+	idToken: string
+): Promise<{ uid: string; secondFactor: boolean } | null> {
+	try {
+		const decoded = await auth().verifyIdToken(idToken, true);
+		if (Date.now() / 1000 - decoded.auth_time > RECENT_SIGN_IN_S) return null;
+		return { uid: decoded.uid, secondFactor: Boolean(decoded.firebase?.sign_in_second_factor) };
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Verifies a session cookie, including revocation, so a deactivated or
  * signed-out user is rejected on the next request. Returns null when invalid.
  */

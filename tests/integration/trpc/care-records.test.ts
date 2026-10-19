@@ -691,8 +691,52 @@ describe('incident.*', () => {
 		expect(twice.notifiedParties).toEqual(['guardian']);
 		const reviewed = await sam.incident.review({ id: r.id, followupNotes: 'Checked the rug' });
 		expect(reviewed.status).toBe('reviewed');
+		// The first review time is kept when the notes are edited again.
+		const firstReview = async () =>
+			(
+				await withService((tx) =>
+					tx
+						.select({ at: s.incidents.reviewed_at })
+						.from(s.incidents)
+						.where(eq(s.incidents.id, r.id))
+				)
+			)[0].at;
+		const first = await firstReview();
+		expect(first).toBeInstanceOf(Date);
+		await sam.incident.review({ id: r.id, followupNotes: 'Checked the rug; replaced it' });
+		expect((await firstReview())?.getTime()).toBe(first!.getTime());
 		const list = await (await as(CARA)).incident.list({ clientId: PERSON });
 		expect(list[0]).toMatchObject({ type: 'Fall', status: 'reviewed', authorName: 'Cara Giver' });
+	});
+
+	it('keeps each witness’s name and role, with a readable copy', async () => {
+		const r = await (
+			await as(CARA)
+		).incident.create({
+			clientId: PERSON,
+			type: 'Fall',
+			severity: 'Low',
+			occurredAt: new Date(Date.now() - 60_000),
+			description: 'Synthetic fall',
+			witnessList: [
+				{ name: 'Dev Okafor', role: 'Staff' },
+				{ name: '  ', role: 'Staff' },
+				{ name: 'Ann Lee', role: 'Family or visitor' }
+			]
+		});
+		const [row] = await withService((t) =>
+			t
+				.select({ list: s.incidents.witness_list, text: s.incidents.witnesses })
+				.from(s.incidents)
+				.where(eq(s.incidents.id, r.id))
+		);
+		expect(row).toEqual({
+			list: [
+				{ name: 'Dev Okafor', role: 'Staff' },
+				{ name: 'Ann Lee', role: 'Family or visitor' }
+			],
+			text: 'Dev Okafor (Staff); Ann Lee (Family or visitor)'
+		});
 	});
 
 	it('keeps state-reporting details and requires a description of any restraint', async () => {

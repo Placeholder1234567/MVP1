@@ -205,6 +205,8 @@ test('CSV imports require valid review, preserve offline preview and create each
 	}
 	page.once('dialog', (dialog) => dialog.accept());
 	await page.getByRole('link', { name: '← Reports', exact: true }).click();
+	// Let that navigation finish first; a goto during it is aborted (ERR_ABORTED).
+	await page.waitForURL('**/dashboard/reports');
 	await page.goto('/dashboard/people');
 	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
 	await page.getByRole('button', { name: 'Unlock', exact: true }).click();

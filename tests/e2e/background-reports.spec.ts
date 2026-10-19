@@ -34,7 +34,13 @@ test('queued care reports require a connection and an explicit download, then fo
 	await page.getByRole('link', { name: 'Timesheets', exact: true }).first().click();
 	await page.getByRole('link', { name: 'Care record reports →', exact: true }).click();
 	await page.getByRole('link', { name: 'Prepare a larger care report →', exact: true }).click();
+	// Both report pages have these selectors. Wait for navigation before editing
+	// the new form, otherwise the old page can consume the first selection.
+	await expect(
+		page.getByRole('heading', { name: 'Prepare a larger care report.', exact: true })
+	).toBeVisible();
 	await page.getByRole('combobox', { name: 'Report', exact: true }).selectOption('health');
+	await expect(page.getByRole('combobox', { name: 'Report', exact: true })).toHaveValue('health');
 	await page.getByRole('combobox', { name: 'Person', exact: true }).selectOption({ label: person });
 	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('json');
 	const reportFrom = await page.getByLabel('From', { exact: true }).inputValue();
@@ -71,6 +77,9 @@ test('queued care reports require a connection and an explicit download, then fo
 	const path = info.outputPath('synthetic-queued-report.json');
 	await download.saveAs(path);
 	const report = JSON.parse(await readFile(path, 'utf8'));
+	expect(report.type).toBe('health');
+	expect(report.fromDay).toBe(reportFrom);
+	expect(report.toDay).toBe(reportThrough);
 	expect(
 		report.rows.some((row: { data?: { consistency?: string } }) => row.data?.consistency === marker)
 	).toBe(true);

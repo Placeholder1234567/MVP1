@@ -1,7 +1,18 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { useSession, parseJson } from '#lib/app/session.svelte.ts';
-	import { dosesDue, localTime } from '#lib/domain/index.ts';
+	import {
+		addDays,
+		compliance,
+		dailyCompliance,
+		dosesDue,
+		localInstant,
+		localTime,
+		marGrid
+	} from '#lib/domain/index.ts';
+	import Sparkline from '#lib/app/components/Sparkline.svelte';
+	import ProgressRing from '#lib/app/components/ProgressRing.svelte';
+	import { complianceScore, incidentReviewPart, shiftNotesPart } from '#lib/domain/compliance.ts';
 	import ClinicalAttention from '#lib/app/ClinicalAttention.svelte';
 	import LomiSummary from '#lib/app/LomiSummary.svelte';
 	import HealthWatch from '#lib/app/HealthWatch.svelte';
@@ -15,12 +26,10 @@
 	const clock = `${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')}`;
 	const notes = $derived(app.notes.filter((n) => n.home_id === app.homeId));
 	const pending = $derived(notes.filter((n) => n.status === 'submitted'));
+	/** Signed notes for today's shifts (the note's shift day), the same set the link opens. */
 	const signed = $derived(
 		notes.filter(
-			(n) =>
-				n.created_at &&
-				localTime(new Date(n.created_at), app.user.timeZone).day === today &&
-				['submitted', 'approved'].includes(n.status ?? '')
+			(n) => n.day === today && ['submitted', 'approved', 'returned'].includes(n.status ?? '')
 		)
 	);
 	const openIncidents = $derived(
@@ -45,6 +54,61 @@
 			return sum + dosesDue(meds, records, today).filter((d) => d.time <= clock).length;
 		}, 0)
 	);
+	/** Share of due scheduled doses given each day for the last 7 days (MAR on the device). */
+	const week = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+	const weekGrids = $derived(
+		app.currentPeople.map((person) =>
+			marGrid(
+				app.medications
+					.filter((m) => m.client_id === person.id)
+					.map((m) => ({
+						id: m.id,
+						name: m.name,
+						dose: m.dose,
+						scheduled_times: parseJson<string[]>(m.scheduled_times, []),
+						started_at: m.started_at,
+						stopped_at: m.stopped_at
+					})),
+				app.doses
+					.filter((r) => r.client_id === person.id && r.day && week.includes(r.day))
+					.map((r) => ({
+						id: r.id,
+						medication_id: r.medication_id,
+						day: r.day,
+						scheduled_time: r.scheduled_time,
+						status: r.status,
+						is_prn: !!r.is_prn,
+						amends_id: r.amends_id,
+						conflict_with: r.conflict_with,
+						recorded_at: r.recorded_at
+					})),
+				week,
+				{ day: today, time: clock },
+				(iso) => localTime(new Date(iso), app.user.timeZone).day
+			)
+		)
+	);
+	const weekDaily = $derived(dailyCompliance(weekGrids, 7));
+	const weekScore = $derived(compliance(weekGrids.flat()));
+	/** Documentation compliance over the last 7 days (frontend-spec-3.md §4.1). */
+	const score = $derived(
+		complianceScore(
+			shiftNotesPart(app.shifts, app.notes, app.homeId, week, new Date(), app.user.timeZone),
+			app.has('mar') ? { done: weekScore.given, of: weekScore.due } : { done: 0, of: 0 },
+			incidentReviewPart(
+				app.incidents.filter((i) => i.home_id === app.homeId),
+				localInstant(week[0], '00:00', app.user.timeZone),
+				new Date()
+			)
+		)
+	);
+	const share = (p: { done: number; of: number }) =>
+		p.of ? `${p.done} of ${p.of}` : 'nothing to measure yet';
+	const dayName = (day: string) =>
+		new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, {
+			weekday: 'short',
+			timeZone: 'UTC'
+		});
 </script>
 
 <svelte:head><title>Overview · Guad</title></svelte:head>
@@ -68,19 +132,45 @@
 			<p class="muted">Notes to review</p>
 			<p class="stat-number">{pending.length}</p>
 		</a>
-		<div class="card pad">
+		<a
+			class="card pad stat"
+			href="{resolve('/(app)/dashboard/notes')}?show=all&from={today}&to={today}"
+		>
 			<p class="muted">Signed today</p>
 			<p class="stat-number">{signed.length}</p>
-		</div>
-		<div class="card pad">
+		</a>
+		<a class="card pad stat" href="#attention-h">
 			<p class="muted">Open incidents</p>
 			<p class="stat-number">{openIncidents}</p>
-		</div>
+		</a>
 		<div class="card pad">
 			<p class="muted">Doses not recorded</p>
 			<p class="stat-number">{notRecorded}</p>
+			{#if app.has('mar') && weekScore.percent !== null}
+				<a class="week" href={resolve('/(app)/dashboard/mar')}
+					><span class="muted">Given, 7 days: <b>{weekScore.percent}%</b></span><Sparkline
+						values={weekDaily}
+						label="Doses given by day: {week
+							.map(
+								(d, i) => `${dayName(d)} ${weekDaily[i] === null ? 'none due' : `${weekDaily[i]}%`}`
+							)
+							.join(', ')}"
+					/></a
+				>
+			{/if}
 		</div>
 	</div>
+	{#if score.score !== null}<section class="card pad compliance" aria-labelledby="compliance-h">
+			<ProgressRing percent={score.score} label="Compliance {score.score}%" thresholds={[90, 70]} />
+			<div class="stack">
+				<h2 id="compliance-h">Compliance, 7 days: {score.score}%</h2>
+				<p class="muted s13">
+					Shifts with a signed note: {share(score.notes)} · Scheduled doses given: {share(
+						score.meds
+					)} · Incidents reviewed within a day: {share(score.incidents)}
+				</p>
+			</div>
+		</section>{/if}
 	<ClinicalAttention />
 	{#if ((page.data.user?.features ?? []) as readonly string[]).includes('health')}<HealthWatch
 		/>{/if}
@@ -90,7 +180,27 @@
 	.stats.four {
 		grid-template-columns: repeat(4, minmax(0, 1fr));
 	}
+	.compliance {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+	.compliance h2 {
+		font-size: 16px;
+		margin: 0;
+	}
 	.stat {
+		color: inherit;
+		text-decoration: none;
+	}
+	.week {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+		margin-top: 8px;
+		font-size: 13px;
 		color: inherit;
 		text-decoration: none;
 	}

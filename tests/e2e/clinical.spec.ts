@@ -217,6 +217,11 @@ test('incident requires a named signature and local Lomi changes require review 
 	await page
 		.getByLabel('What you did', { exact: true })
 		.fill('Recorded this synthetic workflow for interface verification.');
+	await page.getByRole('button', { name: 'Add a witness', exact: true }).click();
+	await page.getByLabel('Witness 1 name', { exact: true }).fill('Synthetic Witness');
+	await page
+		.getByRole('combobox', { name: 'Witness 1 role', exact: true })
+		.selectOption('Family or visitor');
 	// State-reporting details are optional, but a restraint must be described.
 	await page.getByText('Details for state reporting (optional)', { exact: true }).click();
 	await page
@@ -251,6 +256,15 @@ test('incident requires a named signature and local Lomi changes require review 
 	await expect(review.getByText(/Simple sorting draft/)).toBeVisible();
 	const draft = review.getByLabel('Activities', { exact: true });
 	await expect(draft).toHaveValue(observation);
+	// Lomi's text is slightly faded until the caregiver taps into the section.
+	await expect(draft).toHaveCSS('opacity', '0.85');
+	await draft.focus();
+	await expect(draft).toHaveCSS('opacity', '1');
+	// The caregiver's own words stay available, collapsed, to check the draft against.
+	const said = review.locator('details.said');
+	await expect(said).not.toHaveAttribute('open', '');
+	await said.getByText('What I said', { exact: true }).click();
+	await expect(said).toContainText(observation);
 	const note = page.locator('form').getByLabel('Activities', { exact: true });
 	await expect(note).toHaveValue('');
 	await review.getByText('Refine activities with Lomi', { exact: true }).click();

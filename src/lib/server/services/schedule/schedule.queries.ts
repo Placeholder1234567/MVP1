@@ -1,6 +1,6 @@
-import { and, eq, gte, lte, ne } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, ne } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { homes, profiles, scheduleSlots } from '../../db/schema';
+import { homes, profiles, scheduleSlots, scheduleTemplates } from '../../db/schema';
 
 export async function scheduleHome(tx: Tx, agencyId: string, id: string) {
 	return (
@@ -105,4 +105,43 @@ export async function saveSlot(
 			})
 			.returning()
 	)[0];
+}
+
+export function homeTemplates(tx: Tx, agencyId: string, homeId: string) {
+	return tx
+		.select({
+			id: scheduleTemplates.id,
+			name: scheduleTemplates.name,
+			slots: scheduleTemplates.slots,
+			updatedAt: scheduleTemplates.updated_at
+		})
+		.from(scheduleTemplates)
+		.where(and(eq(scheduleTemplates.agency_id, agencyId), eq(scheduleTemplates.home_id, homeId)))
+		.orderBy(asc(scheduleTemplates.name));
+}
+export async function templateById(tx: Tx, agencyId: string, id: string) {
+	const [row] = await tx
+		.select()
+		.from(scheduleTemplates)
+		.where(and(eq(scheduleTemplates.agency_id, agencyId), eq(scheduleTemplates.id, id)));
+	return row;
+}
+/** Saves a template; a name already used at the home is replaced. */
+export async function upsertTemplate(tx: Tx, row: typeof scheduleTemplates.$inferInsert) {
+	const [saved] = await tx
+		.insert(scheduleTemplates)
+		.values(row)
+		.onConflictDoUpdate({
+			target: [scheduleTemplates.home_id, scheduleTemplates.name],
+			set: { slots: row.slots, updated_at: new Date() }
+		})
+		.returning({ id: scheduleTemplates.id, name: scheduleTemplates.name });
+	return saved;
+}
+export async function removeTemplate(tx: Tx, agencyId: string, id: string) {
+	const deleted = await tx
+		.delete(scheduleTemplates)
+		.where(and(eq(scheduleTemplates.agency_id, agencyId), eq(scheduleTemplates.id, id)))
+		.returning({ id: scheduleTemplates.id });
+	return deleted.length > 0;
 }

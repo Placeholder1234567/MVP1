@@ -2,7 +2,7 @@
 // (offline-sync.md §3, §5, Appendix B). Real router, real users, local Postgres.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 
@@ -13,6 +13,7 @@ const { appRouter } = await import('../../../src/lib/server/trpc/router');
 const { createCallerFactory } = await import('../../../src/lib/server/trpc/middleware');
 const { localTime } = await import('../../../src/lib/domain');
 
+const { setStorageForTests } = await import('../../../src/lib/server/storage');
 const createCaller = createCallerFactory(appRouter);
 const TODAY = localTime(new Date(), 'America/New_York').day;
 
@@ -60,14 +61,12 @@ const note = (data: Record<string, unknown> = {}) => ({
 
 beforeAll(async () => {
 	await withService(async (t) => {
-		await t
-			.insert(s.agencies)
-			.values({
-				id: AGENCY,
-				name: 'Upload Test Agency',
-				subscription_tier: 'complete',
-				slug: `upload-${AGENCY}`
-			});
+		await t.insert(s.agencies).values({
+			id: AGENCY,
+			name: 'Upload Test Agency',
+			subscription_tier: 'complete',
+			slug: `upload-${AGENCY}`
+		});
 		await t.insert(s.homes).values([
 			{ id: OAK, agency_id: AGENCY, name: 'Oak', lat: 40, lng: -75, radius: 150 },
 			{ id: MAPLE, agency_id: AGENCY, name: 'Maple', lat: 41, lng: -75, radius: 150 }
@@ -167,6 +166,67 @@ describe('sync.upload: notes', () => {
 		const [row] = await withService((t) => t.select().from(s.notes).where(eq(s.notes.id, id)));
 		expect(row.status).toBe('submitted');
 		expect(row.content).toEqual({ activities: 'Walk and lunch' });
+	});
+
+	it('goal trials keep the device row ID, and edits to them (PATCH) are applied by the note rules', async () => {
+		const goal = randomUUID();
+		await withService((t) =>
+			t.insert(s.goals).values({
+				id: goal,
+				agency_id: AGENCY,
+				client_id: OAK_PERSON,
+				home_id: OAK,
+				area: 'Daily living',
+				text: 'Synthetic goal'
+			})
+		);
+		const noteId = randomUUID();
+		const row = randomUUID();
+		const first = await upload(CARA, [
+			{ op: 'PUT', table: 'notes', id: noteId, data: note() },
+			{
+				op: 'PUT',
+				table: 'note_goals',
+				id: row,
+				data: {
+					note_id: noteId,
+					goal_id: goal,
+					trials: JSON.stringify(['Independent']),
+					not_attempted: 0
+				}
+			}
+		]);
+		expect(first.rejected).toEqual([]);
+		// A later edit on the device carries only the changed columns.
+		const edit = await upload(CARA, [
+			{
+				op: 'PATCH',
+				table: 'note_goals',
+				id: row,
+				data: { trials: JSON.stringify(['Independent', 'Refused']), updated_at: 'x' }
+			},
+			{ op: 'PATCH', table: 'notes', id: noteId, data: { status: 'submitted' } }
+		]);
+		expect(edit.rejected).toEqual([]);
+		const rows = await withService((t) =>
+			t.select().from(s.noteGoals).where(eq(s.noteGoals.note_id, noteId))
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ id: row, trials: ['Independent', 'Refused'] });
+		expect(rows[0].not_attempted).toBe(false);
+		// After signing the same edit is refused; someone else can't see the row at all.
+		const late = await upload(CARA, [
+			{ op: 'PATCH', table: 'note_goals', id: row, data: { trials: '[]' } }
+		]);
+		expect(late.rejected.map((r) => r.code)).toEqual(['RULE_VIOLATION']);
+		const other = await upload(DEV, [
+			{ op: 'PATCH', table: 'note_goals', id: row, data: { trials: '[]' } }
+		]);
+		expect(other.rejected.map((r) => r.code)).toEqual(['NOT_FOUND']);
+		const unknown = await upload(CARA, [
+			{ op: 'PATCH', table: 'note_goals', id: randomUUID(), data: { trials: '[]' } }
+		]);
+		expect(unknown.rejected.map((r) => r.code)).toEqual(['NOT_FOUND']);
 	});
 
 	it('a queued sign is refused if the supervisor sent the note back in the meantime', async () => {
@@ -371,6 +431,202 @@ describe('sync.upload: messages and everything else', () => {
 			t.select().from(s.messages).where(eq(s.messages.id, id))
 		);
 		expect(row).toMatchObject({ from_name: 'Cara Giver', created_by: CARA, home_id: OAK });
+	});
+
+	it('a message can name a person from the same home only', async () => {
+		const id = randomUUID();
+		const r = await upload(CARA, [
+			{
+				op: 'PUT',
+				table: 'messages',
+				id,
+				data: { home_id: OAK, client_id: OAK_PERSON, body: 'Ate well at lunch' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: randomUUID(),
+				data: { home_id: OAK, client_id: MAPLE_PERSON, body: 'Wrong home' }
+			}
+		]);
+		expect(r.applied).toEqual([id]);
+		expect(r.rejected[0]).toMatchObject({ code: 'VALIDATION_FAILED' });
+		expect(JSON.stringify(r.rejected)).not.toMatch(/Person|Maple/);
+		const [row] = await withService((t) =>
+			t.select().from(s.messages).where(eq(s.messages.id, id))
+		);
+		expect(row.client_id).toBe(OAK_PERSON);
+	});
+
+	it('replies join the thread on the same board; incident follow-ups stay in the home', async () => {
+		const root = randomUUID();
+		const [oakIncident, mapleIncident] = [randomUUID(), randomUUID()];
+		await withService((t) =>
+			t.insert(s.incidents).values([
+				{
+					id: oakIncident,
+					agency_id: AGENCY,
+					client_id: OAK_PERSON,
+					home_id: OAK,
+					type: 'Fall',
+					description: 'Synthetic fall'
+				},
+				{
+					id: mapleIncident,
+					agency_id: AGENCY,
+					client_id: MAPLE_PERSON,
+					home_id: MAPLE,
+					type: 'Fall',
+					description: 'Synthetic fall'
+				}
+			])
+		);
+		const maple = randomUUID();
+		await upload(SAM, [
+			{ op: 'PUT', table: 'messages', id: maple, data: { home_id: MAPLE, body: 'Maple only' } }
+		]);
+		const [reply, nested, wrongBoard, wrongIncident] = Array.from({ length: 4 }, () =>
+			randomUUID()
+		);
+		const r = await upload(CARA, [
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: root,
+				data: { home_id: OAK, incident_id: oakIncident, body: 'Follow-up on the fall' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: reply,
+				data: { home_id: OAK, reply_to: root, body: 'OK' }
+			},
+			// A reply to a reply joins the same thread.
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: nested,
+				data: { home_id: OAK, reply_to: reply, body: 'Yes' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: wrongBoard,
+				data: { home_id: OAK, reply_to: maple, body: 'x' }
+			},
+			{
+				op: 'PUT',
+				table: 'messages',
+				id: wrongIncident,
+				data: { home_id: OAK, incident_id: mapleIncident, body: 'x' }
+			}
+		]);
+		expect(r.applied).toEqual([root, reply, nested]);
+		expect(r.rejected.map((x) => x.code)).toEqual(['VALIDATION_FAILED', 'VALIDATION_FAILED']);
+		const rows = await withService((t) =>
+			t
+				.select()
+				.from(s.messages)
+				.where(inArray(s.messages.id, [root, reply, nested]))
+		);
+		const byId = new Map(rows.map((m) => [m.id, m]));
+		expect(byId.get(root)?.incident_id).toBe(oakIncident);
+		expect(byId.get(reply)?.reply_to).toBe(root);
+		expect(byId.get(nested)?.reply_to).toBe(root);
+	});
+
+	it('photos: stored without metadata, attached by their uploader, read by board members only', async () => {
+		const files = new Map<string, Buffer>();
+		setStorageForTests(undefined, {
+			put: async (path, body) => void files.set(path, body),
+			get: async (path) => files.get(path) ?? null,
+			remove: async (path) => void files.delete(path)
+		});
+		try {
+			const seg = (marker: number, payload: number[]) => [
+				0xff,
+				marker,
+				(payload.length + 2) >> 8,
+				(payload.length + 2) & 0xff,
+				...payload
+			];
+			const gps = [...'Exif'].map((c) => c.charCodeAt(0)).concat([0, 0, 47, 47]);
+			const jpeg = Buffer.from([
+				0xff,
+				0xd8,
+				...seg(0xe1, gps),
+				...seg(0xdb, [1, 2, 3]),
+				0xff,
+				0xda,
+				0,
+				4,
+				9,
+				9,
+				0xff,
+				0xd9
+			]);
+			const cara = await as(CARA);
+			const photo = randomUUID();
+			await expect(
+				cara.message.uploadPhoto({ id: photo, homeId: OAK, data: jpeg.toString('base64') })
+			).resolves.toMatchObject({ id: photo });
+			const stored = files.get(`photos/${AGENCY}/${photo}.jpg`)!;
+			expect(stored.includes(Buffer.from('Exif'))).toBe(false);
+			await expect(
+				cara.message.uploadPhoto({ id: randomUUID(), homeId: MAPLE, data: jpeg.toString('base64') })
+			).rejects.toMatchObject({ code: 'FORBIDDEN' });
+			await expect(
+				cara.message.uploadPhoto({
+					id: randomUUID(),
+					homeId: OAK,
+					data: Buffer.from('not a photo').toString('base64')
+				})
+			).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+
+			const [mine, dev] = [randomUUID(), randomUUID()];
+			const r1 = await upload(CARA, [
+				{
+					op: 'PUT',
+					table: 'messages',
+					id: mine,
+					data: { home_id: OAK, photo_id: photo, body: 'Photo of the rash for the nurse' }
+				}
+			]);
+			expect(r1.applied).toEqual([mine]);
+			// Someone else can't attach Cara's photo.
+			const r2 = await upload(DEV, [
+				{
+					op: 'PUT',
+					table: 'messages',
+					id: dev,
+					data: { home_id: OAK, photo_id: photo, body: 'x' }
+				}
+			]);
+			expect(r2.rejected[0]).toMatchObject({ code: 'VALIDATION_FAILED' });
+
+			const seen = await (await as(SAM)).message.photo({ id: photo });
+			expect(Buffer.from(seen.data, 'base64').equals(stored)).toBe(true);
+			const views = await withService((t) =>
+				t
+					.select()
+					.from(s.auditLog)
+					.where(and(eq(s.auditLog.table_name, 'photo_views'), eq(s.auditLog.record_id, photo)))
+			);
+			expect(views).toEqual([expect.objectContaining({ performed_by: SAM })]);
+
+			// A Maple photo is invisible to an Oak caregiver.
+			const maple = randomUUID();
+			await (
+				await as(SAM)
+			).message.uploadPhoto({
+				id: maple,
+				homeId: MAPLE,
+				data: jpeg.toString('base64')
+			});
+			await expect(cara.message.photo({ id: maple })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+		} finally {
+			setStorageForTests(undefined);
+		}
 	});
 
 	it("can't post to another home's board", async () => {

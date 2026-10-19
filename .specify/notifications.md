@@ -178,6 +178,8 @@ Update `notifications.sent_at`
 | **Deep Link** | `/dashboard/controlled` |
 | **Escalation** | None (mandatory; the supervisor also files an incident report). |
 
+**Offline note:** the expected count is worked out when the count reaches the server, from the doses the server has by then. If another device recorded a dose offline before the count but uploads it later, the count can be flagged although it was right. The next count (made with every dose synced) clears it from the attention list; supervisors should recount before treating a mismatch as missing medication.
+
 ### 2.7c controlled_countersign
 
 | Field | Value |
@@ -264,6 +266,19 @@ Update `notifications.sent_at`
 | **Escalation** | Repeats daily until incident status changes from `open`. Stops after 3 days -- marks `escalation_exhausted`. |
 
 **As built:** the `care-reminder-sweep` (every 15 minutes) flags each incident still `open` 24 to 72 hours after it was reported, once (`reference_id` = incident ID), to the home's supervisors and the agency's admins. The date is the occurrence day (or report day) in the agency's time zone. The escalation chain repeats it at 24 and 48 hours unless someone reads it.
+
+### 2.12a incident_contact_overdue
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | care-reminder-sweep (every 15 minutes): an open incident has a required contact (family or guardian, nurse, state reporting system, per the agency's incident rules) that isn't marked as told once the agency's reminder hours for that contact have passed since the incident. `overdueContacts()` in `domain/clinical.ts`; hours in `agencies.settings.incident_rules` (`guardianHours` 24, `nurseHours` 2 and `stateHours` off by default). |
+| **Recipients** | Supervisors of the incident's home (admins when the home has none) |
+| **Channels** | Push |
+| **Priority** | High |
+| **Template (Push)** | `"Incident at {homeName} from {day}: {contact} not yet marked as told."` |
+| **PHI Safety** | Home, date and contact role only; no person, incident type or detail. |
+| **Deep Link** | `/dashboard` (incident review) |
+| **Escalation** | None. Sent once per incident and contact; marking the contact as told or closing the report stops further reminders. |
 
 ### 2.13 shift_reminder
 
@@ -352,7 +367,7 @@ Update `notifications.sent_at`
 | **Deep Link** | None |
 | **Escalation** | None |
 
-**As built:** admins announce a window from Setup (`agency.announceMaintenance`). They choose the start, end (agency time zone, up to 12 hours, at most 60 days ahead) and one of three fixed impacts (unavailable, slow, sync paused). Nothing typed is sent, so the text is PHI-free by construction: push shows the window (title "Guad: Scheduled maintenance"), and the email subject is "Guad: Scheduled maintenance" with the window, the impact and a reminder to sync each device first. It goes to every active profile in the agency; the device sends an announcement ID, so a double submit sends it once. Platform-wide announcements (all agencies) are not built.
+**As built:** admins announce a window from Setup (`agency.announceMaintenance`). They choose the start, end (agency time zone, up to 12 hours, at most 60 days ahead) and one of three fixed impacts (unavailable, slow, sync paused). Nothing typed is sent, so the text is PHI-free by construction: push shows the window (title "Guad: Scheduled maintenance"), and the email subject is "Guad: Scheduled maintenance" with the window, the impact and a reminder to sync each device first. It goes to every active profile in the agency; the device sends an announcement ID, so a double submit sends it once. Platform-wide announcements: operators run `npm run maintenance:announce -- --start … --end … --impact … [--id …] [--dry-run]` (`scripts/announce-maintenance.ts`), which sends the same announcement to every agency in its own time zone, one transaction per agency. Each agency's announcement ID is derived from the run's `--id`, so repeating a run (after a failure, say) sends nothing twice.
 
 ### 2.19 email_delivery_problem
 
@@ -381,10 +396,12 @@ Update `notifications.sent_at`
 | `controlled_countersign` | High | Y | N | N | N | None |
 | `med_due_reminder` | Normal | Y | N | N | N | 30 min overdue alert |
 | `med_overdue` | High | Y | N | N | N | None |
+| `prn_followup` | Normal | Y | N | N | N | None (once per as-needed dose, 30 min after it was given, to whoever gave it) |
 | `health_alert` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
 | `incident_reported` | High | Y | Y** | N | Y | Severity-based |
 | `incident_high_severity` | Urgent | Y | Y | N | Y | 15 min, 30 min SMS |
 | `incident_review_needed` | High | Y | Y | N | Y | Daily for 3 days |
+| `incident_contact_overdue` | High | Y | N | N | N | None (once per contact) |
 | `shift_reminder` | Normal | Y | N | N | N | None |
 | `clock_anomaly` | Normal | Y | N | N | N | None |
 | `clock_missed` | High | Y | Y | N | N | None |
@@ -576,6 +593,7 @@ type NotificationType =
   | 'incident_reported'
   | 'incident_high_severity'
   | 'incident_review_needed'
+  | 'incident_contact_overdue'
   | 'shift_reminder'
   | 'clock_anomaly'
   | 'clock_missed'
@@ -912,6 +930,7 @@ When a profile is created, default notification preferences are seeded based on 
 | `incident_reported` | N | N | N | Y | N | N | Y | N | N |
 | `incident_high_severity` | N | N | N | Y | Y | N | Y | Y | N |
 | `incident_review_needed` | N | N | N | Y | N | N | Y | N | N |
+| `incident_contact_overdue` | N | N | N | Y | N | N | Y | N | N |
 | `shift_reminder` | Y | N | N | N | N | N | N | N | N |
 | `clock_anomaly` | N | N | N | Y | N | N | N | N | N |
 | `clock_missed` | Y | N | N | Y | N | N | N | N | N |

@@ -33,7 +33,9 @@ export async function witnessProfile(tx: Tx, agencyId: string, id: string) {
 			role: profiles.role,
 			active: profiles.active,
 			med_certified: profiles.med_certified,
-			homeIds: profiles.home_ids
+			homeIds: profiles.home_ids,
+			authUid: profiles.auth_uid,
+			mfaEnabled: profiles.mfa_enabled
 		})
 		.from(profiles)
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, id)))
@@ -101,4 +103,33 @@ export async function countersignEntry(tx: Tx, agencyId: string, id: string, wit
 		)
 		.returning({ id: controlledCounts.id, witnessedAt: controlledCounts.witnessed_at });
 	return row ?? null;
+}
+
+/** True if this witness sign-in (its token's hash) already witnessed an entry. */
+export async function witnessSignInUsed(tx: Tx, hash: string) {
+	const [row] = await tx
+		.select({ id: controlledCounts.id })
+		.from(controlledCounts)
+		.where(eq(controlledCounts.witness_sign_in, hash))
+		.limit(1);
+	return Boolean(row);
+}
+
+/** Marks an entry witnessed in person; the caller has verified the witness's sign-in. */
+export async function markWitnessedInPerson(tx: Tx, agencyId: string, id: string, signIn: string) {
+	await tx
+		.update(controlledCounts)
+		.set({
+			witness_status: 'verified',
+			witnessed_at: new Date(),
+			witness_sign_in: signIn,
+			updated_at: new Date()
+		})
+		.where(
+			and(
+				eq(controlledCounts.agency_id, agencyId),
+				eq(controlledCounts.id, id),
+				eq(controlledCounts.witness_status, 'pending')
+			)
+		);
 }

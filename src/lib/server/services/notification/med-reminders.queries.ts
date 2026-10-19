@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	clients,
@@ -103,4 +103,30 @@ export function homeNamesFor(tx: Tx, agencyId: string, ids: string[]) {
 		.select({ id: homes.id, name: homes.name })
 		.from(homes)
 		.where(and(eq(homes.agency_id, agencyId), inArray(homes.id, ids)));
+}
+
+/**
+ * As-needed doses given between `from` and `to` with no effect recorded yet,
+ * with whoever recorded them (when still active).
+ */
+export function prnDosesAwaitingEffect(tx: Tx, agencyId: string, from: Date, to: Date) {
+	return tx
+		.select({ id: marRecords.id, profileId: profiles.id, role: profiles.role })
+		.from(marRecords)
+		.innerJoin(
+			profiles,
+			and(eq(profiles.id, marRecords.recorded_by), eq(profiles.agency_id, marRecords.agency_id))
+		)
+		.where(
+			and(
+				eq(marRecords.agency_id, agencyId),
+				eq(marRecords.is_prn, true),
+				eq(marRecords.status, 'given'),
+				isNull(marRecords.effect),
+				isNull(marRecords.amends_id),
+				gt(marRecords.recorded_at, from),
+				lte(marRecords.recorded_at, to),
+				eq(profiles.active, true)
+			)
+		);
 }

@@ -121,6 +121,7 @@ This is the core charting experience. Every design decision optimizes for this p
 ### Offline behavior
 
 - If offline when the caregiver taps "Done, write my note," the transcript is stored locally and the AI draft is deferred. The caregiver sees: "You're offline. Lomi will write your note when you reconnect, or you can write it yourself now." Two buttons: "Wait for Lomi" (returns to Today, note saved as pending) and "Write it myself" (opens blank review form).
+- **As built:** there is no deferred "Wait for Lomi" draft. Offline, "Prepare a draft" makes the rules-based draft at once (ai-pipeline.md fallback, next point), so the caregiver can review and sign without waiting. A voice recording made offline is kept in the encrypted local database (`pending_recordings`) and transcribed into "Your observations" the next time the composer is open online (frontend-spec-2.md "Offline voice behavior").
 - If the AI call fails (timeout, error), the system falls back to a simple rule-based draft (split transcript into sections by keyword matching) and shows a banner: "Lomi wasn't available, so this draft was sorted by simple rules. Check each section carefully."
 
 ### "Write it myself" path
@@ -616,6 +617,8 @@ After signing a note, submitting an incident, or recording a health entry, a suc
 ## 6. Team Messages
 
 Each home has a team channel visible to all staff and supervisors assigned to that home. Lomi posts coverage updates here automatically.
+
+**As built:** the coverage engine posts as Lomi (`from_name` "Lomi", no author, so it can't be mistaken for a person of that name) when a shift is offered ("Cara can’t make the evening shift on Oct 23. I’ve offered it to 3 eligible staff members." or that no one is eligible), when it is covered ("…is covered by Eli."), and when nobody took it in time or everyone declined ("…so a supervisor will fill it."). Wording is `coverageBoardText()` in `domain/coverage-board.ts`. Posts use first names and the shift only, never the callout reason, which only supervisors see. On the board, Lomi's posts have a pale yellow card and "Lomi · coverage update".
 
 **Layout:**
 - **App bar (caregiver).** Back button. Title: "[Home name] team." Subtitle: "Staff, supervisors and Lomi."

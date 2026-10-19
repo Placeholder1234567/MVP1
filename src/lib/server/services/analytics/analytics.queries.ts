@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, ne } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { Tx } from '../../db';
 import {
@@ -7,9 +7,11 @@ import {
 	goals,
 	incidents,
 	marRecords,
+	medications,
 	noteGoals,
 	noteHistory,
-	notes
+	notes,
+	scheduleSlots
 } from '../../db/schema';
 
 // All run as app_user (supervisor): RLS keeps them in the agency.
@@ -55,7 +57,15 @@ export function noteEventsSince(tx: Tx, agencyId: string, since: Date, homeId?: 
 
 export function dosesSince(tx: Tx, agencyId: string, sinceDay: string, homeId?: string) {
 	return tx
-		.select({ day: marRecords.day, status: marRecords.status })
+		.select({
+			id: marRecords.id,
+			medication_id: marRecords.medication_id,
+			day: marRecords.day,
+			scheduled_time: marRecords.scheduled_time,
+			status: marRecords.status,
+			is_prn: marRecords.is_prn,
+			amends_id: marRecords.amends_id
+		})
 		.from(marRecords)
 		.where(
 			and(
@@ -98,6 +108,71 @@ export function goalTrialsSince(tx: Tx, agencyId: string, since: Date, homeId?: 
 				gte(noteGoals.created_at, since),
 				eq(noteGoals.not_attempted, false),
 				...home(noteGoals.home_id, homeId)
+			)
+		);
+}
+
+/** Scheduled medications of active people, for medication compliance. */
+export function scheduledMeds(tx: Tx, agencyId: string, homeId?: string) {
+	return tx
+		.select({
+			id: medications.id,
+			scheduled_times: medications.scheduled_times,
+			started_at: medications.started_at,
+			stopped_at: medications.stopped_at
+		})
+		.from(medications)
+		.innerJoin(
+			clients,
+			and(eq(clients.id, medications.client_id), eq(clients.agency_id, medications.agency_id))
+		)
+		.where(
+			and(
+				eq(medications.agency_id, agencyId),
+				eq(clients.active, true),
+				isNotNull(medications.scheduled_times),
+				...home(medications.home_id, homeId)
+			)
+		);
+}
+
+/** Assigned schedule slots from `sinceDay`, for documentation completeness. */
+export function assignedSlotsSince(tx: Tx, agencyId: string, sinceDay: string, homeId?: string) {
+	return tx
+		.select({
+			home_id: scheduleSlots.home_id,
+			day: scheduleSlots.day,
+			shift: scheduleSlots.shift,
+			assigned_to: scheduleSlots.assigned_to
+		})
+		.from(scheduleSlots)
+		.where(
+			and(
+				eq(scheduleSlots.agency_id, agencyId),
+				gte(scheduleSlots.day, sinceDay),
+				isNotNull(scheduleSlots.assigned_to),
+				...home(scheduleSlots.home_id, homeId)
+			)
+		);
+}
+
+/** Signed (not draft) notes from `sinceDay`: who wrote one for which shift. */
+export function signedNotesSince(tx: Tx, agencyId: string, sinceDay: string, homeId?: string) {
+	return tx
+		.selectDistinct({
+			home_id: notes.home_id,
+			day: notes.day,
+			shift: notes.shift,
+			author_id: notes.author_id,
+			status: notes.status
+		})
+		.from(notes)
+		.where(
+			and(
+				eq(notes.agency_id, agencyId),
+				gte(notes.day, sinceDay),
+				ne(notes.status, 'draft'),
+				...home(notes.home_id, homeId)
 			)
 		);
 }

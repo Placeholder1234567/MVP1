@@ -104,3 +104,44 @@ export function trendDomain(points: TrendPoint[], band: TrendSeries['band']): [n
 	const pad = (hi - lo) * 0.1;
 	return [lo - pad, hi + pad];
 }
+
+/**
+ * The most recent reading of each measurement (frontend-spec-2.md §6
+ * "Last weight"), for the "Last: …" hint under each vitals field.
+ */
+export function lastReadings(
+	entries: TrendEntry[],
+	keys: readonly string[]
+): Record<string, { value: number; at: string }> {
+	const out: Record<string, { value: number; at: string }> = {};
+	for (const e of entries) {
+		if (!e.recorded_at) continue;
+		for (const key of keys) {
+			const value = reading(e.data[key]);
+			if (value !== null && (!out[key] || e.recorded_at > out[key].at))
+				out[key] = { value, at: e.recorded_at };
+		}
+	}
+	return out;
+}
+
+/**
+ * Baseline blood pressure (frontend-spec-2.md §6 "Baseline BP"): the most
+ * recent reading where both top and bottom were within the normal range,
+ * shown as a reference under the blood pressure fields. Null when none.
+ */
+export function baselineBloodPressure(
+	entries: TrendEntry[]
+): { systolic: number; diastolic: number; at: string } | null {
+	const top = TREND_SERIES.find((s) => s.key === 'systolic')!;
+	const bottom = TREND_SERIES.find((s) => s.key === 'diastolic')!;
+	let best: { systolic: number; diastolic: number; at: string } | null = null;
+	for (const e of entries) {
+		const systolic = reading(e.data.systolic);
+		const diastolic = reading(e.data.diastolic);
+		if (!e.recorded_at || systolic === null || diastolic === null) continue;
+		if (outOfRange(top, systolic) || outOfRange(bottom, diastolic)) continue;
+		if (!best || e.recorded_at > best.at) best = { systolic, diastolic, at: e.recorded_at };
+	}
+	return best;
+}

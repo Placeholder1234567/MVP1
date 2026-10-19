@@ -4,7 +4,7 @@
 // audit_row_change trigger, and a home change moves the client's synced
 // records with them (clients_home_change trigger).
 import { z } from 'zod';
-import { initialsOf } from '../../../domain/index.ts';
+import { CASE_NOTE_CATEGORIES, initialsOf } from '../../../domain/index.ts';
 import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
@@ -159,7 +159,9 @@ export async function archiveClient(tx: Tx, agencyId: string, id: string) {
 
 export const NewCaseNote = z.object({
 	clientId: z.uuid(),
-	body: z.string().trim().min(1).max(10_000)
+	body: z.string().trim().min(1).max(10_000),
+	/** What the note is about (US-15); "other" when not given */
+	category: z.enum(CASE_NOTE_CATEGORIES).default('other')
 });
 
 export const CaseNoteFilter = z.object({
@@ -172,7 +174,7 @@ export async function addCaseNote(
 	tx: Tx,
 	agencyId: string,
 	author: { profileId: string; name: string },
-	input: z.infer<typeof NewCaseNote>
+	input: z.input<typeof NewCaseNote>
 ) {
 	const data = NewCaseNote.parse(input);
 	if (!(await selectClient(tx, agencyId, data.clientId)))
@@ -183,7 +185,8 @@ export async function addCaseNote(
 		author_id: author.profileId,
 		author_name: author.name,
 		created_by: author.profileId,
-		body: data.body
+		body: data.body,
+		category: data.category
 	});
 }
 

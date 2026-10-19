@@ -37,9 +37,13 @@ test('the author sees who has read a board message, and readers lose the new bad
 	const cara = await signIn(browser, 'cara@guad.test', viewport);
 	await cara.getByRole('link', { name: /^Team messages/ }).click();
 	await cara.getByLabel('Message your team', { exact: true }).fill(text);
+	await cara
+		.getByRole('combobox', { name: 'About (optional)', exact: true })
+		.selectOption({ label: 'Rosa Demo' });
 	await cara.getByRole('button', { name: 'Save message', exact: true }).click();
 	const mine = cara.getByTestId('board').locator('article', { hasText: text });
 	await expect(mine.getByText('Not seen yet', { exact: true })).toBeVisible();
+	await expect(mine.getByRole('link', { name: 'Rosa Demo', exact: true })).toBeVisible();
 	await expect(cara.getByTestId('sync-status')).toHaveText('All changes synced');
 
 	const sam = await signIn(browser, 'supervisor@guad.test', viewport);
@@ -50,11 +54,88 @@ test('the author sees who has read a board message, and readers lose the new bad
 	await expect(sam.getByRole('link', { name: 'Team messages, 0 new', exact: true })).toBeVisible();
 	await expect(sam.getByTestId('sync-status')).toHaveText('All changes synced');
 
-	const seen = mine.getByText(/^Seen by .*Sam Supervisor/);
+	// Sam replies; the reply joins Cara's thread on both devices.
+	const thread = sam.getByTestId('board').locator('article', { hasText: text });
+	await thread.getByRole('button', { name: 'Reply', exact: true }).click();
+	const answer = `Synthetic ${info.project.name} reply ${Date.now()}: maintenance booked.`;
+	await thread.getByLabel('Your reply', { exact: true }).fill(answer);
+	await thread.getByRole('button', { name: 'Save reply', exact: true }).click();
+	await expect(thread.getByRole('list', { name: 'Replies' }).getByText(answer)).toBeVisible();
+	await expect(sam.getByTestId('sync-status')).toHaveText('All changes synced');
+	await expect(mine.getByRole('list', { name: 'Replies' }).getByText(answer)).toBeVisible({
+		timeout: 30000
+	});
+	await expect(mine.getByRole('button', { name: 'Reply (1 reply)', exact: true })).toBeVisible();
+
+	// The first message's receipts (the reply has its own).
+	const receipts = mine.locator('details.seen').first();
+	const seen = receipts.getByText(/^Seen by .*Sam Supervisor/);
 	await expect(seen).toBeVisible({ timeout: 30000 });
 	await seen.click();
-	await expect(mine.getByRole('listitem').filter({ hasText: 'Sam Supervisor' })).toBeVisible();
+	await expect(receipts.getByRole('listitem').filter({ hasText: 'Sam Supervisor' })).toBeVisible();
 	const axe = await new AxeBuilder({ page: cara }).include('[data-testid="board"]').analyze();
 	expect(axe.violations).toEqual([]);
 	await cara.screenshot({ path: info.outputPath('read-receipts.png'), fullPage: true });
+
+	// The message also shows on the person's page.
+	await mine.getByRole('link', { name: 'Rosa Demo', exact: true }).click();
+	await expect(cara.getByRole('heading', { name: 'Team messages about Rosa' })).toBeVisible();
+	await expect(cara.getByText(text)).toBeVisible();
+});
+
+test('a photo shared on the board is shrunk, uploaded and opened by a teammate', async ({
+	browser,
+	page: first
+}, info) => {
+	test.setTimeout(180000);
+	const viewport = () => first.viewportSize();
+	const text = `Synthetic ${info.project.name} photo ${Date.now()}: see the shelf.`;
+	// A synthetic 2x2 PNG; the device re-encodes it as JPEG before upload.
+	const png = Buffer.from(
+		'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==',
+		'base64'
+	);
+	const cara = await signIn(browser, 'cara@guad.test', viewport);
+	await cara.getByRole('link', { name: /^Team messages/ }).click();
+	await cara.getByLabel('Message your team', { exact: true }).fill(text);
+	await cara
+		.getByLabel('Add a photo', { exact: true })
+		.setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: png });
+	await expect(cara.getByRole('img', { name: 'Ready to share with your message' })).toBeVisible();
+	// A realistically heavy photo (noise compresses badly): its upload must
+	// fit the server's request limit after the device shrinks it.
+	const noisy = await cara.evaluate(async () => {
+		const c = document.createElement('canvas');
+		c.width = 2400;
+		c.height = 1800;
+		const g = c.getContext('2d')!;
+		const img = g.createImageData(c.width, c.height);
+		for (let i = 0; i < img.data.length; i++) img.data[i] = (i * 2654435761) >>> 24;
+		g.putImageData(img, 0, 0);
+		const blob = await new Promise<Blob>((ok) => c.toBlob((b) => ok(b!), 'image/png'));
+		const bytes = new Uint8Array(await blob.arrayBuffer());
+		let s = '';
+		for (let i = 0; i < bytes.length; i += 0x8000)
+			s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+		return btoa(s);
+	});
+	await cara.getByRole('button', { name: 'Remove photo', exact: true }).click();
+	await cara.getByLabel('Add a photo', { exact: true }).setInputFiles({
+		name: 'synthetic-large.png',
+		mimeType: 'image/png',
+		buffer: Buffer.from(noisy, 'base64')
+	});
+	await expect(cara.getByRole('img', { name: 'Ready to share with your message' })).toBeVisible();
+	await cara.getByRole('button', { name: 'Save message', exact: true }).click();
+	await expect(cara.getByTestId('sync-status')).toHaveText('All changes synced');
+
+	const sam = await signIn(browser, 'supervisor@guad.test', viewport);
+	await sam.getByRole('link', { name: /^Team messages/ }).click();
+	const card = sam.getByTestId('board').locator('article', { hasText: text });
+	await card.getByRole('button', { name: 'Show photo', exact: true }).click();
+	const img = card.getByRole('img', { name: 'Shared by Cara Giver', exact: true });
+	await expect(img).toBeVisible();
+	expect(await img.getAttribute('src')).toMatch(/^data:image\/jpeg;base64,/);
+	const axe = await new AxeBuilder({ page: sam }).include('[data-testid="board"]').analyze();
+	expect(axe.violations).toEqual([]);
 });

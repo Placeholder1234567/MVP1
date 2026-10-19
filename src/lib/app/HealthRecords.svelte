@@ -10,6 +10,8 @@
 		healthKindLabel,
 		healthPayload,
 		healthSummary,
+		baselineBloodPressure,
+		lastReadings,
 		vitalFieldWarning,
 		type HealthField,
 		type HealthKind
@@ -66,6 +68,38 @@
 		return out;
 	});
 	const recent = $derived(app.health.filter((r) => r.client_id === clientId).slice(0, 3));
+	/** Each measurement's last saved reading, shown under its field. */
+	const last = $derived(
+		kind === 'vitals'
+			? lastReadings(
+					app.health
+						.filter((r) => r.client_id === clientId && r.kind === 'vitals')
+						.map((r) => ({
+							recorded_at: r.recorded_at,
+							data: parseJson<Record<string, unknown>>(r.data, {})
+						})),
+					HEALTH_FIELDS.vitals.filter((f) => f.input === 'number').map((f) => f.key)
+				)
+			: {}
+	);
+	/** The last normal blood pressure, as a reference under the blood pressure fields. */
+	const baseline = $derived(
+		kind === 'vitals'
+			? baselineBloodPressure(
+					app.health
+						.filter((r) => r.client_id === clientId && r.kind === 'vitals')
+						.map((r) => ({
+							recorded_at: r.recorded_at,
+							data: parseJson<Record<string, unknown>>(r.data, {})
+						}))
+				)
+			: null
+	);
+	const shortDay = (iso: string) =>
+		new Date(`${localTime(new Date(iso), app.user.timeZone).day}T12:00:00Z`).toLocaleDateString(
+			undefined,
+			{ month: 'short', day: 'numeric', timeZone: 'UTC' }
+		);
 	function switchKind(next: HealthKind) {
 		// charting-ux.md §4.6: switching clears the form, no confirmation.
 		if (busy) return;
@@ -139,16 +173,27 @@
 					type="number"
 					step={f.decimal ? '0.1' : '1'}
 					inputmode={f.decimal ? 'decimal' : 'numeric'}
-					aria-describedby={warning
-						? `h-${f.key}-warn`
-						: f.alertConfigured === false
-							? `h-${f.key}-limits`
-							: undefined}
+					aria-describedby={[
+						warning ? `h-${f.key}-warn` : '',
+						!warning && f.alertConfigured === false ? `h-${f.key}-limits` : '',
+						last[f.key] ? `h-${f.key}-last` : '',
+						baseline && (f.key === 'systolic' || f.key === 'diastolic') ? 'h-bp-baseline' : ''
+					]
+						.filter(Boolean)
+						.join(' ') || undefined}
 					bind:value={fields[f.key]}
 					onblur={() => (touched[f.key] = true)}
 				/><em>{f.unit}</em>
 			</div>
 			{#if warning}<p class="field-warn" id="h-{f.key}-warn">{warning}</p>{/if}
+			{#if last[f.key]}<p class="muted s13 last" id="h-{f.key}-last">
+					Last: {last[f.key].value}
+					{f.unit} · {shortDay(last[f.key].at)}
+				</p>{/if}
+			{#if f.key === 'diastolic' && baseline}<p class="muted s13 last" id="h-bp-baseline">
+					Baseline BP: {baseline.systolic}/{baseline.diastolic} · {shortDay(baseline.at)} (last normal
+					reading)
+				</p>{/if}
 		{:else}<input
 				class="input"
 				id="h-{f.key}"
@@ -209,6 +254,9 @@
 </fieldset>
 
 <style>
+	.last {
+		margin: 4px 0 0;
+	}
 	.care-fields {
 		border: 0;
 		padding: 0;

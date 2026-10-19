@@ -1,8 +1,15 @@
 import { afterCommit, asService, withService, type Tx } from '../../db';
-import { eligibility, shiftIsPast, type ShiftKey } from '../../../domain/index.ts';
+import {
+	coverageBoardText,
+	eligibility,
+	shiftIsPast,
+	type CoverageBoardEvent,
+	type ShiftKey
+} from '../../../domain/index.ts';
 import { ServiceError } from '../../errors';
 import { cancel, enqueue } from '../../jobs/queue.ts';
 import type { CurrentUser } from '../auth/index.ts';
+import { postLomiUpdate } from '../message/index.ts';
 import { notify, notifyHomeSupervisors } from '../notification/index.ts';
 import { scheduleHome, scheduleStaff } from './schedule.queries';
 import * as q from './coverage.queries';
@@ -11,6 +18,13 @@ const keyOf = (r: { home_id: string; day: string; shift: ShiftKey }) => ({
 	day: r.day,
 	shift: r.shift
 });
+/** Lomi's update on the home's board (US-37). */
+const announce = (
+	tx: Tx,
+	agencyId: string,
+	row: { home_id: string; day: string; shift: ShiftKey },
+	event: CoverageBoardEvent
+) => postLomiUpdate(tx, agencyId, row.home_id, coverageBoardText(row.day, row.shift, event));
 const timeouts = (id: string) =>
 	afterCommit(async () => {
 		await cancel('coverage-timeout', `${id}-timeout`);
@@ -97,6 +111,13 @@ export async function searchCoverage(input: { agencyId: string; id: string }) {
 		);
 		const eligible = candidates.filter((c) => c.eligible);
 		await q.setRequest(tx, input.agencyId, row.id, { started_at: new Date() });
+		await announce(tx, input.agencyId, row, {
+			kind: 'offered',
+			calledOutName: row.called_out_by
+				? await q.profileName(tx, input.agencyId, row.called_out_by)
+				: null,
+			eligible: eligible.length
+		});
 		await q.addStep(
 			tx,
 			input.agencyId,
@@ -105,7 +126,8 @@ export async function searchCoverage(input: { agencyId: string; id: string }) {
 			`Offered to ${eligible.length} eligible staff`
 		);
 		if (!eligible.length) {
-			await unfilled(tx, input.agencyId, row);
+			// The offer post already said a supervisor will fill it.
+			await unfilled(tx, input.agencyId, row, false);
 			return;
 		}
 		await notify(
@@ -135,9 +157,11 @@ export async function searchCoverage(input: { agencyId: string; id: string }) {
 async function unfilled(
 	tx: Tx,
 	agencyId: string,
-	row: NonNullable<Awaited<ReturnType<typeof q.requestById>>>
+	row: NonNullable<Awaited<ReturnType<typeof q.requestById>>>,
+	post = true
 ) {
 	await q.setRequest(tx, agencyId, row.id, { status: 'unfilled' });
+	if (post) await announce(tx, agencyId, row, { kind: 'unfilled' });
 	await q.setCoverageSlot(tx, agencyId, keyOf(row), null, 'open');
 	await q.addStep(tx, agencyId, row.id, row.home_id, 'Supervisor follow-up required');
 	await notifyHomeSupervisors(tx, agencyId, row.home_id, {
@@ -195,6 +219,7 @@ export async function respondCoverage(
 				filled_at: new Date()
 			});
 			timeouts(id);
+			await announce(t, user.agencyId, row, { kind: 'covered', filledName: user.name });
 			await notifyHomeSupervisors(t, user.agencyId, row.home_id, {
 				type: 'coverage_accepted',
 				priority: 2,
@@ -208,6 +233,19 @@ export async function respondCoverage(
 			await unfilled(t, user.agencyId, row);
 		return { id, status: reply === 'accepted' ? ('filled' as const) : ('declined' as const) };
 	});
+}
+/**
+ * Who a coverage request was offered to, why others weren't, and each reply
+ * (coverage.get, US-21). Candidates are never synced to devices, so the
+ * activity log loads them online. The request lookup runs under the caller's
+ * RLS, so supervisors only see requests for homes they can see.
+ */
+export async function coverageDetail(tx: Tx, user: CurrentUser, id: string) {
+	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
+	const row = await q.requestById(tx, user.agencyId, id);
+	if (!row) throw new ServiceError('NOT_FOUND', 'Coverage request not found');
+	const candidates = await q.candidateDetail(tx, user.agencyId, id);
+	return { id: row.id, status: row.status, candidates };
 }
 export const coverageOffers = (tx: Tx, user: CurrentUser) =>
 	q.offeredRequests(tx, user.agencyId, user.profileId);

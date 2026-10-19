@@ -115,8 +115,18 @@ test('offline health and attendance updates survive reconnect and appear in care
 		.click();
 	await page.getByRole('button', { name: 'Health', exact: true }).click();
 	await page.getByLabel('Pulse', { exact: true }).fill(info.project.name === 'phone' ? '83' : '84');
+	await page.getByLabel('Blood pressure, top', { exact: true }).fill('118');
+	await page.getByLabel('Blood pressure, bottom', { exact: true }).fill('76');
 	await page.getByRole('button', { name: 'Save vitals', exact: true }).click();
 	await expect(page.getByText(/^Vitals saved for /)).toBeVisible();
+	// The next reading shows the last one under its field.
+	await expect(page.getByLabel('Pulse', { exact: true })).toHaveAccessibleDescription(
+		new RegExp(`^Last: ${info.project.name === 'phone' ? '83' : '84'} bpm · `)
+	);
+	// A normal blood pressure becomes the baseline shown under both fields.
+	await expect(page.getByLabel('Blood pressure, top', { exact: true })).toHaveAccessibleDescription(
+		/Baseline BP: 118\/76 · .+ \(last normal reading\)$/
+	);
 	await page.getByRole('button', { name: 'Attendance', exact: true }).click();
 	for (const service of ['Day program', 'Employment support']) {
 		const checkbox = page.getByRole('checkbox', { name: new RegExp(`^${service}`) });

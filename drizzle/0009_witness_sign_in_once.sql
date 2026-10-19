@@ -1,0 +1,2 @@
+ALTER TABLE "controlled_counts" ADD COLUMN "witness_sign_in" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "controlled_counts_witness_sign_in_idx" ON "controlled_counts" USING btree ("witness_sign_in");

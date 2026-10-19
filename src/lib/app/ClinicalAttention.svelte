@@ -52,6 +52,10 @@
 			(r) => r.id === selected && r.home_id === selectedHome && selectedHome === app.homeId
 		)
 	);
+	// Team messages that follow up on the incident under review.
+	const discussion = $derived(
+		incident ? app.messages.filter((m) => m.incident_id === incident.id).length : 0
+	);
 	function discard() {
 		return !busy && (!dirty || confirm('Discard your unsaved follow-up and contact entries?'));
 	}
@@ -225,6 +229,13 @@
 					{value}
 				</p>{/each}
 			<p>
+				<a href="{resolve('/(app)/messages')}?incident={incident.id}"
+					>Discuss with the team{discussion
+						? ` (${discussion} ${discussion === 1 ? 'message' : 'messages'})`
+						: ''}</a
+				>
+			</p>
+			<p>
 				<b>Told:</b>
 				{parseJson<string[]>(incident.notified_parties, []).join(', ') || 'No one recorded yet'}
 			</p>
@@ -307,7 +318,8 @@
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: var(--faint);
+		/* --muted, not --faint: 11px text needs 4.5:1, also on the critical tint. */
+		color: var(--muted);
 		padding: 12px 16px 0;
 	}
 	.band-label + :global(.row) {

@@ -8,6 +8,14 @@ export const PUBLIC_PWA_FILES = [
 	'/icons/guad-192.png',
 	'/icons/guad-512.png'
 ];
+/**
+ * The database runs in a worker that loads its own SQLite build from
+ * /_app/immutable/workers/assets/. The copies the bundler also emits under
+ * /_app/immutable/assets/ are never requested, so they aren't pre-downloaded
+ * (about 7 MB per device on every install and update).
+ */
+const unusedWasm = (p: string) => p.startsWith('/_app/immutable/assets/') && p.endsWith('.wasm');
+
 export function pwaAssetPaths(build: string[]): string[] {
 	return [
 		...new Set([
@@ -16,7 +24,8 @@ export function pwaAssetPaths(build: string[]): string[] {
 					p.startsWith('/_app/immutable/') &&
 					!p.includes('..') &&
 					!/[?#]/.test(p) &&
-					!p.endsWith('.map')
+					!p.endsWith('.map') &&
+					!unusedWasm(p)
 			),
 			...PUBLIC_PWA_FILES
 		])

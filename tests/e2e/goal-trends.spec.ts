@@ -79,6 +79,25 @@ test('saved goal progress excludes drafts, counts signed trials and preserves st
 		accessibility.violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) }))
 	).toEqual([]);
 	await context.setOffline(false);
+	// The person page lists every active goal at a glance from the same saved notes.
+	await page.evaluate(() => {
+		const a = document.createElement('a');
+		a.href = '/dashboard/people';
+		document.body.append(a);
+		a.click();
+		a.remove();
+	});
+	await page
+		.getByRole('link', { name: new RegExp(person) })
+		.first()
+		.click();
+	const glance = page
+		.getByRole('region', { name: 'Goals at a glance', exact: true })
+		.getByRole('listitem')
+		.filter({ hasText: title });
+	await expect(glance.getByRole('img', { name: '67% independent', exact: true })).toBeVisible();
+	await expect(glance).toContainText('2 of 3 trials independent');
+	await goals();
 	const confirmStop = page.waitForEvent('dialog').then((dialog) => dialog.accept());
 	await active.getByRole('button', { name: 'Stop goal', exact: true }).click();
 	await confirmStop;
@@ -87,6 +106,9 @@ test('saved goal progress excludes drafts, counts signed trials and preserves st
 		.getByRole('article', { name: 'Stopped goal', exact: true })
 		.filter({ hasText: title });
 	await expect(stopped).toContainText('67% independent');
+	// Signing re-saved the synced draft's trials; the server accepted that edit.
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	await expect(page.getByText(/changes need attention/)).toHaveCount(0);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
 		true
 	);

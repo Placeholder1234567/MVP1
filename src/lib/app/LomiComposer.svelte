@@ -4,19 +4,31 @@
 	import LomiVoice from './LomiVoice.svelte';
 	import { RECORDING_MAX_SECONDS } from './voice-capture';
 	import { trpc } from '#lib/trpc.ts';
-	import { draftLocally, type DraftResult, type NoteKind } from '#lib/domain/lomi.ts';
+	import {
+		draftLocally,
+		topicSuggestions,
+		type DraftResult,
+		type NoteKind
+	} from '#lib/domain/lomi.ts';
+	import { useSession } from './session.svelte';
+	const app = useSession();
 	let {
 		clientId,
 		type,
+		shift,
 		onDraft,
 		onDirty
 	}: {
 		clientId: string;
 		type: NoteKind;
+		/** The shift the note covers, for the topic reminders */
+		shift?: 'am' | 'pm' | 'on' | null;
 		onDraft: (result: DraftResult) => void;
 		onDirty?: () => void;
 	} = $props();
 	let text = $state('');
+	// The words the shown draft was made from.
+	let said = $state('');
 	let busy = $state(false);
 	let recording = $state(false);
 	let transcribing = $state(false);
@@ -33,15 +45,81 @@
 		return () => clearInterval(timer);
 	});
 	const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+	// Whether voice works is remembered on the device, so the mic is there offline.
 	onMount(() => {
 		void trpc.lomi.capabilities
 			.query()
-			.then((c) => (voice = c.voice))
-			.catch(() => {});
+			.then((c) => {
+				voice = c.voice;
+				void app.db
+					?.execute('INSERT OR REPLACE INTO device_flags (id, value) VALUES (?, ?)', [
+						'voice',
+						c.voice ? '1' : '0'
+					])
+					.catch(() => {});
+			})
+			.catch(() =>
+				app.db
+					?.getOptional<{ value: string }>('SELECT value FROM device_flags WHERE id = ?', ['voice'])
+					.then((row) => (voice = row?.value === '1'))
+					.catch(() => {})
+			);
+	});
+
+	// Recordings kept offline for this person and note type (LomiVoice
+	// saveFor): transcribed in order once online, added to the text, deleted.
+	let online = $state(typeof navigator === 'undefined' || navigator.onLine);
+	let waiting = $state(0);
+	let resuming = false;
+	type Kept = { id: string; recording_id: string; mime: string; audio: string };
+	async function resume() {
+		const db = app.db;
+		if (!db || resuming) return;
+		resuming = true;
+		try {
+			const rows = await db.getAll<Kept>(
+				'SELECT id, recording_id, mime, audio FROM pending_recordings WHERE profile_id = ? AND client_id = ? AND kind = ? ORDER BY recorded_at, recording_id, part',
+				[app.user.profileId, clientId, type]
+			);
+			waiting = new Set(rows.map((r) => r.recording_id)).size;
+			if (!online || !rows.length) return;
+			for (const recording of [...new Set(rows.map((r) => r.recording_id))]) {
+				const parts = rows.filter((r) => r.recording_id === recording);
+				const texts: string[] = [];
+				for (const part of parts)
+					texts.push(
+						(
+							await trpc.lomi.transcribe.mutate({
+								audio: part.audio,
+								mimeType: part.mime as 'audio/webm' | 'audio/mp4' | 'audio/ogg'
+							})
+						).text.trim()
+					);
+				const clip = texts.filter(Boolean).join(' ');
+				if (clip) {
+					text = [text, clip].filter(Boolean).join(' ').slice(0, 8000);
+					onDirty?.();
+				}
+				await db.execute('DELETE FROM pending_recordings WHERE recording_id = ?', [recording]);
+				waiting--;
+				message =
+					'Lomi transcribed the recording you saved offline and added it below. Check it before preparing a draft.';
+			}
+		} catch {
+			// Still offline or transcription failed: the recording stays for next time.
+		} finally {
+			resuming = false;
+		}
+	}
+	$effect(() => {
+		void online;
+		void app.db;
+		void resume();
 	});
 	async function draft() {
 		if (!text.trim() || busy) return;
 		busy = true;
+		said = text;
 		message = '';
 		try {
 			preview = await trpc.lomi.draft.mutate({ clientId, type, prompt: text });
@@ -54,6 +132,7 @@
 	}
 </script>
 
+<svelte:window ononline={() => (online = true)} onoffline={() => (online = false)} />
 <section class="card pad stack lomi-panel" aria-label="Lomi drafting assistant">
 	<div class="spread">
 		<div>
@@ -63,6 +142,10 @@
 		<span class="lemon-orb" aria-hidden="true">◒</span>
 	</div>
 	<p class="muted">Use your own words. Lomi helps organize them, and you review every section.</p>
+	<div class="try" role="group" aria-label="Try covering">
+		<span class="muted">Try covering:</span>
+		{#each topicSuggestions(type, shift) as topic (topic)}<span class="tag">{topic}</span>{/each}
+	</div>
 	<label
 		>Your observations<textarea
 			class="input"
@@ -78,11 +161,14 @@
 	>
 	<div class="actions">
 		{#if voice}<LomiVoice
+				saveFor={{ clientId, kind: type }}
 				seconds={RECORDING_MAX_SECONDS}
 				label="Speak · up to 5 minutes"
 				disabled={busy}
 				onState={(state) => {
 					if (state.recording && !recording) preview = null;
+					// A recording just kept offline: count it as waiting.
+					if (transcribing && !state.busy) void resume();
 					recording = state.recording;
 					transcribing = state.busy;
 					voiceMessage = state.message;
@@ -105,8 +191,14 @@
 			Voice will be available once your agency connects transcription. You can type here now.
 		</p>{/if}
 	{#if message || voiceMessage}<p role="status">{message || voiceMessage}</p>{/if}
+	{#if waiting && !online}<p class="muted s14">
+			{waiting}
+			{waiting === 1 ? 'recording is' : 'recordings are'} saved on this device and will be transcribed
+			when you’re back online.
+		</p>{/if}
 	{#if preview}{#key preview}<LomiReview
 				result={preview}
+				{said}
 				{voice}
 				{clientId}
 				{type}
@@ -120,6 +212,21 @@
 </section>
 
 <style>
+	/* Ported from mvp/styles.css (.cv-try, .cv-tag). */
+	.try {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: center;
+		font-size: 14px;
+	}
+	.tag {
+		background: var(--sky);
+		color: var(--blue);
+		font-weight: 600;
+		border-radius: 999px;
+		padding: 6px 12px;
+	}
 	.lomi-panel {
 		border-color: var(--lemon-line);
 	}
@@ -129,7 +236,7 @@
 		width: 60px;
 		height: 60px;
 		background: var(--lemon);
-		color: var(--ink);
+		color: #1c1b4b;
 		border-radius: 50%;
 		font-size: 38px;
 	}

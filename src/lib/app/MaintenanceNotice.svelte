@@ -86,7 +86,7 @@
 					]}</label
 				>{/each}
 		</fieldset>
-		{#if slot && !slot.problem}<div class="callout" aria-label="Announcement preview">
+		{#if slot && !slot.problem}<div class="callout" role="group" aria-label="Announcement preview">
 				<p><b>{maintenanceTitle(slot.s, slot.e, timezone)}</b></p>
 				<p>{maintenanceBody(impact)}</p>
 			</div>{:else if slot?.problem}<p class="muted">{slot.problem}</p>{/if}

@@ -15,7 +15,8 @@
 		profileId: string;
 		offline?: boolean;
 		onLock: () => Promise<void>;
-		onUnlock: (key: Uint8Array) => Promise<void>;
+		/** onWait: another tab has the database open; this one opens when it's free */
+		onUnlock: (key: Uint8Array, onWait: () => void) => Promise<void>;
 		onReady: (lock: () => Promise<void>) => void;
 		onPrivacyChange?: (masked: boolean) => void;
 		children: Snippet;
@@ -23,6 +24,8 @@
 	let hidden = $state(false);
 	let locked = $state(false);
 	let busy = $state(false);
+	/** Waiting for another tab to give up the device database. */
+	let waiting = $state(false);
 	let pin = $state('');
 	let error = $state('');
 	let lastActivity = Date.now();
@@ -104,7 +107,7 @@
 			if (closeFailed) throw new Error('Lock unavailable');
 			key = await (offline ? unwrapOfflineKey(pin, profileId) : unwrapKey(pin, profileId));
 			if (!alive || hidden || revision !== attempt) return;
-			await onUnlock(key);
+			await onUnlock(key, () => (waiting = true));
 			if (!alive || hidden || revision !== attempt) {
 				await onLock();
 				return;
@@ -121,6 +124,7 @@
 			key?.fill(0);
 			pin = '';
 			busy = false;
+			waiting = false;
 		}
 	}
 </script>
@@ -155,6 +159,9 @@
 					<button class="btn" disabled={busy}>{busy ? 'Opening…' : 'Unlock workspace'}</button>
 				</form>
 			{/if}
+			{#if waiting}<p class="callout" role="status">
+					Guad is open in another tab. Lock or close it there and this tab opens by itself.
+				</p>{/if}
 			{#if error}<p class="callout bad" role="alert">{error}</p>{/if}
 			<a class="textbtn" href={resolve('/login')} data-sveltekit-reload>Return to sign-in</a>
 		</div>

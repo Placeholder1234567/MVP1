@@ -67,6 +67,9 @@ export class RateLimiter {
 /** security.md T4: 100 tRPC requests a minute per user. */
 export const userRequests = new RateLimiter({ capacity: 100, refillPerSecond: 100 / 60 });
 
+/** Board photo uploads per user: storage abuse stays bounded (up to 1.5 MB each). */
+export const photoUploads = new RateLimiter({ capacity: 30, refillPerSecond: 30 / 3600 });
+
 /** Session sign-ins per client IP; Identity Platform also throttles password guesses. */
 export const signInsByIp = new RateLimiter({ capacity: 20, refillPerSecond: 20 / 60 });
 
