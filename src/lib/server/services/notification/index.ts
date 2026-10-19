@@ -10,12 +10,23 @@
 // Writes run as app_service inside the caller's transaction: notifying other
 // users is a cross-user write clients can't make (rls.sql), and it must roll
 // back with the change that caused it.
-import { channelsFor, type StaffRole } from '../../../domain/index.ts';
+import {
+	channelsFor,
+	notificationOverrides,
+	notificationDisabled,
+	type StaffRole
+} from '../../../domain/index.ts';
 import { afterCommit, asService, type Tx } from '../../db';
 import { queueDeliveries } from './dispatch';
 import { queueEscalation } from './escalation';
-import { activeStaffByRole, insertNotifications, preferencesFor } from './notification.queries';
+import {
+	activeStaffByRole,
+	insertNotifications,
+	preferencesFor,
+	agencyNotificationSettings
+} from './notification.queries';
 
+export { NotificationOverridesInput } from './overrides-input';
 export { dispatchNotifications, sweepNotifications, RetryLater } from './dispatch';
 export {
 	quietHours,
@@ -81,6 +92,8 @@ export function notify(
 ): Promise<number> {
 	return asService(tx, async (tx) => {
 		if (!recipients.length) return 0;
+		const overrides = notificationOverrides(await agencyNotificationSettings(tx, agencyId));
+		if (notificationDisabled(n.type, overrides)) return 0;
 		const prefs = new Map(
 			(
 				await preferencesFor(
@@ -107,7 +120,12 @@ export function notify(
 				status: 'sent' as const,
 				sent_at: new Date()
 			},
-			...channelsFor(n.type, r.role, prefs.get(r.id)).map((channel) => ({
+			...[
+				...new Set([
+					...channelsFor(n.type, r.role, prefs.get(r.id)),
+					...(n.type === 'daily_summary' && overrides.requireSummaryEmail ? ['email' as const] : [])
+				])
+			].map((channel) => ({
 				...base,
 				profile_id: r.id,
 				channel

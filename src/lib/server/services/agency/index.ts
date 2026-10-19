@@ -9,6 +9,7 @@ import {
 	SESSION_MINUTES_MIN,
 	STATE_CODES
 } from '../../../domain/index.ts';
+import { NotificationOverridesInput } from '../notification/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { createStaffAccount } from '../auth/index.ts';
@@ -38,6 +39,7 @@ export async function getAgency(tx: Tx, agencyId: string) {
  */
 export const AgencySettings = z
 	.object({
+		notification_overrides: NotificationOverridesInput.optional(),
 		mfa_required_roles: z.array(z.enum(['caregiver', 'supervisor'])).optional(),
 		/** Sign-in length in minutes (domain/session-length.ts); applies to new sign-ins. */
 		session_minutes: z.number().int().min(SESSION_MINUTES_MIN).max(SESSION_MINUTES_MAX).optional(),

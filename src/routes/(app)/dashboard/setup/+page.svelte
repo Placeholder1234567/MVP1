@@ -11,6 +11,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import ControlledRulesSettings from '#lib/app/ControlledRulesSettings.svelte';
 	import MaintenanceNotice from '#lib/app/MaintenanceNotice.svelte';
+	import NotificationOverridesSettings from '#lib/app/NotificationOverridesSettings.svelte';
 	import IncidentRulesSettings from '#lib/app/IncidentRulesSettings.svelte';
 	import MessagingUsage from '#lib/app/MessagingUsage.svelte';
 
@@ -270,6 +271,7 @@
 		</div>
 		<ControlledRulesSettings settings={agency.settings} onSaved={load} />
 		<IncidentRulesSettings settings={agency.settings} onSaved={load} />
+		<NotificationOverridesSettings settings={agency.settings} onSaved={load} />
 		<MessagingUsage />
 		<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
 	{/if}

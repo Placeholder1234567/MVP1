@@ -102,7 +102,8 @@ it('edits only own quiet hours, preserves other settings and reports the agency 
 	expect(await cg.setQuietHours({ start: '21:30', end: '05:30' })).toEqual({
 		start: '21:30',
 		end: '05:30',
-		timeZone: 'America/New_York'
+		timeZone: 'America/New_York',
+		agencySet: false
 	});
 	expect(await ad.quietHours()).toMatchObject({ start: '23:00', end: '06:00' });
 	const [row] = await withService((tx) =>

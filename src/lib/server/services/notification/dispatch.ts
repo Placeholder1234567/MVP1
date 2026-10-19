@@ -8,7 +8,14 @@
 // (no phone, opted out, no device, deactivated) fails at once. On the last
 // attempt a failure is final: the row is marked failed and `notification.dead`
 // is logged for alerting (notifications.md §3, §11).
-import { canSendNow, localTime, overDailyLimit, type Channel } from '../../../domain/index.ts';
+import {
+	canSendNow,
+	localTime,
+	notificationOverrides,
+	notificationDisabled,
+	overDailyLimit,
+	type Channel
+} from '../../../domain/index.ts';
 import { withService } from '../../db';
 import { enqueue } from '../../jobs/queue.ts';
 import { providers } from '../../messaging/index.ts';
@@ -55,8 +62,15 @@ export async function dispatchNotifications(
 	for (const row of rows) {
 		const channel = row.channel as Channel;
 		const now = localTime(new Date(), row.timeZone);
+		const overrides = notificationOverrides(row.agencySettings);
+		if (notificationDisabled(row.type, overrides)) {
+			await withService((tx) => markDelivery(tx, row.id, { status: 'failed' }));
+			stats.suppressed++;
+			continue;
+		}
 		const window =
-			row.quietStart && row.quietEnd ? { start: row.quietStart, end: row.quietEnd } : undefined;
+			overrides.quietHours ??
+			(row.quietStart && row.quietEnd ? { start: row.quietStart, end: row.quietEnd } : undefined);
 		// Held for quiet hours: stays pending, and the sweeper sends it later.
 		if (!canSendNow(channel, row.priority, `${now.hour}:${now.minute}`, window)) {
 			stats.held++;
