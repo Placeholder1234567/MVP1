@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 // Stable UUIDv5 means repeated receipts/final attempts cannot create another row.
 const NAMESPACE = Buffer.from('5cc51fc4053a4396a1f5f2886d0f943d', 'hex');
-export function smsFallbackId(id: string): string {
+const PUSH_NAMESPACE = Buffer.from('9b1f0e2a6c8d4e5fa3b7c1d2e4f60718', 'hex');
+export const smsFallbackId = (id: string) => fallbackId(NAMESPACE, id);
+/** The SMS sent when a mandatory push fails (push-fallback.ts). */
+export const pushFallbackId = (id: string) => fallbackId(PUSH_NAMESPACE, id);
+function fallbackId(namespace: Buffer, id: string): string {
 	const bytes = createHash('sha1')
-		.update(NAMESPACE)
+		.update(namespace)
 		.update(Buffer.from(id.replaceAll('-', ''), 'hex'))
 		.digest()
 		.subarray(0, 16);

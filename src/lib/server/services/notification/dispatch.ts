@@ -28,6 +28,7 @@ import {
 	sentSince,
 	stalePending
 } from './notification.queries';
+import { queuePushSmsFallback } from './push-fallback';
 import { queueSmsPushFallback } from './sms-fallback';
 
 /** A delivery that will never succeed, so retrying is pointless. */
@@ -142,6 +143,8 @@ export async function dispatchNotifications(
 			await withService(async (tx) => {
 				await markDelivery(tx, row.id, { status: 'failed' });
 				if (channel === 'sms') await queueSmsPushFallback(tx, row.agencyId, row.id);
+				// Mandatory alerts reach someone with no push device by text (§5).
+				if (channel === 'push') await queuePushSmsFallback(tx, row.agencyId, row.id);
 			});
 			stats.failed++;
 		}

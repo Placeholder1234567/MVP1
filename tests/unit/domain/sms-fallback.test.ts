@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest';
-import { needsSmsPushFallback } from '../../../src/lib/domain/notifications';
+import { describe, expect, it } from 'vitest';
+import { needsPushSmsFallback, needsSmsPushFallback } from '../../../src/lib/domain/notifications';
 import { smsFallbackId } from '../../../src/lib/server/services/notification/sms-fallback-id';
 it('limits immediate fallback to an unacknowledged terminal urgent failure with allowed push', () => {
 	const failed = {
@@ -29,4 +29,27 @@ it('gives each source SMS a stable UUID without changing the original event refe
 	);
 	expect(smsFallbackId(source)).not.toBe(source);
 	expect(smsFallbackId('50b81824-b362-48fb-80ec-3b1a7c5d6b8e')).not.toBe(smsFallbackId(source));
+});
+
+describe('needsPushSmsFallback', () => {
+	const failed = {
+		type: 'health_alert',
+		status: 'failed',
+		active: true,
+		acknowledged: false,
+		hasPhone: true,
+		smsPreference: undefined
+	};
+	it('texts a failed mandatory push to an active person with a phone', () => {
+		expect(needsPushSmsFallback(failed)).toBe(true);
+		expect(needsPushSmsFallback({ ...failed, smsPreference: true })).toBe(true);
+	});
+	it('never when texts are off for the type (STOP), or for optional alerts', () => {
+		expect(needsPushSmsFallback({ ...failed, smsPreference: false })).toBe(false);
+		expect(needsPushSmsFallback({ ...failed, type: 'shift_reminder' })).toBe(false);
+		expect(needsPushSmsFallback({ ...failed, hasPhone: false })).toBe(false);
+		expect(needsPushSmsFallback({ ...failed, acknowledged: true })).toBe(false);
+		expect(needsPushSmsFallback({ ...failed, active: false })).toBe(false);
+		expect(needsPushSmsFallback({ ...failed, status: 'sent' })).toBe(false);
+	});
 });
