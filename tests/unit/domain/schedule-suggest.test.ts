@@ -29,8 +29,8 @@ describe('suggestShifts', () => {
 	});
 
 	it('counts existing assignments and keeps everyone under 40 hours', () => {
-		// "a" already has five 8-hour shifts this week.
-		const scheduled = ['13', '14', '15', '16', '17'].map((d) => ({
+		// "a" already has five 8-hour shifts this week (Sunday 18th to Saturday 24th).
+		const scheduled = ['18', '20', '21', '22', '23'].map((d) => ({
 			profileId: 'a',
 			day: `2026-10-${d}`
 		}));
@@ -105,5 +105,43 @@ describe('checkPicks', () => {
 		);
 		expect(r.ok).toEqual([]);
 		expect(r.refused).toHaveLength(3);
+	});
+});
+
+describe('overnight shifts', () => {
+	it('never suggests the AM shift right after someone’s overnight, or the overnight before their AM', () => {
+		const s = suggestShifts(
+			[open('2026-10-20', 'am'), open('2026-10-21', 'on')],
+			[staff('a'), staff('b')],
+			[
+				{ profileId: 'a', day: '2026-10-19', shift: 'on' },
+				{ profileId: 'b', day: '2026-10-22', shift: 'am' }
+			],
+			HOME
+		);
+		expect(s.map((x) => x.profileId)).toEqual(['b', 'a']);
+	});
+	it('counts only the shifts in the week of the open shift', () => {
+		// Five shifts the week before do not count toward this week's 40 hours.
+		const scheduled = ['12', '13', '14', '15', '16'].map((d) => ({
+			profileId: 'a',
+			day: `2026-10-${d}`
+		}));
+		const s = suggestShifts([open('2026-10-19', 'pm')], [staff('a')], scheduled, HOME);
+		expect(s[0].profileId).toBe('a');
+	});
+	it('re-checks kept picks against overnight shifts too', () => {
+		const { ok, refused } = checkPicks(
+			[
+				{ day: '2026-10-19', shift: 'on' as const, profileId: 'a' },
+				{ day: '2026-10-20', shift: 'am' as const, profileId: 'a' }
+			],
+			[staff('a')],
+			[],
+			HOME,
+			[]
+		);
+		expect(ok.map((p) => p.day)).toEqual(['2026-10-19']);
+		expect(refused.map((p) => p.day)).toEqual(['2026-10-20']);
 	});
 });

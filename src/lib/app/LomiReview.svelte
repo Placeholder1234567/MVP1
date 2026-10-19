@@ -45,7 +45,6 @@
 	let invalidated = false;
 	$effect(() => {
 		if (
-			app.privacyLocked ||
 			app.user.profileId !== original.profileId ||
 			app.homeId !== original.homeId ||
 			clientId !== original.clientId ||
@@ -55,9 +54,17 @@
 			invalidated = true;
 	});
 	let reconnectPending = $state(false);
-	let refreshing = false;
+	let refreshing = $state(false);
+	let privacyRevision = 0;
+	let wasMasked = false;
+	$effect(() => {
+		const masked = app.privacyLocked;
+		if (masked && !wasMasked) privacyRevision++;
+		if (!masked && wasMasked && navigator.onLine) reconnectPending = true;
+		wasMasked = masked;
+	});
 	let manuallyEdited = $state(new Set<string>());
-	let reconnectIncident = $state(false);
+	let currentResult = $state<DraftResult>(untrack(() => result));
 	onMount(() => {
 		alive = true;
 		const connected = () => {
@@ -102,17 +109,22 @@
 		const current = draftLocally(Object.values(content).join(' '), type);
 		return {
 			flags: vagueFlags(Object.values(content).join(' ')),
-			incident: result.incident.detected
-				? result.incident
-				: reconnectIncident
-					? { detected: true, summary: '' }
-					: current.incident
+			incident: currentResult.incident.detected ? currentResult.incident : current.incident
 		};
 	});
 	// No retry loop or original observations in browser storage. A later online event
 	// can retry an unavailable service; the active review remains usable throughout.
 	$effect(() => {
-		if (!reconnectPending || busy || voiceBusy || pending || followup.trim()) return;
+		if (
+			!reconnectPending ||
+			app.privacyLocked ||
+			refreshing ||
+			busy ||
+			voiceBusy ||
+			pending ||
+			followup.trim()
+		)
+			return;
 		reconnectPending = false;
 		void untrack(refreshOnReconnect);
 	});
@@ -150,6 +162,7 @@
 		)
 			return;
 		refreshing = true;
+		const revision = privacyRevision;
 		try {
 			const next = await trpc.lomi.draft.mutate({
 				clientId: original.clientId,
@@ -159,13 +172,8 @@
 			if (
 				!alive ||
 				invalidated ||
-				app.privacyLocked ||
 				next.fallback ||
 				usedAi ||
-				busy ||
-				voiceBusy ||
-				pending ||
-				followup.trim() ||
 				clientId !== original.clientId ||
 				type !== original.type ||
 				said !== original.said ||
@@ -173,14 +181,26 @@
 				app.homeId !== original.homeId
 			)
 				return;
+			if (
+				app.privacyLocked ||
+				revision !== privacyRevision ||
+				busy ||
+				voiceBusy ||
+				pending ||
+				followup.trim()
+			) {
+				// Keep the original observations queued until the review is safe to update.
+				reconnectPending = true;
+				return;
+			}
 			const merged = mergeReconnectDraft(content, originalContent, next.content, protectedFields());
-			if (!merged.updated.length) return;
 			content = merged.content;
-			reconnectIncident = next.incident.detected;
+			currentResult = next;
 			usedAi = true;
 			undo = null;
-			message =
-				'Lomi updated untouched sections after reconnecting. Your edits were kept. Review every section before using this draft.';
+			message = merged.updated.length
+				? 'Lomi updated untouched sections after reconnecting. Your edits were kept. Review every section before using this draft.'
+				: 'Lomi refreshed the review after reconnecting. Your text was kept. Review every section before using this draft.';
 			onDirty?.();
 		} catch {
 			// Offline/fallback text and every caregiver edit remain unchanged.
@@ -482,7 +502,7 @@
 				your note below.
 			</p>
 			{#each goals as goal (goal.id)}
-				{@const reference = result.goalReferences?.find((item) => item.goalId === goal.id)}
+				{@const reference = currentResult.goalReferences?.find((item) => item.goalId === goal.id)}
 				<div>
 					<b>{goal.text}</b>
 					<p class="muted">
@@ -511,7 +531,7 @@
 			)
 				return;
 			onUse({
-				...result,
+				...currentResult,
 				content: { ...content },
 				flags: warnings.flags,
 				incident: warnings.incident,

@@ -40,6 +40,18 @@
 	let calloutReason = $state('');
 	let calloutDetail = $state('');
 
+	// What this screen last saved per slot, until sync brings it back, so a
+	// second change before sync isn't mistaken for someone else's change.
+	const saved: Record<string, string | null> = {};
+	function seenAssignee(key: string, homeId: string, day: string, shift: string) {
+		const synced =
+			app.shifts.find((s) => s.home_id === homeId && s.day === day && s.shift === shift)
+				?.assigned_to ?? null;
+		if (!(key in saved)) return synced;
+		const mine = saved[key];
+		if (mine === synced) delete saved[key];
+		return mine;
+	}
 	async function assign(day: string, shift: 'am' | 'pm' | 'on', profileId: string) {
 		if (!online || !app.homeId || busy) return false;
 		const homeId = app.homeId;
@@ -47,15 +59,19 @@
 		messageScope = operationScope;
 		busy = true;
 		message = '';
+		const key = `${homeId}:${day}:${shift}`;
 		try {
-			if (profileId) await trpc.schedule.setSlot.mutate({ homeId, day, shift, profileId });
-			else await trpc.schedule.clearSlot.mutate({ homeId, day, shift });
+			const seen = seenAssignee(key, homeId, day, shift);
+			if (profileId) await trpc.schedule.setSlot.mutate({ homeId, day, shift, profileId, seen });
+			else await trpc.schedule.clearSlot.mutate({ homeId, day, shift, seen });
+			saved[key] = profileId || null;
 			if (context === operationScope) message = 'Schedule saved. Updates will appear after sync.';
 			return true;
 		} catch {
+			delete saved[key];
 			if (context === operationScope)
 				message =
-					'Could not save this assignment. Check that the staff member is trained for this home and not already assigned elsewhere.';
+					'Could not save this assignment. Someone may have just taken this shift, or the staff member isn’t trained for this home or is assigned elsewhere. Check after sync and try again.';
 			return false;
 		} finally {
 			busy = false;
