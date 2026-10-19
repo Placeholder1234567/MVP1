@@ -12,7 +12,12 @@
 	} from '#lib/domain/index.ts';
 	import Sparkline from '#lib/app/components/Sparkline.svelte';
 	import ProgressRing from '#lib/app/components/ProgressRing.svelte';
-	import { complianceScore, incidentReviewPart, shiftNotesPart } from '#lib/domain/compliance.ts';
+	import {
+		complianceScore,
+		incidentReviewPart,
+		scoreChange,
+		shiftNotesPart
+	} from '#lib/domain/compliance.ts';
 	import ClinicalAttention from '#lib/app/ClinicalAttention.svelte';
 	import LomiSummary from '#lib/app/LomiSummary.svelte';
 	import HealthWatch from '#lib/app/HealthWatch.svelte';
@@ -56,8 +61,12 @@
 	);
 	/** Share of due scheduled doses given each day for the last 7 days (MAR on the device). */
 	const week = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
-	const weekGrids = $derived(
-		app.currentPeople.map((person) =>
+	/** The seven days before that, for the compliance score's change. */
+	const lastWeek = Array.from({ length: 7 }, (_, i) => addDays(today, i - 13));
+	const weekGrids = $derived(gridsFor(week));
+	const lastWeekGrids = $derived(gridsFor(lastWeek));
+	function gridsFor(days: string[]) {
+		return app.currentPeople.map((person) =>
 			marGrid(
 				app.medications
 					.filter((m) => m.client_id === person.id)
@@ -70,7 +79,7 @@
 						stopped_at: m.stopped_at
 					})),
 				app.doses
-					.filter((r) => r.client_id === person.id && r.day && week.includes(r.day))
+					.filter((r) => r.client_id === person.id && r.day && days.includes(r.day))
 					.map((r) => ({
 						id: r.id,
 						medication_id: r.medication_id,
@@ -82,24 +91,37 @@
 						conflict_with: r.conflict_with,
 						recorded_at: r.recorded_at
 					})),
-				week,
+				days,
 				{ day: today, time: clock },
 				(iso) => localTime(new Date(iso), app.user.timeZone).day
 			)
-		)
-	);
+		);
+	}
 	const weekDaily = $derived(dailyCompliance(weekGrids, 7));
 	const weekScore = $derived(compliance(weekGrids.flat()));
-	/** Documentation compliance over the last 7 days (frontend-spec-3.md §4.1). */
-	const score = $derived(
-		complianceScore(
-			shiftNotesPart(app.shifts, app.notes, app.homeId, week, new Date(), app.user.timeZone),
-			app.has('mar') ? { done: weekScore.given, of: weekScore.due } : { done: 0, of: 0 },
+	/** Documentation compliance over seven days (frontend-spec-3.md §4.1). */
+	function scoreFor(days: string[], meds: { given: number; due: number }, until?: Date) {
+		return complianceScore(
+			shiftNotesPart(app.shifts, app.notes, app.homeId, days, new Date(), app.user.timeZone),
+			app.has('mar') ? { done: meds.given, of: meds.due } : { done: 0, of: 0 },
 			incidentReviewPart(
 				app.incidents.filter((i) => i.home_id === app.homeId),
-				localInstant(week[0], '00:00', app.user.timeZone),
-				new Date()
+				localInstant(days[0], '00:00', app.user.timeZone),
+				new Date(),
+				until
 			)
+		);
+	}
+	const score = $derived(scoreFor(week, weekScore));
+	// Against the seven days before (the "delta arrow"), in percentage points.
+	const change = $derived(
+		scoreChange(
+			scoreFor(
+				lastWeek,
+				compliance(lastWeekGrids.flat()),
+				localInstant(week[0], '00:00', app.user.timeZone)
+			).score,
+			score.score
 		)
 	);
 	const share = (p: { done: number; of: number }) =>
@@ -163,7 +185,26 @@
 	{#if score.score !== null}<section class="card pad compliance" aria-labelledby="compliance-h">
 			<ProgressRing percent={score.score} label="Compliance {score.score}%" thresholds={[90, 70]} />
 			<div class="stack">
-				<h2 id="compliance-h">Compliance, 7 days: {score.score}%</h2>
+				<h2 id="compliance-h">
+					Compliance, 7 days: {score.score}%{#if change}
+						<span
+							class="delta {change.direction === 'up'
+								? 'ok'
+								: change.direction === 'down'
+									? 'bad'
+									: 'muted'}"
+							><span aria-hidden="true"
+								>{change.direction === 'up' ? '▲' : change.direction === 'down' ? '▼' : '▶'}
+								{change.direction === 'steady'
+									? 'steady'
+									: `${change.points > 0 ? '+' : '−'}${Math.abs(change.points)} pts`}</span
+							><span class="sr"
+								>{change.direction === 'steady'
+									? 'steady against the previous 7 days'
+									: `${change.direction} ${Math.abs(change.points)} points against the previous 7 days`}</span
+							></span
+						>{/if}
+				</h2>
 				<p class="muted s13">
 					Shifts with a signed note: {share(score.notes)} · Scheduled doses given: {share(
 						score.meds
@@ -208,5 +249,20 @@
 		.stats.four {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+	}
+	.delta {
+		font-size: 13px;
+		font-weight: 600;
+		white-space: nowrap;
+		margin-left: 6px;
+	}
+	.delta.ok {
+		color: var(--ok);
+	}
+	.delta.bad {
+		color: var(--bad);
+	}
+	.delta.muted {
+		color: var(--muted);
 	}
 </style>
