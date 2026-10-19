@@ -834,7 +834,7 @@ On blur: if value is out of range, field border turns `var(--bad)`, helper text 
 +--------------------------------------+
 ```
 
-- Type selection: `.choice` group (pill buttons, 14px/600, 999px radius, min-height 44px). Options: "Fall", "Injury", "Seizure", "Medication error", "Left without staff", "Behavior with harm", "Property damage", "Other"
+- Type selection: `.choice` group (pill buttons, 14px/600, 999px radius, min-height 44px). Options: "Fall", "Injury", "Seizure", "Medication error", "Left without staff", "Behavior with harm", "Property damage", "Suspected abuse or neglect", "Suspected exploitation", "Death", "Other". The two "Suspected" types show a mandated-reporter reminder (call 911 if in danger; this report doesn't replace your own duty to report, with the agency's hotline from incident rules)
 - Time: `type="time"`, auto-filled with current time rounded to nearest 5 minutes
 - Where: `select.input`. Options: "Bedroom", "Bathroom", "Kitchen", "Living room", "Outside", "Community", "Vehicle", "Other"
 - What happened: `textarea.input`, placeholder "Describe only what you saw or heard"

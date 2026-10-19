@@ -48,6 +48,11 @@ export const incidentTypeEnum = pgEnum('incident_type', [
   'Left without staff',
   'Behavior with harm',
   'Property damage',
+  // Critical incidents every state must track (42 CFR 441.302(a)(6)); kept
+  // separate so they reach the state report and the mandated-reporter notice.
+  'Suspected abuse or neglect',
+  'Suspected exploitation',
+  'Death',
   'Other',
 ]);
 

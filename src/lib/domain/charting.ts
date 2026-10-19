@@ -50,6 +50,10 @@ export const INCIDENT_TYPES = [
 	'Left without staff',
 	'Behavior with harm',
 	'Property damage',
+	// Federal minimum critical incidents (42 CFR 441.302(a)(6)); research/compliance-2026-10.md §1
+	'Suspected abuse or neglect',
+	'Suspected exploitation',
+	'Death',
 	'Other'
 ] as const;
 export type IncidentType = (typeof INCIDENT_TYPES)[number];
@@ -75,6 +79,8 @@ export interface IncidentRules {
 	stateSeverities: IncidentSeverity[];
 	stateTypes: IncidentType[];
 	stateWhen: string;
+	/** Where staff report suspected abuse, neglect or exploitation themselves (state hotline), shown in the incident form. Empty: no number shown. */
+	abuseHotline: string;
 	/**
 	 * Hours after the incident by which each contact must be marked as told,
 	 * for reminders. null: no reminder (the written deadline still shows).
@@ -86,13 +92,39 @@ export interface IncidentRules {
 export const RULE_HOURS_MAX = 720;
 const SEVERITIES: readonly IncidentSeverity[] = ['Low', 'Medium', 'High'];
 export const RULE_WHEN_MAX = 60;
+export const ABUSE_HOTLINE_MAX = 120;
+
+/**
+ * Types where staff have a personal duty to report beyond this form. In most
+ * states (CA, FL, MA, TX among them) a provider's incident report doesn't
+ * satisfy a mandated reporter's own duty to call the abuse hotline or APS.
+ */
+export const MANDATED_REPORT_TYPES: readonly IncidentType[] = [
+	'Suspected abuse or neglect',
+	'Suspected exploitation'
+];
+
+/** The reminder shown in the incident form for those types, or null. */
+export function mandatedReportNotice(type: IncidentType, rules: IncidentRules): string | null {
+	if (!MANDATED_REPORT_TYPES.includes(type)) return null;
+	const where = rules.abuseHotline
+		? `Report it yourself too: ${rules.abuseHotline}.`
+		: 'Report it yourself too, to your state’s abuse hotline or adult protective services. Ask your supervisor for the number.';
+	return `If someone is in danger, call 911. This report doesn’t replace your own duty to report suspected abuse, neglect or exploitation. ${where}`;
+}
 export const DEFAULT_INCIDENT_RULES: IncidentRules = {
 	guardianWhen: 'Within 24 hours',
 	nurseTypes: ['Seizure', 'Medication error', 'Injury', 'Fall'],
 	nurseWhen: 'Within 2 hours',
 	stateSeverities: ['High'],
-	stateTypes: ['Left without staff'],
+	stateTypes: [
+		'Left without staff',
+		'Suspected abuse or neglect',
+		'Suspected exploitation',
+		'Death'
+	],
 	stateWhen: "Check your state's deadline",
+	abuseHotline: '',
 	guardianHours: 24,
 	nurseHours: 2,
 	stateHours: null
@@ -124,6 +156,10 @@ export function parseIncidentRules(settings: unknown): IncidentRules {
 		stateSeverities: list(raw.stateSeverities, SEVERITIES, d.stateSeverities),
 		stateTypes: list(raw.stateTypes, INCIDENT_TYPES, d.stateTypes),
 		stateWhen: when(raw.stateWhen, d.stateWhen),
+		abuseHotline:
+			typeof raw.abuseHotline === 'string'
+				? raw.abuseHotline.trim().slice(0, ABUSE_HOTLINE_MAX)
+				: d.abuseHotline,
 		guardianHours: hours(raw.guardianHours, d.guardianHours),
 		nurseHours: hours(raw.nurseHours, d.nurseHours),
 		stateHours: hours(raw.stateHours, d.stateHours)

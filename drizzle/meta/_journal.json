@@ -120,6 +120,13 @@
       "when": 1792371498832,
       "tag": "0016_incident_reviewed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792377713688,
+      "tag": "0017_critical_incident_types",
+      "breakpoints": true
     }
   ]
 }
