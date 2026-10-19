@@ -2057,6 +2057,8 @@ Extended offline (banner):
 
 **Per-record-type rules:**
 
+**As built (note conflicts):** `NoteEditor.svelte`. When another device's save replaces the text on screen (same note, still a draft or returned), a notice says "This note was updated on another device." with **Restore my version**, which puts back what the screen showed as an ordinary unsaved edit; the kept copy lives only in memory and is gone after a save or leaving the note. When the author's open note is returned or approved, the notice says "Your supervisor already returned this note. Read their comment, then sign it again." (or "approved"). The comparison is on the note text only, so the server trimming a goal reason never raises a false notice.
+
 | Record type | Resolution | User UI |
 |-------------|-----------|---------|
 | Shift notes | Last-write-wins while draft/returned | Toast + "Restore my version" |
