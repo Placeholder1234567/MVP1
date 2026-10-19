@@ -11,12 +11,20 @@ process.env.PS_DEV_JWT_KEY ??= 'gi3XNOLkX6khPVxN4PpCoi7zVjDi9lljHRkgCTItfss'; //
 const POWERSYNC = process.env.PUBLIC_POWERSYNC_URL ?? 'http://localhost:8080';
 
 const { closeDb, withService } = await import('../../../src/lib/server/db');
-const { agencies, clients, homes, medications, profiles } =
+const { agencies, clients, coverageRequests, homes, medications, profiles } =
 	await import('../../../src/lib/server/db/schema');
 const { createSyncCredential } = await import('../../../src/lib/server/identity');
 
 /** Unique row IDs per table that PowerSync streams to this user's device. */
 async function syncedRows(authUid: string): Promise<Record<string, string[]>> {
+	const data = await syncedData(authUid);
+	return Object.fromEntries(Object.entries(data).map(([t, rows]) => [t, Object.keys(rows).sort()]));
+}
+
+/** The row data per table and ID that PowerSync streams to this user's device. */
+async function syncedData(
+	authUid: string
+): Promise<Record<string, Record<string, Record<string, unknown>>>> {
 	const cred = await createSyncCredential(authUid);
 	if (cred.kind !== 'powersync-token') throw new Error('expected a dev PowerSync token');
 	const res = await fetch(`${POWERSYNC}/sync/stream`, {
@@ -29,7 +37,7 @@ async function syncedRows(authUid: string): Promise<Record<string, string[]>> {
 		signal: AbortSignal.timeout(10_000)
 	});
 	if (!res.ok) throw new Error(`PowerSync ${res.status}`);
-	const rows = new Map<string, Set<string>>();
+	const rows = new Map<string, Map<string, Record<string, unknown>>>();
 	const reader = res.body!.getReader();
 	const decoder = new TextDecoder();
 	let buf = '';
@@ -45,12 +53,14 @@ async function syncedRows(authUid: string): Promise<Record<string, string[]>> {
 			const msg = JSON.parse(line);
 			for (const op of msg.data?.data ?? []) {
 				if (op.op !== 'PUT') continue;
-				if (!rows.has(op.object_type)) rows.set(op.object_type, new Set());
-				rows.get(op.object_type)!.add(op.object_id);
+				if (!rows.has(op.object_type)) rows.set(op.object_type, new Map());
+				rows
+					.get(op.object_type)!
+					.set(op.object_id, typeof op.data === 'string' ? JSON.parse(op.data) : (op.data ?? {}));
 			}
 			if (msg.checkpoint_complete) {
 				await reader.cancel();
-				return Object.fromEntries([...rows].map(([t, ids]) => [t, [...ids].sort()]));
+				return Object.fromEntries([...rows].map(([t, byId]) => [t, Object.fromEntries(byId)]));
 			}
 		}
 	}
@@ -79,6 +89,7 @@ const OAK_PERSON = randomUUID();
 const MAPLE_PERSON = randomUUID();
 const PINE_PERSON = randomUUID();
 const OAK_MED = randomUUID();
+const OAK_CALLOUT = randomUUID();
 const CG = `sync-cg-${randomUUID()}`;
 const SUP = `sync-sup-${randomUUID()}`;
 const OTHER_CG = `sync-other-${randomUUID()}`;
@@ -131,12 +142,31 @@ beforeAll(async () => {
 			home_id: OAK,
 			name: 'Synthetic med'
 		});
+		await tx.insert(coverageRequests).values({
+			id: OAK_CALLOUT,
+			agency_id: A,
+			home_id: OAK,
+			day: '2026-10-20',
+			shift: 'pm',
+			reason: 'Sick: synthetic private detail',
+			status: 'searching'
+		});
 	});
 });
 
 afterAll(closeDb);
 
 describe('sync streams', () => {
+	it('a callout reaches the home, but its reason reaches only supervisors', async () => {
+		await eventually(async () => {
+			const caregiver = (await syncedData(CG)).coverage_requests?.[OAK_CALLOUT];
+			expect(caregiver).toMatchObject({ home_id: OAK, status: 'searching' });
+			expect(caregiver?.reason ?? null).toBeNull();
+			const supervisor = (await syncedData(SUP)).coverage_requests?.[OAK_CALLOUT];
+			expect(supervisor?.reason).toBe('Sick: synthetic private detail');
+		});
+	}, 60_000);
+
 	it('a caregiver gets only the people in their own homes', async () => {
 		await eventually(async () => {
 			const rows = await syncedRows(CG);

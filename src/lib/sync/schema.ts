@@ -95,12 +95,12 @@ const coverage_requests = new Table({
 	day: column.text,
 	shift: column.text,
 	called_out_by: column.text,
-	reason: column.text,
 	status: column.text,
 	filled_by: column.text,
 	created_by: column.text,
 	created_at: column.text,
 	updated_at: column.text,
+	reason: column.text,
 });
 
 const coverage_steps = new Table({
