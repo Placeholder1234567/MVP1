@@ -12,12 +12,13 @@ import {
 	shiftAt,
 	type NoteStatus
 } from '../../../domain/index.ts';
-import type { Tx } from '../../db';
+import { asService, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import {
 	findClient,
 	findNote,
+	lockNote,
 	findNoteGoal,
 	insertNote,
 	findNoteGoalById,
@@ -183,6 +184,7 @@ export async function updateNote(
 	options: UpdateOptions = {}
 ): Promise<{ updatedAt: Date | null }> {
 	const set = NoteChanges.parse(changes);
+	await asService(tx, (t) => lockNote(t, agencyId, id));
 	const note = await findNote(tx, agencyId, id);
 	if (!note) throw new ServiceError('NOT_FOUND', 'Note not found');
 	if (note.authorId !== user.profileId) {
@@ -210,6 +212,8 @@ export async function updateNote(
 		lomi_drafted: set.lomiDrafted,
 		status: set.status
 	});
+	// RLS filters out a note that is no longer editable instead of raising.
+	if (!updatedAt) throw new ServiceError('RULE_VIOLATION', 'This note was already signed');
 	if (to === 'submitted' && from !== 'submitted') await noteSubmitted(tx, agencyId, id);
 	return { updatedAt };
 }
@@ -230,17 +234,25 @@ async function review(
 	if (user.role === 'caregiver') {
 		throw new ServiceError('FORBIDDEN', 'Only supervisors can review notes');
 	}
+	await asService(tx, (t) => lockNote(t, agencyId, id));
 	const note = await findNote(tx, agencyId, id);
 	if (!note) throw new ServiceError('NOT_FOUND', 'Note not found');
 	if (note.authorId === user.profileId) {
 		throw new ServiceError('RULE_VIOLATION', 'You can’t review your own note');
 	}
+	// Approving or sending back twice would notify twice and silently replace the comment.
+	if (note.status === to)
+		throw new ServiceError(
+			'RULE_VIOLATION',
+			to === 'approved' ? 'This note was already approved' : 'This note was already sent back'
+		);
 	const check = canTransition(note.status as NoteStatus, to, 'reviewer', comment);
 	if (!check.ok) throw new ServiceError('RULE_VIOLATION', check.reason);
 	const updatedAt = await updateNoteRow(tx, agencyId, id, {
 		status: to,
 		...(to === 'returned' ? { supervisor_comment: comment!.trim() } : {})
 	});
+	if (!updatedAt) throw new ServiceError('RULE_VIOLATION', 'This note is not awaiting review');
 	await noteReviewed(tx, agencyId, id, to);
 	return { updatedAt };
 }

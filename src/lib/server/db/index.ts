@@ -76,11 +76,19 @@ export async function asService<T>(tx: Tx, fn: (tx: Tx) => Promise<T>): Promise<
 	const { rows } = await tx.execute<{ role: string }>(sql`SELECT current_setting('role') AS role`);
 	const previous = rows[0]?.role;
 	await tx.execute(sql`SET LOCAL ROLE app_service`);
+	const restore = () =>
+		previous === 'app_user' ? tx.execute(sql`SET LOCAL ROLE app_user`) : undefined;
+	let result: T;
 	try {
-		return await fn(tx);
-	} finally {
-		if (previous === 'app_user') await tx.execute(sql`SET LOCAL ROLE app_user`);
+		result = await fn(tx);
+	} catch (e) {
+		// After a database error the transaction is aborted and the restore
+		// fails too; keep the original error, which callers map (23505 etc.).
+		await Promise.resolve(restore()).catch(() => {});
+		throw e;
 	}
+	await restore();
+	return result;
 }
 
 /**
