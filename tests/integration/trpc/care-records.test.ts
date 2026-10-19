@@ -799,6 +799,10 @@ describe('health.*', () => {
 		await expect(
 			sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 130, sysHi: 120 } })
 		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		// One end alone is checked against the default for the other (systolic high 140).
+		await expect(
+			sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 145 } })
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 		await sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 80, sysHi: 120 } });
 		try {
 			const reading = { temp: 98.6, pulse: 70, systolic: 125, diastolic: 80 };
