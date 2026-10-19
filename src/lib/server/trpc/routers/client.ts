@@ -11,7 +11,7 @@ import {
 	updateClient,
 	updateHealth
 } from '../../services/client/index.ts';
-import { roleProcedure, router, userProcedure } from '../middleware.ts';
+import { featureRoleProcedure, roleProcedure, router, userProcedure } from '../middleware.ts';
 
 // trpc-router.md `client.*`. Caregivers read their homes' clients (RLS);
 // supervisors create and edit; only admins archive.
@@ -24,15 +24,22 @@ export const clientRouter = router({
 		.input(z.object({ id: z.uuid() }))
 		.query(({ ctx, input }) => getClient(ctx.db, ctx.user.agencyId, ctx.user.features, input.id)),
 
+	// Health details are charting data: without it on the plan they're not saved.
 	create: roleProcedure('supervisor')
 		.input(NewClient)
-		.mutation(({ ctx, input }) => createClient(ctx.db, ctx.user.agencyId, input)),
+		.mutation(({ ctx, input }) =>
+			createClient(
+				ctx.db,
+				ctx.user.agencyId,
+				ctx.user.features.includes('charting') ? input : { ...input, healthInfo: undefined }
+			)
+		),
 
 	update: roleProcedure('supervisor')
 		.input(ClientChanges)
 		.mutation(({ ctx, input }) => updateClient(ctx.db, ctx.user.agencyId, input)),
 
-	updateHealth: roleProcedure('supervisor')
+	updateHealth: featureRoleProcedure('charting', 'supervisor')
 		.input(HealthChanges)
 		.mutation(({ ctx, input }) => updateHealth(ctx.db, ctx.user.agencyId, input)),
 

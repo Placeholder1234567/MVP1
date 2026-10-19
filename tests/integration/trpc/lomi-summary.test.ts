@@ -167,3 +167,26 @@ it('is for supervisors of the home, on plans with the summary', async () => {
 		(await as(SUP)).lomi.summarize({ homeId: HOME, day: '2999-01-01' })
 	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 });
+
+it('leaves out what the plan doesn’t include, even with the summary added as an extra', async () => {
+	const { daySnapshot } = await import('../../../src/lib/server/services/lomi');
+	const { withUser } = await import('../../../src/lib/server/db');
+	const user = (await getCurrentUser(uid(SUP)))!;
+	const starterPlus = {
+		...user,
+		features: ['scheduling', 'coverage', 'lomi_summary'] as typeof user.features
+	};
+	const snapshot = await withUser(user.claims, {}, (tx) =>
+		daySnapshot(tx, starterPlus, HOME, TODAY)
+	);
+	expect(snapshot).toMatchObject({
+		openShifts: ['pm'],
+		notes: [],
+		missingNotes: [],
+		notesToReview: 0,
+		incidents: [],
+		meds: [],
+		dosesNotRecorded: 0,
+		healthAlerts: []
+	});
+});
