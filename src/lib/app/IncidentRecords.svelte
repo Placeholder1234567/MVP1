@@ -11,6 +11,7 @@
 		INJURY_ANSWERS,
 		MEDICAL_FOLLOWUP,
 		incidentNotifyRules,
+		mandatedReportNotice,
 		incidentOccurredAt,
 		parseReportDetails,
 		reportDetailsError,
@@ -92,6 +93,7 @@
 	let done = $state(false);
 	let signed = $state(false);
 	const rules = $derived(incidentNotifyRules(form.severity, form.type, app.incidentRules));
+	const reportNotice = $derived(mandatedReportNotice(form.type, app.incidentRules));
 	const recent = $derived(app.incidents.filter((r) => r.client_id === clientId).slice(0, 3));
 	function next() {
 		if (step === 1) {
@@ -229,6 +231,7 @@
 				{@render choice('What kind of incident?', INCIDENT_TYPES, form.type, (v) => {
 					form.type = v as IncidentType;
 				})}
+				{#if reportNotice}<p class="callout bad s14" role="note">{reportNotice}</p>{/if}
 				<div class="grid2">
 					<label>Time<input class="input" type="time" required bind:value={form.time} /></label
 					><label

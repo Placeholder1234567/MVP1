@@ -1,6 +1,7 @@
 // Agency Service (services.md): the caller's agency and its configuration.
 import { z } from 'zod';
 import {
+	ABUSE_HOTLINE_MAX,
 	INCIDENT_TYPES,
 	RULE_HOURS_MAX,
 	RULE_WHEN_MAX,
@@ -63,6 +64,7 @@ export const AgencySettings = z
 				stateSeverities: z.array(z.enum(['Low', 'Medium', 'High'])),
 				stateTypes: z.array(z.enum(INCIDENT_TYPES)),
 				stateWhen: z.string().trim().min(1).max(RULE_WHEN_MAX),
+				abuseHotline: z.string().trim().max(ABUSE_HOTLINE_MAX).optional(),
 				// Reminder hours; null switches a contact's reminder off.
 				guardianHours: z.number().int().min(1).max(RULE_HOURS_MAX).nullable().optional(),
 				nurseHours: z.number().int().min(1).max(RULE_HOURS_MAX).nullable().optional(),

@@ -32,6 +32,9 @@ test('admins set incident reporting rules and the incident wizard follows them',
 		.getByRole('group', { name: 'Nurse: for these incidents' })
 		.getByLabel('Fall', { exact: true })
 		.uncheck();
+	await form
+		.getByLabel(/^Abuse, neglect and exploitation hotline/)
+		.fill('Adult Protective Services 1-800-555-0100');
 	const axe = await new AxeBuilder({ page })
 		.include('form[aria-labelledby="incident-rules-heading"]')
 		.analyze();
@@ -43,10 +46,17 @@ test('admins set incident reporting rules and the incident wizard follows them',
 		await search(page, phone, 'care records', /^Care records/);
 		await page.getByRole('link', { name: /Rosa Demo/ }).click();
 		await page.getByRole('link', { name: /^Report an incident/ }).click();
+		const types = page.getByRole('group', { name: 'What kind of incident?', exact: true });
+		await types.getByRole('button', { name: 'Suspected abuse or neglect', exact: true }).click();
+		// Staff keep their own duty to report; the form says so, with the agency's hotline.
+		await expect(page.getByRole('note')).toContainText(
+			'Report it yourself too: Adult Protective Services 1-800-555-0100.'
+		);
 		await page
 			.getByRole('group', { name: 'What kind of incident?', exact: true })
 			.getByRole('button', { name: 'Fall', exact: true })
 			.click();
+		await expect(page.getByRole('note')).toHaveCount(0);
 		await page.getByLabel('What happened', { exact: true }).fill('Synthetic rules check.');
 		await page.getByRole('button', { name: 'Next', exact: true }).click();
 		await page.getByLabel('What you did', { exact: true }).fill('Synthetic rules check.');
