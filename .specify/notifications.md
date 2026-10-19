@@ -1019,6 +1019,8 @@ Rate limits are counted from the `notifications` table itself, so there is no se
 - If count >= limit, skip the send and record it as rate-limited (unless urgent priority).
 - Per-type limits above use the same count filtered by `type` and the dedupe key.
 
+**As built:** the per-person daily limits are enforced in `dispatch.ts`, using `overDailyLimit()` in `domain/notifications.ts`. Before each delivery it counts the person's deliveries on that channel in the last 24 hours that went out (status sent, read, escalated or escalation_exhausted). A delivery over the limit is marked `rate_limited` and not sent. An SMS over the limit queues the push fallback. Urgent (priority 1) push and SMS bypass the limit but still count toward it. Email never bypasses.
+
 ---
 
 ## 11. Monitoring

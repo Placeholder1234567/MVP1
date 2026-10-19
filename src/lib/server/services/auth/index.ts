@@ -3,12 +3,14 @@
 import {
 	mfaRequirement,
 	requiredRolesFromSettings,
+	sessionMinutes,
 	type MfaRequirement
 } from '../../../domain/index.ts';
 import { resolveFeatures } from '../../../entitlements/tier-features.ts';
 import { withService, type Tx } from '../../db';
 import {
 	findActiveProfileByAuthUid,
+	findAgencySettingsByAuthUid,
 	findMfaFacts,
 	findProfile,
 	setMfaEnabled
@@ -51,6 +53,12 @@ export async function getCurrentUser(authUid: string): Promise<CurrentUser | nul
 		features: [...resolveFeatures(row.tier, row.enabledFeatures)].sort(),
 		claims: { agency_id: row.agencyId, role: row.role, profile_id: row.id }
 	};
+}
+
+/** How long a new session for this account may last, from its agency's setting (ms). */
+export async function sessionLengthMs(authUid: string): Promise<number> {
+	const settings = await withService((tx) => findAgencySettingsByAuthUid(tx, authUid));
+	return sessionMinutes(settings) * 60_000;
 }
 
 /** The caller's own profile, read as the caller (RLS applies). */

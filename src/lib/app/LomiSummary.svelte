@@ -1,8 +1,10 @@
 <script lang="ts">
 	// Lomi's summary card on the supervisor overview (frontend-spec-3.md §4.1;
 	// mvp/src/app-office.js .lomi-card). A short briefing on one home's day;
-	// highlights and recommendations come with analytics_advanced. Generated on
-	// request, like the MVP, since summaries are limited to 5 an hour.
+	// highlights and suggested next steps come with analytics_advanced.
+	// Generated on request, like the MVP, since summaries are limited to 5 an
+	// hour. Next steps are fixed operational rules, never model text.
+	import { resolve } from '$app/paths';
 	import { trpc } from '#lib/trpc.ts';
 
 	type Summary = Awaited<ReturnType<typeof trpc.lomi.summarize.mutate>>;
@@ -59,9 +61,19 @@
 				</ul>
 			{/if}
 			{#if result.recommendations.length}
-				<h3>Recommendations</h3>
+				<h3>Suggested next steps</h3>
 				<ul>
-					{#each result.recommendations as r, i (i)}<li>{r.text}</li>{/each}
+					{#each result.recommendations as r, i (i)}<li>
+							<!-- Incidents and health alerts are in the overview's attention queue. -->
+							{#if r.place === 'incidents' || r.place === 'health'}<a href="#attention-h"
+									>{r.text}</a
+								>{:else if r.place === 'medications'}<a href={resolve('/(app)/dashboard/mar')}
+									>{r.text}</a
+								>{:else if r.place === 'schedule'}<a href={resolve('/(app)/shifts')}>{r.text}</a
+								>{:else if r.place === 'timesheets'}<a href={resolve('/(app)/dashboard/timesheets')}
+									>{r.text}</a
+								>{:else}<a href={resolve('/(app)/dashboard/notes')}>{r.text}</a>{/if}
+						</li>{/each}
 				</ul>
 			{/if}
 			<p class="foot muted">

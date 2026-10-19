@@ -42,7 +42,8 @@ export class SignInError extends Error {
  */
 export async function createSession(
 	idToken: string,
-	maxMs: number = SESSION_MAX_MS
+	/** A length, or how to look one up for the verified account (its agency's setting). */
+	maxMs: number | ((uid: string) => Promise<number>) = SESSION_MAX_MS
 ): Promise<{ cookie: string; uid: string; expiresIn: number; secondFactor: boolean }> {
 	let decoded: DecodedIdToken;
 	try {
@@ -53,7 +54,8 @@ export async function createSession(
 	if (Date.now() / 1000 - decoded.auth_time > RECENT_SIGN_IN_S) {
 		throw new SignInError('stale_sign_in', 'Please sign in again');
 	}
-	const expiresIn = Math.min(maxMs, SESSION_MAX_MS);
+	const wanted = typeof maxMs === 'function' ? await maxMs(decoded.uid) : maxMs;
+	const expiresIn = Math.min(wanted, SESSION_MAX_MS);
 	const cookie = await auth().createSessionCookie(idToken, { expiresIn });
 	// Set by Identity Platform when this sign-in passed a TOTP challenge.
 	const secondFactor = Boolean(decoded.firebase?.sign_in_second_factor);

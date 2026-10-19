@@ -11,6 +11,7 @@ import {
 	fallbackSummary,
 	hhmm,
 	localInstant,
+	nextSteps,
 	localTime,
 	plainBriefing,
 	type DaySnapshot,
@@ -30,10 +31,6 @@ export const SummarizeInput = z.object({
 const ModelSummary = z.object({
 	summary: z.string().trim().min(1).max(2000),
 	highlights: z
-		.array(z.object({ text: z.string().trim().min(1).max(300) }))
-		.max(5)
-		.default([]),
-	recommendations: z
 		.array(z.object({ text: z.string().trim().min(1).max(300) }))
 		.max(5)
 		.default([])
@@ -106,25 +103,29 @@ export async function summarizeDay(
 	const day = asked ?? today;
 	if (day > today) throw new ServiceError('VALIDATION_FAILED', 'Choose today or an earlier day');
 	const snapshot = await daySnapshot(tx, user, homeId, day, now);
+	const enhanced = user.features.includes('analytics_advanced');
+	// Suggested next steps come from fixed rules (domain/day-summary.ts), with
+	// or without the model, so they stay operational and never clinical.
+	const recommendations = enhanced ? nextSteps(snapshot) : [];
 	const fallback: DaySummary = {
 		summary: fallbackSummary(snapshot),
 		highlights: [],
-		recommendations: [],
+		recommendations,
 		fallback: true
 	};
 	if (!lomiCapabilities().draft) return { ...fallback, snapshot };
 	await reserve(user, 'summary');
-	const enhanced = user.features.includes('analytics_advanced');
 	try {
 		const value = ModelSummary.parse(
 			await modelJson(
 				{
 					task:
 						'Brief a group home supervisor walking in, in plain English: 2 to 4 short sentences, most important first (incidents, health alerts, refused or held medications, open shifts, missing notes, notes to review). Use only the data. No headings, bullet symbols or markdown. ' +
+						'State facts only: no clinical advice, diagnoses, or medication or treatment suggestions. ' +
 						(enhanced
-							? 'Also return up to 3 highlights (notable facts from the data) and up to 3 recommendations (next steps for the supervisor), each {text}. '
-							: 'Return empty highlights and recommendations. ') +
-						'Return {summary:string, highlights:[{text}], recommendations:[{text}]}.',
+							? 'Also return up to 3 highlights (notable facts from the data), each {text}. '
+							: 'Return empty highlights. ') +
+						'Return {summary:string, highlights:[{text}]}.',
 					data: snapshot
 				},
 				true
@@ -133,7 +134,7 @@ export async function summarizeDay(
 		return {
 			summary: plainBriefing(value.summary),
 			highlights: enhanced ? value.highlights : [],
-			recommendations: enhanced ? value.recommendations : [],
+			recommendations,
 			fallback: false,
 			snapshot
 		};
