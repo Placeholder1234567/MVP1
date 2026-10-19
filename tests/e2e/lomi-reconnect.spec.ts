@@ -1,5 +1,15 @@
 import AxeBuilder from '@axe-core/playwright';
 import { test, expect, type Page } from '@playwright/test';
+import { draftLocally } from '../../src/lib/domain/lomi';
+
+async function renderBoundary(page: Page) {
+	await page.evaluate(
+		() =>
+			new Promise<void>((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+			)
+	);
+}
 
 async function openReview(page: Page, phone: boolean, kind = /^Shift note/) {
 	await page.goto('/login');
@@ -213,7 +223,18 @@ for (const leave of [false, true]) {
 				await review
 					.getByLabel('Health and safety', { exact: true })
 					.fill('Caregiver observation during request.');
+				await review
+					.getByLabel('Follow-up observations', { exact: true })
+					.fill('Pending caregiver follow-up.');
+				const response = page.waitForResponse(/\/api\/trpc\/lomi\.draft(?:\?|$)/);
 				release();
+				await (await response).finished();
+				await renderBoundary(page);
+				await expect(review.getByLabel('Activities', { exact: true })).toHaveValue(observation);
+				await review
+					.getByRole('button', { name: 'Clear follow-up observations', exact: true })
+					.click();
+				await expect.poll(() => requests).toBe(2);
 				await expect(review.getByLabel('Activities', { exact: true })).toHaveValue(
 					'Synthetic refreshed activity.'
 				);
@@ -241,5 +262,76 @@ for (const leave of [false, true]) {
 			release();
 			await context.setOffline(false);
 		}
+	});
+}
+
+for (const unchanged of [false, true]) {
+	test(`reconnect keeps an original incident warning ${unchanged ? 'without relabeling unchanged fallback text' : 'when AI rewrites the incident without its original keywords'}`, async ({
+		page,
+		context
+	}, info) => {
+		test.setTimeout(180000);
+		await openReview(page, info.project.name === 'phone');
+		const observation = 'Selected a puzzle. He fell in the bathroom.';
+		const fallback = draftLocally(observation, 'shift');
+		let requests = 0;
+		await page.route(/\/api\/trpc\/lomi\.draft(?:\?|$)/, (route) => {
+			requests++;
+			const output =
+				requests === 1
+					? fallback
+					: {
+							...fallback,
+							content: unchanged
+								? fallback.content
+								: {
+										activities: 'Selected an activity.',
+										meals: '',
+										mood: '',
+										health: 'Lost balance and sat on the floor.'
+									},
+							incident: { detected: false, summary: '' },
+							fallback: false,
+							goalReferences: []
+						};
+			return route.fulfill({
+				contentType: 'application/json',
+				body: JSON.stringify([{ result: { data: { json: output } } }])
+			});
+		});
+		await page.getByLabel('Your observations', { exact: true }).fill(observation);
+		await page.getByRole('button', { name: 'Prepare a draft', exact: true }).click();
+		const review = page.getByRole('group', { name: 'Review Lomi draft', exact: true });
+		const warning = review.getByText(/This description may need a separate incident report/);
+		await expect(warning).toBeVisible();
+		// A short privacy mask without a network event must not re-send unavailable-AI fallbacks.
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+		await expect(page.getByRole('heading', { name: 'Workspace locked' })).toBeVisible();
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+		await expect(review).toBeVisible();
+		await renderBoundary(page);
+		expect(requests).toBe(1);
+		await context.setOffline(true);
+		await context.setOffline(false);
+		await expect.poll(() => requests).toBe(2);
+		await renderBoundary(page);
+		if (unchanged) {
+			await expect(review.getByText(/Simple sorting draft/)).toBeVisible();
+			await expect(review.getByLabel('Health and safety', { exact: true })).toHaveValue(
+				fallback.content.health
+			);
+		} else {
+			await expect(review.getByLabel('Health and safety', { exact: true })).toHaveValue(
+				'Lost balance and sat on the floor.'
+			);
+			await expect(review.getByText(/AI-generated draft/)).toBeVisible();
+		}
+		await expect(warning).toBeVisible();
 	});
 }

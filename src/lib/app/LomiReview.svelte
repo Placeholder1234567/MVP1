@@ -60,7 +60,6 @@
 	$effect(() => {
 		const masked = app.privacyLocked;
 		if (masked && !wasMasked) privacyRevision++;
-		if (!masked && wasMasked && navigator.onLine) reconnectPending = true;
 		wasMasked = masked;
 	});
 	let manuallyEdited = $state(new Set<string>());
@@ -109,7 +108,11 @@
 		const current = draftLocally(Object.values(content).join(' '), type);
 		return {
 			flags: vagueFlags(Object.values(content).join(' ')),
-			incident: currentResult.incident.detected ? currentResult.incident : current.incident
+			incident: currentResult.incident.detected
+				? currentResult.incident
+				: original.result.incident.detected
+					? original.result.incident
+					: current.incident
 		};
 	});
 	// No retry loop or original observations in browser storage. A later online event
@@ -194,13 +197,26 @@
 				return;
 			}
 			const merged = mergeReconnectDraft(content, originalContent, next.content, protectedFields());
+			const incident = next.incident.detected
+				? next.incident
+				: currentResult.incident.detected
+					? currentResult.incident
+					: original.result.incident;
+			if (!merged.updated.length) {
+				// New suggestions do not make unchanged fallback text AI-authored.
+				currentResult = {
+					...currentResult,
+					incident,
+					goalReferences: next.goalReferences
+				};
+				return;
+			}
 			content = merged.content;
-			currentResult = next;
+			currentResult = { ...next, incident };
 			usedAi = true;
 			undo = null;
-			message = merged.updated.length
-				? 'Lomi updated untouched sections after reconnecting. Your edits were kept. Review every section before using this draft.'
-				: 'Lomi refreshed the review after reconnecting. Your text was kept. Review every section before using this draft.';
+			message =
+				'Lomi updated untouched sections after reconnecting. Your edits were kept. Review every section before using this draft.';
 			onDirty?.();
 		} catch {
 			// Offline/fallback text and every caregiver edit remain unchanged.
