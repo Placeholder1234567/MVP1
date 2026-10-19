@@ -684,6 +684,8 @@ New SW activates, old caches purged
 User sees "App updated" toast on next visit
 ```
 
+**As built:** the app tells the person before the switch instead ("Update available [Refresh]", frontend-spec-2.md §8.5); the new worker takes over on Refresh, or once all tabs are closed.
+
 The service worker version is tied to the SvelteKit build hash. Every deployment produces a new service worker, which triggers the update flow.
 
 ---

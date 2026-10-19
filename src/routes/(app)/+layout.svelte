@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import PushNotice from '#lib/app/PushNotice.svelte';
+	import UpdateToast from '#lib/app/UpdateToast.svelte';
 	import UpgradeDialog from '#lib/app/UpgradeDialog.svelte';
 	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
 	import EveningSuggestion from '#lib/app/EveningSuggestion.svelte';
@@ -497,6 +498,7 @@
 				</header>
 				<main id="main" class="main-content" tabindex="-1">
 					<PushNotice />
+					<UpdateToast />
 					<UpgradeDialog isAdmin={data.user.role === 'admin'} />
 					<EveningSuggestion />
 					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
