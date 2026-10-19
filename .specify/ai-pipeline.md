@@ -814,6 +814,8 @@ When rate-limited, the server returns `429 Too Many Requests` with a `Retry-Afte
 | Cost per note | Total AI cost (draft + edits + routes) per completed note | Track |
 | Proactive question response rate | % of Lomi questions that get a caregiver response | Track |
 
+**As built:** Analytics → Documentation shows "Lomi drafts sent back": per week, the Lomi-drafted notes returned that week as a share of those signed (`analytics.weekly`, `documentation.lomiSentBackRate`), next to "Drafted with Lomi". The other metrics need per-request logging that isn't stored yet (latency, fallback, edit modes) or a draft-to-signed text comparison.
+
 ### Quality Feedback Loop
 
 1. Supervisors approve or return notes (natural quality signal)
