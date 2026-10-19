@@ -1,4 +1,4 @@
-import { and, arrayContains, eq, inArray, lt, ne } from 'drizzle-orm';
+import { and, arrayContains, count, eq, gte, inArray, lt, ne } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	agencies,
@@ -99,10 +99,26 @@ export function pushTokens(tx: Tx, profileId: string) {
 		.where(eq(deviceTokens.profile_id, profileId));
 }
 
+/** How many deliveries on this channel went out to the person since `since` (rate limits). */
+export async function sentSince(tx: Tx, profileId: string, channel: string, since: Date) {
+	const [row] = await tx
+		.select({ n: count() })
+		.from(notifications)
+		.where(
+			and(
+				eq(notifications.profile_id, profileId),
+				eq(notifications.channel, channel),
+				gte(notifications.created_at, since),
+				inArray(notifications.status, ['sent', 'read', 'escalated', 'escalation_exhausted'])
+			)
+		);
+	return row?.n ?? 0;
+}
+
 export async function markDelivery(
 	tx: Tx,
 	id: string,
-	set: { status: 'sent' | 'failed'; providerMessageId?: string }
+	set: { status: 'sent' | 'failed' | 'rate_limited'; providerMessageId?: string }
 ) {
 	await tx
 		.update(notifications)

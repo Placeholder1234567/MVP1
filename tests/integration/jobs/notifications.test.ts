@@ -16,7 +16,14 @@ const push = vi.fn(async () => ({ providerMessageId: 'test-push' }));
 beforeAll(async () => {
 	setProvidersForTests({ email, push });
 	await withService(async (tx) => {
-		await tx.insert(s.agencies).values({ id: agency, name: 'Jobs Test', subscription_tier: 'complete', slug: `jobs-${agency}` });
+		await tx
+			.insert(s.agencies)
+			.values({
+				id: agency,
+				name: 'Jobs Test',
+				subscription_tier: 'complete',
+				slug: `jobs-${agency}`
+			});
 		await tx.insert(s.profiles).values({
 			id: profile,
 			agency_id: agency,
@@ -103,7 +110,7 @@ it('dispatches email, keeps in-app rows, and does not resend completed deliverie
 			{ ids: rows.map((r) => r.id) },
 			{ attempt: 1, final: true }
 		)
-	).toEqual({ sent: 0, held: 0, failed: 0, suppressed: 0 });
+	).toEqual({ sent: 0, held: 0, failed: 0, suppressed: 0, rateLimited: 0 });
 	expect(email).toHaveBeenCalledTimes(calls);
 	expect((await rowsFor(reference)).find((r) => r.channel === 'email')?.provider_message_id).toBe(
 		'test-email'
@@ -147,8 +154,83 @@ it('holds normal push during quiet hours but sends urgent push', async () => {
 		sent: 1,
 		held: 1,
 		failed: 0,
-		suppressed: 0
+		suppressed: 0,
+		rateLimited: 0
 	});
+});
+
+it('stops at the daily per-person limits; urgent push still goes, email never bypasses', async () => {
+	const busy = randomUUID();
+	await withService(async (tx) => {
+		await tx.insert(s.profiles).values({
+			id: busy,
+			agency_id: agency,
+			auth_uid: `jobs-${busy}`,
+			email: 'busy@example.test',
+			name: 'Busy Supervisor',
+			role: 'supervisor'
+		});
+		await tx.insert(s.deviceTokens).values({
+			agency_id: agency,
+			profile_id: busy,
+			token: `synthetic-${busy}`,
+			platform: 'web'
+		});
+		// Already sent today: 50 pushes and 20 emails, the limits.
+		const sent = (channel: string, n: number) =>
+			Array.from({ length: n }, () => ({
+				agency_id: agency,
+				profile_id: busy,
+				type: 'daily_summary' as const,
+				title: 'Earlier',
+				channel,
+				priority: 3,
+				status: 'sent' as const,
+				sent_at: new Date()
+			}));
+		await tx.insert(s.notifications).values([...sent('push', 50), ...sent('email', 20)]);
+	});
+	const [normalPush, urgentPush, urgentEmail] = [randomUUID(), randomUUID(), randomUUID()];
+	await withService((tx) =>
+		tx.insert(s.notifications).values(
+			[
+				// High priority skips quiet hours but, unlike urgent, not the limit.
+				[normalPush, 'push', 2],
+				[urgentPush, 'push', 1],
+				[urgentEmail, 'email', 1]
+			].map(([id, channel, priority]) => ({
+				id: id as string,
+				agency_id: agency,
+				profile_id: busy,
+				type: 'health_alert' as const,
+				title: 'Review required',
+				channel: channel as string,
+				priority: priority as number
+			}))
+		)
+	);
+	expect(
+		await runJob(
+			'notifications-dispatch',
+			{ ids: [normalPush, urgentPush, urgentEmail] },
+			{ attempt: 0, final: true }
+		)
+	).toEqual({ sent: 1, rateLimited: 2, held: 0, failed: 0, suppressed: 0 });
+	const status = Object.fromEntries(
+		(
+			await withService((tx) =>
+				tx
+					.select({ id: s.notifications.id, status: s.notifications.status })
+					.from(s.notifications)
+					.where(eq(s.notifications.profile_id, busy))
+			)
+		).map((r) => [r.id, r.status])
+	);
+	expect([status[normalPush], status[urgentPush], status[urgentEmail]]).toEqual([
+		'rate_limited',
+		'sent',
+		'rate_limited'
+	]);
 });
 
 it('sync-window removes old records from device sync without deleting them', async () => {
