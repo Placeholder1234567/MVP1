@@ -16,6 +16,9 @@ import {
 	notificationDisabled,
 	type StaffRole
 } from '../../../domain/index.ts';
+import { randomUUID } from 'node:crypto';
+import { render } from '../../messaging/templates.ts';
+import type { Delivery } from '../../messaging/index.ts';
 import { afterCommit, asService, type Tx } from '../../db';
 import { queueDeliveries } from './dispatch';
 import { queueEscalation } from './escalation';
@@ -80,17 +83,38 @@ export interface Recipient {
 	role: StaffRole;
 }
 
+export interface NotificationPreview {
+	profileId: string;
+	channel: 'push' | 'sms' | 'email';
+	delivery: Delivery;
+}
+
+/** Preview uses the same selection and templates without inserts, jobs or provider calls. */
+export function notify(
+	tx: Tx,
+	agencyId: string,
+	recipients: Recipient[],
+	n: NotificationInput,
+	options: { preview: true }
+): Promise<NotificationPreview[]>;
 /** Notifies the given people. Returns how many deliveries were queued. */
 export function notify(
 	tx: Tx,
 	agencyId: string,
 	recipients: Recipient[],
 	n: NotificationInput
-): Promise<number> {
+): Promise<number>;
+export function notify(
+	tx: Tx,
+	agencyId: string,
+	recipients: Recipient[],
+	n: NotificationInput,
+	options?: { preview: true }
+): Promise<number | NotificationPreview[]> {
 	return asService(tx, async (tx) => {
-		if (!recipients.length) return 0;
+		if (!recipients.length) return options?.preview ? [] : 0;
 		const overrides = notificationOverrides(await agencyNotificationSettings(tx, agencyId));
-		if (notificationDisabled(n.type, overrides)) return 0;
+		if (notificationDisabled(n.type, overrides)) return options?.preview ? [] : 0;
 		const prefs = new Map(
 			(
 				await preferencesFor(
@@ -128,6 +152,25 @@ export function notify(
 				channel
 			}))
 		]);
+		if (options?.preview) {
+			return rows.flatMap((row) =>
+				row.channel === 'in_app'
+					? []
+					: [
+							{
+								profileId: row.profile_id,
+								channel: row.channel as NotificationPreview['channel'],
+								delivery: render(row.channel as NotificationPreview['channel'], {
+									id: randomUUID(),
+									title: n.title,
+									type: n.type,
+									body: n.body,
+									referenceId: n.referenceId
+								})
+							}
+						]
+			);
+		}
 		const inserted = await insertNotifications(tx, rows);
 		const deliveries = inserted.filter((r) => r.channel !== 'in_app');
 		const first = inserted.find((r) => r.channel === 'in_app');

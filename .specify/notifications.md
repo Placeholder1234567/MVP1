@@ -1097,6 +1097,14 @@ Alerts are sent to the engineering team (not agency users) via the platform's ow
 
 - A `preview` flag can be set on any notification send call: `send(agencyId, profileId, type, payload, { preview: true })`.
 - In preview mode, the notification is fully rendered (templates resolved, PHI safety checked, channels determined) but NOT dispatched. The rendered result is returned to the caller for inspection.
+
+**Service increment:** `notify(tx, agencyId, recipients, input, { preview: true })`
+returns channel/template previews using the same preference and agency-policy
+selection as a normal request. It does not insert notification/inbox rows,
+schedule delivery/escalation, or invoke a provider. Preview links use temporary
+IDs and do not represent saved notifications. Dispatch-time suppression, quiet
+hours, active-account checks and rate limits can still prevent actual delivery.
+The dev-panel UI and delayed-task controls are a separate remaining increment.
 - Used by the admin notification settings UI to show "This is what the notification would look like" previews.
 
 ### Automated Tests
