@@ -1,5 +1,6 @@
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
+import { requireOpenHome } from '../home/index.ts';
 import { notifyHomeSupervisors } from '../notification/index.ts';
 import * as q from './intake.queries';
 export { listReferrals, listRooms } from './intake.queries';
@@ -91,8 +92,7 @@ export async function updateReferral(
 			'RULE_VIOLATION',
 			'Use admission to place an accepted referral; placed referrals cannot be reopened'
 		);
-	if (input.assignedHomeId && !(await q.home(tx, agencyId, input.assignedHomeId)))
-		throw new ServiceError('NOT_FOUND', 'Home not found');
+	if (input.assignedHomeId) requireOpenHome(await q.home(tx, agencyId, input.assignedHomeId));
 	const row = await q.saveReferral(tx, agencyId, input.id, {
 		status: input.status,
 		assigned_home_id: input.assignedHomeId,
@@ -112,8 +112,7 @@ export async function convertToClient(
 	const referral = await getReferral(tx, agencyId, input.referralId);
 	if (referral.status !== 'accepted')
 		throw new ServiceError('RULE_VIOLATION', 'Only accepted referrals can be admitted');
-	if (!(await q.home(tx, agencyId, input.homeId)))
-		throw new ServiceError('NOT_FOUND', 'Home not found');
+	requireOpenHome(await q.home(tx, agencyId, input.homeId));
 	if (input.roomId) {
 		const room = await q.room(tx, agencyId, input.roomId);
 		if (!room || room.home_id !== input.homeId)
@@ -143,8 +142,8 @@ export async function updateRoom(
 	}
 ) {
 	const initial = await q.room(tx, agencyId, input.id);
-	if (!initial || !(await q.home(tx, agencyId, initial.home_id)))
-		throw new ServiceError('NOT_FOUND', 'Room not found');
+	if (!initial) throw new ServiceError('NOT_FOUND', 'Room not found');
+	requireOpenHome(await q.home(tx, agencyId, initial.home_id), 'Room not found');
 	const row = (await q.room(tx, agencyId, input.id))!;
 	if (input.name) await checkRoomName(tx, agencyId, row.home_id, input.name, row.id);
 	const occupant = input.occupiedBy === undefined ? row.occupied_by : input.occupiedBy;
@@ -199,8 +198,7 @@ export async function createRoom(
 	agencyId: string,
 	input: { homeId: string; name: string; capacity: number; status: 'available' | 'reserved' }
 ) {
-	if (!(await q.home(tx, agencyId, input.homeId)))
-		throw new ServiceError('NOT_FOUND', 'Home not found');
+	requireOpenHome(await q.home(tx, agencyId, input.homeId));
 	await checkRoomName(tx, agencyId, input.homeId, input.name);
 	return q.insertRoom(tx, {
 		agency_id: agencyId,

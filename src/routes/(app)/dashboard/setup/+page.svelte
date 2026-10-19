@@ -67,6 +67,28 @@
 		};
 	}
 
+	async function setArchived(h: Home, archive: boolean) {
+		if (
+			archive &&
+			!confirm(
+				`Archive ${h.name}? Its records stay, read-only. No one can clock in, be scheduled, admitted or assigned there until it is restored.`
+			)
+		)
+			return;
+		saving = true;
+		message = '';
+		try {
+			if (archive) await trpc.home.archive.mutate({ id: h.id });
+			else await trpc.home.restore.mutate({ id: h.id });
+			message = archive ? `${h.name} archived.` : `${h.name} restored.`;
+			await load();
+		} catch (e) {
+			message = e instanceof Error ? e.message : 'Could not change the home.';
+		} finally {
+			saving = false;
+		}
+	}
+
 	async function saveHome(event: SubmitEvent) {
 		event.preventDefault();
 		saving = true;
@@ -192,15 +214,23 @@
 			{#each homes as h (h.id)}
 				<div class="row" role="listitem">
 					<span class="grow"
-						><b>{h.name}</b><span
+						><b>{h.name}</b>{#if h.archivedAt}
+							<span class="pill">Archived</span>{/if}<span
 							>{h.address ?? 'No address'} · clock-in radius {h.radius ?? 150} m</span
 						></span
 					>
+					{#if !h.archivedAt}<button
+							class="btn sec"
+							disabled={saving}
+							aria-label="Edit {h.name}"
+							onclick={() => openHome(h)}>Edit</button
+						>{/if}
 					<button
 						class="btn sec"
 						disabled={saving}
-						aria-label="Edit {h.name}"
-						onclick={() => openHome(h)}>Edit</button
+						aria-label="{h.archivedAt ? 'Restore' : 'Archive'} {h.name}"
+						onclick={() => setArchived(h, !h.archivedAt)}
+						>{h.archivedAt ? 'Restore' : 'Archive'}</button
 					>
 				</div>
 			{:else}

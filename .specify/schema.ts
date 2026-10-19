@@ -218,6 +218,12 @@ export const homes = pgTable(
     lat: real('lat'),
     lng: real('lng'),
     radius: integer('radius').notNull().default(150),
+    // Set when an admin archives a home that has closed (home.archive). An
+    // archived home keeps all its records, read-only: no new clock-ins,
+    // shifts, admissions or rooms. Null for a home in use. Reversible.
+    // Homes are never deleted: every table pointing here restricts deletes,
+    // so records stay for their retention period (security.md).
+    archived_at: timestamp('archived_at', { withTimezone: true }),
     created_at: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -800,7 +806,7 @@ export const messages = pgTable(
       .references(() => agencies.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     from_name: text('from_name').notNull(),
     body: text('body').notNull(),
     // The person supported this message is about, if any (frontend-audit.md
@@ -850,7 +856,7 @@ export const coverageRequests = pgTable(
       .references(() => agencies.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     day: date('day').notNull(),
     shift: shiftKeyEnum('shift').notNull(),
     called_out_by: uuid('called_out_by').references(() => profiles.id, {
@@ -1008,7 +1014,7 @@ export const scheduleSlots = pgTable(
       .references(() => agencies.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     day: date('day').notNull(),
     shift: shiftKeyEnum('shift').notNull(),
     assigned_to: uuid('assigned_to').references(() => profiles.id, {
@@ -1287,7 +1293,7 @@ export const rooms = pgTable(
       .references(() => agencies.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
     capacity: integer('capacity').notNull().default(1),
     occupied_by: uuid('occupied_by').references(() => clients.id, {
@@ -1634,7 +1640,7 @@ export const messageReads = pgTable(
       .references(() => agencies.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     message_id: uuid('message_id')
       .notNull()
       .references(() => messages.id, { onDelete: 'cascade' }),
@@ -1744,7 +1750,7 @@ export const scheduleTemplates = pgTable(
       .references(() => agencies.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
     slots: jsonb('slots').notNull().default([]),
     created_by: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
@@ -1778,7 +1784,7 @@ export const messagePhotos = pgTable(
       .references(() => agencies.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     uploaded_by: uuid('uploaded_by')
       .notNull()
       .references(() => profiles.id, { onDelete: 'restrict' }),

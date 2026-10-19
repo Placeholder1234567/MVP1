@@ -78,7 +78,7 @@
 				trpc.client.list.query({})
 			]);
 			context = {
-				homes: homes.map(({ id, name }) => ({ id, name })),
+				homes: homes.filter((h) => !h.archivedAt).map(({ id, name }) => ({ id, name })),
 				people: people.map(({ id, name, homeId, active }) => ({ id, name, homeId, active }))
 			};
 		} catch {
@@ -127,7 +127,7 @@
 				trpc.client.list.query({})
 			]);
 			context = {
-				homes: homes.map(({ id, name }) => ({ id, name })),
+				homes: homes.filter((h) => !h.archivedAt).map(({ id, name }) => ({ id, name })),
 				people: people.map(({ id, name, homeId, active }) => ({ id, name, homeId, active }))
 			};
 			const preliminary = previewImport(kind, parsed, context);

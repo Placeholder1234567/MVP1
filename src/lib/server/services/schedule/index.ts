@@ -16,6 +16,7 @@ import {
 import { asService, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
+import { requireOpenHome } from '../home/index.ts';
 import {
 	conflictingSlot,
 	homeTemplates,
@@ -58,8 +59,7 @@ export async function setScheduleSlot(
 	input: { homeId: string; day: string; shift: 'am' | 'pm' | 'on'; profileId: string | null }
 ) {
 	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
-	if (!(await scheduleHome(tx, user.agencyId, input.homeId)))
-		throw new ServiceError('NOT_FOUND', 'Home not found');
+	requireOpenHome(await scheduleHome(tx, user.agencyId, input.homeId));
 	if (input.profileId) {
 		const staff = await asService(tx, (t) => scheduleStaff(t, user.agencyId, input.profileId!));
 		if (!staff?.active || !staff.home_ids?.includes(input.homeId))
@@ -105,8 +105,7 @@ export async function copyScheduleWeek(
 			'VALIDATION_FAILED',
 			'Copy from a different week, starting on the same weekday'
 		);
-	if (!(await scheduleHome(tx, user.agencyId, input.homeId)))
-		throw new ServiceError('NOT_FOUND', 'Home not found');
+	requireOpenHome(await scheduleHome(tx, user.agencyId, input.homeId));
 	const source = await weekOf(tx, user.agencyId, input.homeId, input.fromWeek);
 	return fillOpenSlots(tx, user, input.homeId, source, input.fromWeek, input.toWeek);
 }
@@ -157,8 +156,7 @@ async function fillOpenSlots(
 
 async function managedHome(tx: Tx, user: CurrentUser, homeId: string) {
 	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
-	if (!(await scheduleHome(tx, user.agencyId, homeId)))
-		throw new ServiceError('NOT_FOUND', 'Home not found');
+	requireOpenHome(await scheduleHome(tx, user.agencyId, homeId));
 }
 
 /**

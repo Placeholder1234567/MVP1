@@ -447,8 +447,12 @@
 							class="input"
 							bind:value={app.homeId}
 							aria-label="Current home"
-							>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
-								>{/each}</select
+							>{#each app.openHomes as home (home.id)}<option value={home.id}>{home.name}</option
+								>{/each}{#if app.openHomes.length < app.homes.length}<optgroup label="Archived"
+									>{#each app.homes.filter((h) => h.archived_at) as home (home.id)}<option
+											value={home.id}>{home.name}</option
+										>{/each}</optgroup
+								>{/if}</select
 						></label
 					>
 					<span class="sync-label" role="status" data-testid="sync-status"

@@ -81,10 +81,16 @@ export async function getStaff(tx: Tx, agencyId: string, id: string) {
 	return present(row);
 }
 
-async function checkHomes(tx: Tx, agencyId: string, homeIds: string[]) {
-	const known = new Set((await listHomes(tx, agencyId)).map((h) => h.id));
-	if (!homeIds.every((id) => known.has(id)))
+/** Archived homes can stay on someone's list but can't be newly added. */
+async function checkHomes(tx: Tx, agencyId: string, homeIds: string[], current: string[] = []) {
+	const homes = new Map((await listHomes(tx, agencyId)).map((h) => [h.id, h]));
+	if (!homeIds.every((id) => homes.has(id)))
 		throw new ServiceError('VALIDATION_FAILED', 'One of those homes is not in your agency');
+	if (homeIds.some((id) => homes.get(id)!.archivedAt && !current.includes(id)))
+		throw new ServiceError(
+			'RULE_VIOLATION',
+			'That home is archived. An admin can restore it in Setup.'
+		);
 }
 
 /** Absolute URL of the app, for links in emails. */
@@ -169,7 +175,7 @@ export async function updateStaff(
 		((data.role !== undefined && data.role !== 'admin') || data.active === false)
 	)
 		throw new ServiceError('RULE_VIOLATION', "You can't remove your own admin access");
-	if (data.homeIds) await checkHomes(tx, admin.agencyId, data.homeIds);
+	if (data.homeIds) await checkHomes(tx, admin.agencyId, data.homeIds, before.homeIds ?? []);
 	const row = await updateProfileRow(tx, admin.agencyId, data.id, {
 		role: data.role,
 		home_ids: data.homeIds,
