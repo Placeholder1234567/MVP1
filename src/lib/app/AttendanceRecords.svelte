@@ -23,8 +23,13 @@
 	const app = useSession();
 	const person = $derived(app.people.find((p) => p.id === clientId));
 	const day = localTime(new Date(), app.user.timeZone).day;
-	const saved = $derived(app.attendance.find((r) => r.client_id === clientId && r.day === day));
-	const recorded = $derived(parseJson<string[]>(saved?.services, []));
+	// Until the next sync there can be more than one row for the day: each
+	// save adds one and the server merges them into the day's record.
+	const today = $derived(app.attendance.filter((r) => r.client_id === clientId && r.day === day));
+	const saved = $derived(today[0]);
+	const recorded = $derived([
+		...new Set(today.flatMap((r) => parseJson<string[]>(r.services, [])))
+	]);
 	const restored = untrack(() => initialDraft);
 	let services = $state<string[]>((restored?.services as string[]) ?? []);
 	$effect(() => onDraft?.({ day, services: $state.snapshot(services) }));
@@ -41,24 +46,19 @@
 		onBusyChange?.(true);
 		error = '';
 		try {
-			// The server merges services into the day's record and never removes one.
+			// Always a new row, never an edit: the server merges every row for the
+			// person and day into one record and never removes a service. An edit
+			// (PATCH) names only this device's row, which the server may have
+			// merged into another device's record, so it would be refused.
 			const union = [...new Set([...recorded, ...services])];
 			const now = new Date().toISOString();
-			if (saved && app.db) {
-				await app.db.execute('UPDATE attendance SET services = ?, updated_at = ? WHERE id = ?', [
-					JSON.stringify(union),
-					now,
-					saved.id
-				]);
-				await app.refreshUploadStatus();
-			} else
-				await insertClinical(app, 'attendance', clientId, {
-					day,
-					services: JSON.stringify(union),
-					recorded_at: now,
-					recorded_by: app.user.profileId,
-					recorded_by_name: app.user.name
-				});
+			await insertClinical(app, 'attendance', clientId, {
+				day,
+				services: JSON.stringify(union),
+				recorded_at: now,
+				recorded_by: app.user.profileId,
+				recorded_by_name: app.user.name
+			});
 			services = [];
 			message = 'Attendance saved.';
 			onSaved?.();
