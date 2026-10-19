@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countByWeek, lastWeeks, percent, weekOf } from '../../../src/lib/domain';
+import { countByWeek, lastWeeks, latestDoses, percent, weekOf } from '../../../src/lib/domain';
 
 describe('analytics weeks', () => {
 	it('starts weeks on Monday in the agency time zone', () => {
@@ -28,5 +28,39 @@ describe('analytics weeks', () => {
 	it('gives whole percentages, or none with nothing to divide', () => {
 		expect(percent(2, 3)).toBe(67);
 		expect(percent(0, 0)).toBeNull();
+	});
+});
+
+describe('latestDoses', () => {
+	const dose = (id: string, status: string, amends_id: string | null = null) => ({
+		id,
+		medication_id: 'm',
+		day: '2026-10-14',
+		scheduled_time: '08:00',
+		status,
+		is_prn: false,
+		amends_id
+	});
+	it('counts each dose once, as its latest correction', () => {
+		const doses = [
+			dose('a', 'given'),
+			dose('b', 'refused', 'a'),
+			dose('c', 'held', 'b'),
+			dose('d', 'given')
+		];
+		expect(
+			latestDoses(doses)
+				.map((d) => [d.id, d.status])
+				.sort()
+		).toEqual([
+			['c', 'held'],
+			['d', 'given']
+		]);
+		// Order of rows doesn't matter.
+		expect(
+			latestDoses([...doses].reverse())
+				.map((d) => d.id)
+				.sort()
+		).toEqual(['c', 'd']);
 	});
 });
