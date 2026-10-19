@@ -1,6 +1,10 @@
 import { TRPCError } from '@trpc/server';
 import { AgencyChanges, getAgency, updateAgency } from '../../services/agency/index.ts';
-import { announceMaintenance, MaintenanceInput } from '../../services/notification/index.ts';
+import {
+	announceMaintenance,
+	MaintenanceInput,
+	messagingUsage
+} from '../../services/notification/index.ts';
 import { roleProcedure, router, userProcedure } from '../middleware.ts';
 
 export const agencyRouter = router({
@@ -21,5 +25,10 @@ export const agencyRouter = router({
 	/** Tells every active staff member about a maintenance window (notifications.md §2.18). */
 	announceMaintenance: roleProcedure('admin')
 		.input(MaintenanceInput)
-		.mutation(({ ctx, input }) => announceMaintenance(ctx.db, ctx.user.agencyId, input))
+		.mutation(({ ctx, input }) => announceMaintenance(ctx.db, ctx.user.agencyId, input)),
+
+	/** This month's texts, emails and pushes, the estimated text cost, and who has texts off (admin). */
+	messagingUsage: roleProcedure('admin').query(({ ctx }) =>
+		messagingUsage(ctx.db, ctx.user.agencyId, ctx.user.timeZone)
+	)
 });
