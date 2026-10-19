@@ -28,6 +28,69 @@ async function openReview(page: Page, phone: boolean, kind = /^Shift note/) {
 	await page.getByRole('link', { name: kind }).click();
 }
 
+test('a reconnect request that fails while privacy-masked remains queued for unmask', async ({
+	page,
+	context
+}, info) => {
+	test.setTimeout(180000);
+	await openReview(page, info.project.name === 'phone');
+	await context.setOffline(true);
+	const observation = 'Synthetic activity for a privacy retry.';
+	await page.getByLabel('Your observations', { exact: true }).fill(observation);
+	await page.getByRole('button', { name: 'Prepare a draft', exact: true }).click();
+	const review = page.getByRole('group', { name: 'Review Lomi draft', exact: true });
+	await expect(review.getByText(/Simple sorting draft/)).toBeVisible();
+	let release!: () => void;
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let requests = 0;
+	await page.route(/\/api\/trpc\/lomi\.draft(?:\?|$)/, async (route) => {
+		requests++;
+		if (requests === 1) {
+			await held;
+			await route.abort('failed');
+			return;
+		}
+		const next = {
+			...draftLocally(observation, 'shift'),
+			content: { activities: 'Synthetic recovered activity.', meals: '', mood: '', health: '' },
+			fallback: false
+		};
+		await route.fulfill({
+			contentType: 'application/json',
+			body: JSON.stringify([{ result: { data: { json: next } } }])
+		});
+	});
+	try {
+		await context.setOffline(false);
+		await expect.poll(() => requests).toBe(1);
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+		await expect(page.getByRole('heading', { name: 'Workspace locked' })).toBeVisible();
+		const failed = page.waitForEvent('requestfailed', {
+			predicate: (request) => /\/api\/trpc\/lomi\.draft(?:\?|$)/.test(request.url())
+		});
+		release();
+		await failed;
+		await renderBoundary(page);
+		expect(requests).toBe(1);
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+		await expect(review.getByLabel('Activities', { exact: true })).toHaveValue(
+			'Synthetic recovered activity.'
+		);
+		expect(requests).toBe(2);
+	} finally {
+		release();
+		await context.setOffline(false);
+	}
+});
+
 test('an offline fallback waits through a privacy lock and resumes after PIN unlock', async ({
 	page,
 	context

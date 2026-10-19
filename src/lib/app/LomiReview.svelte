@@ -59,7 +59,11 @@
 	let wasMasked = false;
 	$effect(() => {
 		const masked = app.privacyLocked;
-		if (masked && !wasMasked) privacyRevision++;
+		if (masked && !wasMasked) {
+			privacyRevision++;
+			// Preserve the reconnect event even if this request fails while masked.
+			if (untrack(() => refreshing)) reconnectPending = true;
+		}
 		wasMasked = masked;
 	});
 	let manuallyEdited = $state(new Set<string>());
