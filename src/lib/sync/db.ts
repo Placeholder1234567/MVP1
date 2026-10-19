@@ -125,14 +125,15 @@ async function open(
 }
 
 /** Locking drops the database (and with it the key) from memory. */
-export async function closeDb(): Promise<void> {
+export async function closeDb(options: { flushDrafts?: boolean } = {}): Promise<void> {
 	// A pending open stops waiting for the lock and won't open afterwards.
 	generation++;
 	waiting?.abort();
 	waiting = undefined;
 	opening = undefined;
 	// The session reference is already disposed when privacy locking starts.
-	if (db) await flushCareDrafts(db);
+	// Not after sign-out cleared the database: that would write a draft back.
+	if (db && options.flushDrafts !== false) await flushCareDrafts(db);
 	await db?.close();
 	db = undefined;
 	dbFile = undefined;

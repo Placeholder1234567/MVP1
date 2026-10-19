@@ -19,6 +19,8 @@
 	import { goto, onNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { closeDb, openDb } from '#lib/sync/db.ts';
+	import { flushCareDrafts } from '#lib/app/care-drafts.ts';
+	import { hasUnsavedWork } from '#lib/pwa/update.svelte.ts';
 	import {
 		deviceId,
 		forgetPin,
@@ -351,17 +353,47 @@
 	async function signInAgain() {
 		app.dispose();
 		await closeDb();
-		await signOutEverywhere().catch(() => {});
+		await signOutEverywhere();
 		await goto(resolve('/login'), { refreshAll: true });
 	}
 	async function signOut() {
+		// Unsaved text on this screen (a note being written) goes with sign-out.
+		if (
+			hasUnsavedWork() &&
+			!confirm(
+				'You have unsaved changes on this screen. Signing out discards them. Sign out anyway?'
+			)
+		)
+			return;
 		if (app.db) {
+			await flushCareDrafts(app.db);
 			const queue = await app.db.getUploadQueueStats();
 			if (queue.count) {
 				await lock();
 				message = 'This device is locked. Unlock and let your changes sync before signing out.';
 				return;
 			}
+			// Signing out clears the device: changes the server refused (waiting
+			// for Try again) and unfinished drafts go with it.
+			const left = await app.db
+				.get<{ failed: number; drafts: number }>(
+					'SELECT (SELECT count(*) FROM failed_writes) AS failed, (SELECT count(*) FROM care_drafts) AS drafts'
+				)
+				.catch(() => ({ failed: 0, drafts: 0 }));
+			if (
+				left.failed &&
+				!confirm(
+					`${left.failed} ${left.failed === 1 ? 'change' : 'changes'} couldn’t be saved and ${left.failed === 1 ? 'is' : 'are'} still on this device for you to review. Signing out deletes ${left.failed === 1 ? 'it' : 'them'}. Sign out anyway?`
+				)
+			)
+				return;
+			if (
+				left.drafts &&
+				!confirm(
+					'You have an unfinished draft on this device. Signing out deletes it. Sign out anyway?'
+				)
+			)
+				return;
 			// Voice kept offline lives only on this device (LomiComposer transcribes it later).
 			const kept = await app.db
 				.get<{ n: number }>('SELECT count(*) AS n FROM pending_recordings')
@@ -381,10 +413,14 @@
 		await stopWebPush(app.user.profileId);
 		await showBadge(0);
 		app.dispose();
-		await closeDb();
-		await signOutEverywhere();
+		await closeDb({ flushDrafts: false });
+		const ended = await signOutEverywhere();
 		signedOutChannel()?.postMessage({ signedOut: app.user.profileId });
-		await clearShellCaches();
+		await clearShellCaches().catch(() => {});
+		if (!ended)
+			alert(
+				'You’re signed out here, but Guad couldn’t reach the server to end your sessions on other devices. Sign in and out again once you’re back online.'
+			);
 		await goto(resolve('/login'), { refreshAll: true });
 	}
 	app.lock = lock;

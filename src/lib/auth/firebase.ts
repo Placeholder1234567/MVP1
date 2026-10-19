@@ -161,7 +161,14 @@ export async function getSyncToken(): Promise<{ token: string; expiresAt: Date }
 	return { token: result.token, expiresAt: new Date(result.expirationTime) };
 }
 
-export async function signOutEverywhere(): Promise<void> {
-	await postJson('/auth/session');
-	await signOut(firebaseAuth());
+/**
+ * Ends this session and every other one. Never throws: false when the server
+ * couldn't be reached or didn't end them, so the caller can say so.
+ */
+export async function signOutEverywhere(): Promise<boolean> {
+	const ended = await postJson('/auth/session')
+		.then((r) => r.ok)
+		.catch(() => false);
+	await signOut(firebaseAuth()).catch(() => {});
+	return ended;
 }
