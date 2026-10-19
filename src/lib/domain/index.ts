@@ -46,3 +46,4 @@ export * from './compliance';
 export * from './password';
 export * from './sync-backlog';
 export * from './session-length';
+export * from './lomi-questions';

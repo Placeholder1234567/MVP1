@@ -9,6 +9,7 @@
 		phraseRange,
 		type DraftSection
 	} from '#lib/domain/lomi-edit.ts';
+	import { lomiQuestions } from '#lib/domain/lomi-questions.ts';
 	import LomiVoice from './LomiVoice.svelte';
 	import { useSession } from './session.svelte';
 	let {
@@ -52,6 +53,13 @@
 	let voiceMessage = $state('');
 	const fields: Record<string, HTMLTextAreaElement | undefined> = {};
 	const openFlags = $derived(openSectionFlags(content, kept));
+	// Lomi's follow-up questions for empty or thin sections (ai-pipeline.md
+	// "Proactive Questions"): at most three, from the draft itself.
+	let skipped = $state(new Set<string>());
+	const person = $derived(app.people.find((p) => p.id === clientId));
+	const questions = $derived(
+		lomiQuestions(content, person?.first_name || person?.name?.split(/\s+/)[0] || '', skipped)
+	);
 	const warnings = $derived.by(() => {
 		const current = draftLocally(Object.values(content).join(' '), type);
 		return {
@@ -150,8 +158,19 @@
 			: 'Simple sorting draft. These are your original words; check their placement.'} Nothing is signed
 		or saved until you choose to do so.
 	</p>
+	{#if questions.length}<section class="card pad stack" aria-labelledby="lomi-asks">
+			<h3 id="lomi-asks">Lomi asks</h3>
+			<ul class="asks">
+				{#each questions as q (q.section)}<li>
+						<button class="textbtn" type="button" onclick={() => fields[q.section]?.focus()}
+							>{q.text}</button
+						>
+					</li>{/each}
+			</ul>
+		</section>{/if}
 	{#each Object.entries(content) as [section] (section)}
 		{@const flags = openFlags.filter((flag) => flag.section === section)}
+		{@const question = questions.find((q) => q.section === section)}
 		<section class="card pad stack">
 			<label
 				>{labels[section] ?? section}<textarea
@@ -185,7 +204,14 @@
 						>
 					</div>
 				</div>{/each}
-			{#if !content[section]?.trim()}<p class="muted">
+			{#if question}<div class="ask" role="note">
+					<p><b>Lomi:</b> {question.text}</p>
+					<button
+						class="textbtn"
+						type="button"
+						onclick={() => (skipped = new Set([...skipped, section]))}>Skip, nothing to add</button
+					>
+				</div>{:else if !content[section]?.trim()}<p class="muted">
 					Nothing was recorded here. Add what you observed, or leave this section blank.
 				</p>{/if}
 			<details>
@@ -415,5 +441,20 @@
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
+	}
+	.asks {
+		margin: 0;
+		padding-left: 1.2em;
+	}
+	.ask {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 4px 12px;
+		color: var(--muted);
+	}
+	.ask p {
+		margin: 0;
 	}
 </style>

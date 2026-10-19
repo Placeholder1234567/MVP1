@@ -237,6 +237,15 @@ Lomi asks about at most 3 missing sections at a time to avoid overwhelming the s
 
 Questions are generated client-side from the draft output — no additional API call. The logic checks for empty strings and short content against a minimum character threshold per section type.
 
+**As built:** `lomiQuestions()` in `domain/lomi-questions.ts` builds the questions, and `LomiReview.svelte` shows them.
+- **Shift notes:** activities under 20 characters, and empty meals, mood or health.
+- **Behavior notes:** each empty section, such as "What happened right before?" or "How did staff respond?".
+- **Display:** at most three, as a "Lomi asks" list (each item focuses its box) and next to the empty box.
+- **Skip, nothing to add:** dismisses a question, so the next one appears. Typing in the section also clears its question.
+- **Left out:**
+  - Goal questions: goal scores are asked on the goal step, and Lomi never fills trial scores (Mode 3).
+  - Vague-phrase questions: these are already the inline "Fix it / Keep as is" tips.
+
 ## Parallel Draft Pipeline
 
 The initial draft (Mode 1) fans out across four parallel model calls after transcription. This replaces the single Sonnet call in the MVP.

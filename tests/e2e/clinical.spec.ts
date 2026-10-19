@@ -256,6 +256,15 @@ test('incident requires a named signature and local Lomi changes require review 
 	await expect(review.getByText(/Simple sorting draft/)).toBeVisible();
 	const draft = review.getByLabel('Activities', { exact: true });
 	await expect(draft).toHaveValue(observation);
+	// Lomi asks about the empty sections (at most three), next to each box too.
+	const asks = review.getByRole('region', { name: 'Lomi asks' });
+	await expect(asks.getByRole('listitem')).toHaveText([
+		/^Did .+ eat their meals\?$/,
+		/^What was .+'s mood today\?$/,
+		'Any health observations: vitals, medications, concerns?'
+	]);
+	await review.getByRole('button', { name: 'Skip, nothing to add' }).first().click();
+	await expect(asks.getByRole('listitem')).toHaveCount(2);
 	// Lomi's text is slightly faded until the caregiver taps into the section.
 	await expect(draft).toHaveCSS('opacity', '0.85');
 	await draft.focus();
