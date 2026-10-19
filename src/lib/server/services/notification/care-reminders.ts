@@ -11,6 +11,7 @@ import {
 	addDays,
 	INCIDENT_REVIEW_AFTER_HOURS,
 	INCIDENT_REVIEW_UNTIL_HOURS,
+	incidentContactOverdueSuffix,
 	incidentContactOverdueTitle,
 	incidentReviewTitle,
 	overdueContacts,
@@ -26,7 +27,7 @@ import {
 	assignedSlots,
 	openIncidentContacts,
 	openIncidents,
-	sentWithTitle
+	sentTitles
 } from './care-events.queries';
 import { agencyClocks } from './escalation.queries';
 import { notify, notifyHomeSupervisors, type Recipient } from './index';
@@ -61,10 +62,15 @@ export async function flagOverdueContacts(tx: Tx, agencyId: string, timeZone: st
 		const occurred = incident.occurredAt ?? incident.createdAt;
 		const told = Array.isArray(incident.notifiedParties) ? incident.notifiedParties : [];
 		const day = localTime(occurred, timeZone).day;
-		for (const c of overdueContacts(incident.severity, incident.type, told, occurred, now, rules)) {
+		const overdue = overdueContacts(incident.severity, incident.type, told, occurred, now, rules);
+		if (!overdue.length) continue;
+		// Matched on the contact, not the whole title: renaming the home or
+		// changing the time zone mustn't send every reminder again.
+		const already = await sentTitles(tx, agencyId, 'incident_contact_overdue', incident.id);
+		for (const c of overdue) {
+			const suffix = incidentContactOverdueSuffix(c.who);
+			if (already.some((t) => t.endsWith(suffix))) continue;
 			const title = incidentContactOverdueTitle(c.who, incident.homeName ?? 'your home', day);
-			if (await sentWithTitle(tx, agencyId, 'incident_contact_overdue', incident.id, title))
-				continue;
 			await notifyHomeSupervisors(tx, agencyId, incident.homeId, {
 				type: 'incident_contact_overdue',
 				priority: 2,

@@ -102,6 +102,20 @@ describe('givenDoseTimes', () => {
 		];
 		expect(givenDoseTimes(doses)).toEqual(['2026-10-02T16:00:00Z']);
 	});
+	it('counts only the latest of several corrections to the same dose', () => {
+		const doses = [
+			dose('a', '2026-10-02T15:00:00Z', 'refused'),
+			dose('b', '2026-10-02T16:00:00Z', 'given', { amends_id: 'a' }),
+			dose('c', '2026-10-02T17:00:00Z', 'refused', { amends_id: 'a' })
+		];
+		expect(givenDoseTimes(doses)).toEqual([]);
+		expect(givenDoseTimes([...doses.slice(0, 2)])).toEqual(['2026-10-02T15:00:00Z']);
+	});
+	it('counts a correction whose original is outside the records loaded', () => {
+		expect(
+			givenDoseTimes([dose('b', '2026-10-02T16:00:00Z', 'given', { amends_id: 'gone' })])
+		).toEqual(['2026-10-02T16:00:00Z']);
+	});
 });
 
 describe('count periods', () => {
