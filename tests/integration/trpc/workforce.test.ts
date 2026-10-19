@@ -594,3 +594,104 @@ it('a pick for a shift taken since is skipped with its reason and does not block
 	const after = await supervisor.schedule.get({ homeId: oak, weekStart: week });
 	expect(after.slots.find((s) => s.day === monday && s.shift === 'pm')?.assigned_to).toBe(eli);
 });
+
+it('a supervisor sets a forgotten clock-out, checked against the clock-in and other records', async () => {
+	const user = await as(eli);
+	const id = randomUUID();
+	const clockInAt = new Date(Date.now() - 30 * 3600000);
+	await user.sync.upload({
+		transactionId: 70,
+		ops: [
+			{
+				op: 'PUT',
+				table: 'clock_records',
+				id,
+				data: { home_id: oak, clock_in_at: clockInAt.toISOString() }
+			}
+		]
+	});
+	const supervisor = await as(sam);
+	const reason = 'Synthetic forgotten clock-out';
+	await expect(
+		user.clock.correctClockOut({ id, clockOutAt: new Date(), reason })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	await expect(
+		supervisor.clock.correctClockOut({ id, clockOutAt: new Date(clockInAt.getTime() - 1), reason })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	await expect(
+		supervisor.clock.correctClockOut({ id, clockOutAt: new Date(Date.now() + 3600000), reason })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	const clockOutAt = new Date(clockInAt.getTime() + 8 * 3600000);
+	const row = await supervisor.clock.correctClockOut({ id, clockOutAt, reason });
+	expect(row).toMatchObject({
+		clock_out_at: clockOutAt,
+		manual_override: true,
+		acknowledged: false
+	});
+	// The caregiver can clock in again, and the closed record can be corrected once more.
+	await user.clock.clockIn({ homeId: oak });
+	await expect(
+		supervisor.clock.correctClockOut({ id, clockOutAt: new Date(), reason })
+	).rejects.toMatchObject({ code: 'CONFLICT' });
+	await user.clock.clockOut({});
+	const later = new Date(clockInAt.getTime() + 9 * 3600000);
+	expect(
+		(await supervisor.clock.correctClockOut({ id, clockOutAt: later, reason })).clock_out_at
+	).toEqual(later);
+});
+
+it('a late offline clock-in inside hours already entered by hand is refused', async () => {
+	const supervisor = await as(sam);
+	const start = new Date(Date.now() - 60 * 3600000);
+	await supervisor.clock.manualEntry({
+		profileId: bea,
+		homeId: oak,
+		clockInAt: start,
+		clockOutAt: new Date(start.getTime() + 8 * 3600000),
+		reason: 'Synthetic missed punch'
+	});
+	const result = await (
+		await as(bea)
+	).sync.upload({
+		transactionId: 71,
+		ops: [
+			{
+				op: 'PUT',
+				table: 'clock_records',
+				id: randomUUID(),
+				data: { home_id: oak, clock_in_at: new Date(start.getTime() + 3600000).toISOString() }
+			}
+		]
+	});
+	expect(result.rejected).toHaveLength(1);
+});
+
+it('refuses an assignment when the shift changed since the supervisor last saw it', async () => {
+	const supervisor = await as(sam);
+	const target = addDays(day, 20);
+	await supervisor.schedule.setSlot({ homeId: oak, day: target, shift: 'pm', profileId: eli });
+	await expect(
+		supervisor.schedule.setSlot({
+			homeId: oak,
+			day: target,
+			shift: 'pm',
+			profileId: bea,
+			seen: null
+		})
+	).rejects.toMatchObject({ code: 'CONFLICT' });
+	await expect(
+		supervisor.schedule.clearSlot({ homeId: oak, day: target, shift: 'pm', seen: bea })
+	).rejects.toMatchObject({ code: 'CONFLICT' });
+	expect(
+		(
+			await supervisor.schedule.setSlot({
+				homeId: oak,
+				day: target,
+				shift: 'pm',
+				profileId: bea,
+				seen: eli
+			})
+		).assigned_to
+	).toBe(bea);
+	await supervisor.schedule.clearSlot({ homeId: oak, day: target, shift: 'pm', seen: bea });
+});

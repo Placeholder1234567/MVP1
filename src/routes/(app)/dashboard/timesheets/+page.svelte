@@ -15,6 +15,30 @@
 	let entryIn = $state('');
 	let entryOut = $state('');
 	let reason = $state('');
+	let correcting = $state<string | null>(null);
+	let correctOut = $state('');
+	let correctReason = $state('');
+	async function correct(event: SubmitEvent, id: string) {
+		event.preventDefault();
+		busy = true;
+		message = '';
+		try {
+			await trpc.clock.correctClockOut.mutate({
+				id,
+				clockOutAt: new Date(correctOut),
+				reason: correctReason
+			});
+			correcting = null;
+			correctOut = '';
+			correctReason = '';
+			await load();
+		} catch {
+			message =
+				'Could not correct the clock-out. Choose a time after the clock-in, not in the future, that doesn’t overlap another record.';
+		} finally {
+			busy = false;
+		}
+	}
 	async function load() {
 		const requested = { from: new Date(from), to: new Date(to), homeId: app.homeId };
 		busy = true;
@@ -168,6 +192,33 @@
 						class="btn sec"
 						disabled={busy}
 						onclick={() => acknowledge(row.id)}>Acknowledge reviewed entry</button
+					>{/if}{#if correcting === row.id}<form class="stack" onsubmit={(e) => correct(e, row.id)}>
+						<label
+							>Actual clock-out<input
+								class="input"
+								type="datetime-local"
+								required
+								bind:value={correctOut}
+							/></label
+						><label
+							>Reason<textarea class="input" required maxlength="1000" bind:value={correctReason}
+							></textarea></label
+						>
+						<div class="spread">
+							<button class="btn" disabled={busy}>Save clock-out</button><button
+								type="button"
+								class="btn sec"
+								onclick={() => (correcting = null)}>Cancel</button
+							>
+						</div>
+					</form>{:else}<button
+						class="textbtn"
+						disabled={busy}
+						onclick={() => {
+							correcting = row.id;
+							correctOut = '';
+							correctReason = '';
+						}}>{row.clock_out_at ? 'Correct clock-out' : 'Set clock-out'}</button
 					>{/if}
 			</article>{:else}<div class="card empty">No clock records in this period.</div>{/each}{/if}
 	<form class="card pad stack" onsubmit={manual}>
