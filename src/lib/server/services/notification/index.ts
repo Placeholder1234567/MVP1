@@ -37,6 +37,7 @@ export {
 	controlledCountersignRequest
 } from './care-events';
 export { sweepCareReminders } from './care-reminders';
+export { adminAdded, sweepAccessReview } from './access-review';
 export {
 	announceMaintenance,
 	MaintenanceInput,

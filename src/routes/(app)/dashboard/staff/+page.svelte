@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { initialsOf } from '#lib/domain/people.ts';
+	import { isDormant } from '#lib/domain/access-review.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
 
@@ -39,6 +40,16 @@
 		]
 			.filter(Boolean)
 			.join(' · ');
+	/** Admins see when each person last signed in, for the access review. */
+	function lastSignIn(p: Staff) {
+		const at = p.lastSignInAt ? new Date(p.lastSignInAt) : null;
+		const when = at
+			? `Last signed in ${at.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+			: 'Never signed in';
+		return isDormant({ ...p, createdAt: new Date(p.createdAt), lastSignInAt: at }, new Date())
+			? `${when} · unused 90+ days`
+			: when;
+	}
 	let limit = $state(LIST_PAGE);
 	const visible = $derived(staff.filter((p) => showInactive || p.active));
 
@@ -214,6 +225,7 @@
 								: ' · deactivated'}</b
 						>
 						<span class="muted">{describe(person)}</span>
+						{#if isAdmin && person.active}<span class="muted s13">{lastSignIn(person)}</span>{/if}
 					</span>
 					{#if isAdmin}<button
 							class="btn sec"

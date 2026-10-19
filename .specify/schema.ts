@@ -193,6 +193,9 @@ export const profiles = pgTable(
     // Never set by the app; never synced.
     plan_features: text('plan_features').array().notNull().default([]),
     mfa_enabled: boolean('mfa_enabled').notNull().default(false),
+    // When this person last got a session (/auth/session), for the access
+    // review (security.md "Automated Detection"). Server-only; never synced.
+    last_sign_in_at: timestamp('last_sign_in_at', { withTimezone: true }),
     avatar_url: text('avatar_url'),
     active: boolean('active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true })
