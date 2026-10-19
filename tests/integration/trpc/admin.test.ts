@@ -154,7 +154,25 @@ describe('staff.*', () => {
 		const [row] = await withService((t) =>
 			t.select({ uid: s.profiles.auth_uid }).from(s.profiles).where(eq(s.profiles.id, invitedId))
 		);
+		const keys = () =>
+			withService((t) =>
+				t
+					.select({ id: s.deviceKeys.id })
+					.from(s.deviceKeys)
+					.where(eq(s.deviceKeys.profile_id, invitedId))
+			);
+		await withService((t) =>
+			t.insert(s.deviceKeys).values({
+				agency_id: AGENCY,
+				profile_id: invitedId,
+				device_id: randomUUID(),
+				key_ciphertext: 'sealed'
+			})
+		);
+		expect(await keys()).toHaveLength(1);
 		await admin.staff.update({ id: invitedId, active: false });
+		// No device of theirs can reopen its local database.
+		expect(await keys()).toEqual([]);
 		await vi.waitFor(async () => expect((await getAuth().getUser(row.uid)).disabled).toBe(true));
 		await admin.staff.update({ id: invitedId, active: true, role: 'supervisor' });
 		await vi.waitFor(async () => expect((await getAuth().getUser(row.uid)).disabled).toBe(false));

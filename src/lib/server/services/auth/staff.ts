@@ -21,6 +21,7 @@ import {
 	revokeSessions
 } from '../../identity.ts';
 import { providers } from '../../messaging/index.ts';
+import { forgetDeviceKeys } from '../device/index.ts';
 import { listHomes } from '../home/index.ts';
 import { adminAdded } from '../notification/index.ts';
 import type { CurrentUser } from './auth.types';
@@ -210,6 +211,7 @@ export async function updateStaff(
 		await adminAdded(tx, admin.agencyId, data.id);
 	if (data.active !== undefined && data.active !== before.active) {
 		const uid = before.authUid;
+		if (!data.active) await forgetDeviceKeys(tx, admin.agencyId, data.id);
 		afterCommit(() => (data.active ? enableIdentity(uid) : disableIdentity(uid)));
 	}
 	// The MFA rule is checked when a session starts (/auth/session). A session

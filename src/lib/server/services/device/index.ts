@@ -7,8 +7,14 @@
 // has RLS with no policies, so no user session can read it.
 import { randomBytes } from 'node:crypto';
 import { open, seal } from '../../sealing.ts';
-import { withService } from '../../db';
-import { findDeviceKey, insertDeviceKey, markIssued, revokeKeys } from './device.queries';
+import { asService, withService, type Tx } from '../../db';
+import {
+	deleteKeys,
+	findDeviceKey,
+	insertDeviceKey,
+	markIssued,
+	revokeKeys
+} from './device.queries';
 
 export class DeviceRevokedError extends Error {
 	constructor() {
@@ -27,10 +33,10 @@ export async function issueDeviceKey(
 ): Promise<Buffer> {
 	const aad = `${profileId}:${deviceId}`;
 	return withService(async (tx) => {
-		const existing = await findDeviceKey(tx, profileId, deviceId);
+		const existing = await findDeviceKey(tx, agencyId, profileId, deviceId);
 		if (existing) {
 			if (existing.revokedAt) throw new DeviceRevokedError();
-			await markIssued(tx, existing.id);
+			await markIssued(tx, agencyId, existing.id);
 			return open(existing.ciphertext, aad);
 		}
 		const key = randomBytes(32);
@@ -50,4 +56,14 @@ export function revokeDeviceKeys(
 	deviceId?: string
 ): Promise<number> {
 	return withService((tx) => revokeKeys(tx, agencyId, profileId, deviceId));
+}
+
+/**
+ * Deactivation (offline-sync.md "Account deactivation"): deletes the server
+ * copy of every device key the user has, inside the caller's transaction, so
+ * no device of theirs can reopen its local database. If the user is
+ * reactivated, each device gets a new key and a fresh database on next sign-in.
+ */
+export function forgetDeviceKeys(tx: Tx, agencyId: string, profileId: string): Promise<number> {
+	return asService(tx, (t) => deleteKeys(t, agencyId, profileId));
 }
