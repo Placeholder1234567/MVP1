@@ -4,6 +4,7 @@ import type { Tx } from '../../db';
 import { agencies, deviceTokens, profiles, userSettings } from '../../db/schema';
 import type { CurrentUser } from '../auth';
 import { ServiceError } from '../../errors';
+import { notificationOverrides } from '../../../domain/notification-overrides';
 import { DEFAULT_QUIET_HOURS } from '../../../domain/notifications';
 import { validQuietHours } from '../../../domain/quiet-hours';
 
@@ -21,13 +22,17 @@ export async function quietHours(tx: Tx, user: CurrentUser) {
 		.from(userSettings)
 		.where(own(user));
 	const [agency] = await tx
-		.select({ timeZone: agencies.timezone })
+		.select({ timeZone: agencies.timezone, settings: agencies.settings })
 		.from(agencies)
 		.where(eq(agencies.id, user.agencyId));
+	const agencyWindow = notificationOverrides(agency.settings).quietHours;
 	return {
 		start:
-			settings?.start && settings?.end ? settings.start.slice(0, 5) : DEFAULT_QUIET_HOURS.start,
-		end: settings?.start && settings?.end ? settings.end.slice(0, 5) : DEFAULT_QUIET_HOURS.end,
+			agencyWindow?.start ??
+			(settings?.start && settings?.end ? settings.start.slice(0, 5) : DEFAULT_QUIET_HOURS.start),
+		end:
+			agencyWindow?.end ??
+			(settings?.start && settings?.end ? settings.end.slice(0, 5) : DEFAULT_QUIET_HOURS.end),
 		timeZone: agency.timeZone
 	};
 }

@@ -11,6 +11,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import ControlledRulesSettings from '#lib/app/ControlledRulesSettings.svelte';
 	import MaintenanceNotice from '#lib/app/MaintenanceNotice.svelte';
+	import NotificationOverridesSettings from '#lib/app/NotificationOverridesSettings.svelte';
 	import IncidentRulesSettings from '#lib/app/IncidentRulesSettings.svelte';
 
 	type Agency = Awaited<ReturnType<typeof trpc.agency.get.query>>;
@@ -269,6 +270,7 @@
 		</div>
 		<ControlledRulesSettings settings={agency.settings} onSaved={load} />
 		<IncidentRulesSettings settings={agency.settings} onSaved={load} />
+		<NotificationOverridesSettings settings={agency.settings} onSaved={load} />
 		<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
 	{/if}
 </section>

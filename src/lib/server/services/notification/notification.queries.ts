@@ -53,6 +53,14 @@ export async function insertNotifications(tx: Tx, rows: (typeof notifications.$i
 	});
 }
 
+export async function agencyNotificationSettings(tx: Tx, agencyId: string) {
+	const [agency] = await tx
+		.select({ settings: agencies.settings })
+		.from(agencies)
+		.where(eq(agencies.id, agencyId));
+	return agency?.settings;
+}
+
 /** Pending deliveries (not the in-app rows), with what's needed to send them. */
 export function pendingDeliveries(tx: Tx, ids?: string[]) {
 	const where = [eq(notifications.status, 'pending'), ne(notifications.channel, 'in_app')];
@@ -72,6 +80,7 @@ export function pendingDeliveries(tx: Tx, ids?: string[]) {
 			phone: profiles.phone,
 			active: profiles.active,
 			timeZone: agencies.timezone,
+			agencySettings: agencies.settings,
 			quietStart: userSettings.quiet_hours_start,
 			quietEnd: userSettings.quiet_hours_end,
 			/** false after the person texted STOP (sms-inbound), even for mandatory types */

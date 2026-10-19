@@ -987,6 +987,24 @@ Agency admins can set organization-wide defaults that override the role-based de
 
 Admin overrides are stored in `agencies.settings` under the `notification_overrides` key. User preferences that conflict with admin overrides are silently overridden at send time.
 
+**Implemented increment:** Setup → Agency notification rules saves validated
+`{ disabledTypes, requireSummaryEmail, quietHours }` under that key through the
+existing admin-only `agency.update`. Quiet hours are null (use personal hours)
+or a 4–10 hour `{ start, end }` window in agency time. Email and urgent/high
+alerts retain their quiet-hours exemptions. Mandatory safety types cannot be
+disabled. A required daily-summary email cannot also be disabled. Delivery
+rechecks current agency quiet hours and disabling for pending rows; disabled
+pending deliveries are marked failed/suppressed without contacting a provider.
+Escalation also stops for disabled optional types. Existing in-app history is
+retained. Required summary email is selected when a summary is queued; existing
+queued events are not regenerated. Unrelated agency settings are preserved.
+
+Forced supervisor SMS is a separate remaining increment. Existing
+`sms_enabled = false` also represents a carrier STOP, so treating it as an
+ordinary preference that an admin may bypass would be unsafe. This increment
+leaves SMS opt-outs, carrier suppression, fallback and daily limits unchanged.
+
+
 ---
 
 ## 10. Rate Limiting

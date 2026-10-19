@@ -16,14 +16,12 @@ const push = vi.fn(async () => ({ providerMessageId: 'test-push' }));
 beforeAll(async () => {
 	setProvidersForTests({ email, push });
 	await withService(async (tx) => {
-		await tx
-			.insert(s.agencies)
-			.values({
-				id: agency,
-				name: 'Jobs Test',
-				subscription_tier: 'complete',
-				slug: `jobs-${agency}`
-			});
+		await tx.insert(s.agencies).values({
+			id: agency,
+			name: 'Jobs Test',
+			subscription_tier: 'complete',
+			slug: `jobs-${agency}`
+		});
 		await tx.insert(s.profiles).values({
 			id: profile,
 			agency_id: agency,
@@ -255,4 +253,155 @@ it('sync-window removes old records from device sync without deleting them', asy
 	);
 	expect(rows.find((r) => r.id === ids[0])?.device_sync).toBe(false);
 	expect(rows.find((r) => r.id === ids[1])?.device_sync).toBe(true);
+});
+
+it('agency rules require summary email, suppress optional types, and keep safety alerts', async () => {
+	const id = randomUUID();
+	const staff = randomUUID();
+	await withService(async (tx) => {
+		await tx.insert(s.agencies).values({
+			id,
+			name: 'Override test',
+			slug: `override-${id}`,
+			settings: {
+				notification_overrides: {
+					disabledTypes: ['shift_reminder', 'health_alert'],
+					requireSummaryEmail: true,
+					quietHours: null
+				}
+			}
+		});
+		await tx
+			.insert(s.profiles)
+			.values({
+				id: staff,
+				agency_id: id,
+				auth_uid: `override-${staff}`,
+				email: 'override@example.test',
+				name: 'Synthetic',
+				role: 'supervisor'
+			});
+		await tx
+			.insert(s.notificationPreferences)
+			.values({
+				agency_id: id,
+				profile_id: staff,
+				notification_type: 'daily_summary',
+				push_enabled: false,
+				email_enabled: false,
+				sms_enabled: false
+			});
+	});
+	const summary = randomUUID();
+	const optional = randomUUID();
+	const safety = randomUUID();
+	await withService(async (tx) => {
+		const to = [{ id: staff, role: 'supervisor' as const }];
+		expect(
+			await notify(tx, id, to, {
+				type: 'daily_summary',
+				title: 'Summary',
+				priority: 4,
+				referenceId: summary
+			})
+		).toBe(1);
+		expect(
+			await notify(tx, id, to, {
+				type: 'shift_reminder',
+				title: 'Reminder',
+				priority: 3,
+				referenceId: optional
+			})
+		).toBe(0);
+		expect(
+			await notify(tx, id, to, {
+				type: 'health_alert',
+				title: 'Review',
+				priority: 1,
+				referenceId: safety
+			})
+		).toBe(1);
+	});
+	const rows = await withService((tx) =>
+		tx.select().from(s.notifications).where(eq(s.notifications.agency_id, id))
+	);
+	expect(
+		rows
+			.filter((r) => r.reference_id === summary)
+			.map((r) => r.channel)
+			.sort()
+	).toEqual(['email', 'in_app']);
+	expect(rows.filter((r) => r.reference_id === optional)).toEqual([]);
+	expect(
+		rows
+			.filter((r) => r.reference_id === safety)
+			.map((r) => r.channel)
+			.sort()
+	).toEqual(['in_app', 'push']);
+});
+
+it('rechecks agency disabling and quiet hours for already queued deliveries', async () => {
+	const id = randomUUID();
+	const staff = randomUUID();
+	const optional = randomUUID();
+	const normal = randomUUID();
+	const urgent = randomUUID();
+	const hhmm = (offset: number) =>
+		new Date(Date.now() + offset * 3600000).toISOString().slice(11, 16);
+	await withService(async (tx) => {
+		await tx.insert(s.agencies).values({
+			id,
+			name: 'Dispatch overrides',
+			slug: `dispatch-${id}`,
+			timezone: 'UTC',
+			settings: {
+				notification_overrides: {
+					disabledTypes: ['shift_reminder'],
+					requireSummaryEmail: false,
+					quietHours: { start: hhmm(-1), end: hhmm(4) }
+				}
+			}
+		});
+		await tx
+			.insert(s.profiles)
+			.values({
+				id: staff,
+				agency_id: id,
+				auth_uid: `dispatch-${staff}`,
+				email: 'dispatch@example.test',
+				name: 'Synthetic',
+				role: 'supervisor'
+			});
+		await tx
+			.insert(s.deviceTokens)
+			.values({ agency_id: id, profile_id: staff, token: `synthetic-${staff}`, platform: 'web' });
+		await tx
+			.insert(s.userSettings)
+			.values({
+				agency_id: id,
+				profile_id: staff,
+				quiet_hours_start: hhmm(5),
+				quiet_hours_end: hhmm(10)
+			});
+		await tx.insert(s.notifications).values(
+			[
+				{ id: optional, type: 'shift_reminder', priority: 1 },
+				{ id: normal, type: 'health_alert', priority: 3 },
+				{ id: urgent, type: 'health_alert', priority: 1 }
+			].map((row) => ({
+				...row,
+				agency_id: id,
+				profile_id: staff,
+				channel: 'push',
+				title: 'Synthetic'
+			}))
+		);
+	});
+	expect(
+		await runJob(
+			'notifications-dispatch',
+			{ ids: [optional, normal, urgent] },
+			{ attempt: 0, final: true }
+		)
+	).toEqual({ sent: 1, held: 1, failed: 0, suppressed: 1, rateLimited: 0 });
 });

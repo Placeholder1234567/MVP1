@@ -4,12 +4,22 @@
 // step fires and nobody has acknowledged the event, it sends that step's
 // channel to the step's recipients, marks the event escalated, and queues the
 // next step; after the last step the event is escalation_exhausted.
-import { escalationStep, escalationTaskName, secondsUntilStep } from '../../../domain/index.ts';
+import {
+	escalationStep,
+	escalationTaskName,
+	secondsUntilStep,
+	notificationOverrides,
+	notificationDisabled
+} from '../../../domain/index.ts';
 import { withService, type Tx } from '../../db';
 import { enqueue } from '../../jobs/queue.ts';
 import { queueDeliveries } from './dispatch';
 import { eventRows, setEventStatus } from './escalation.queries';
-import { activeStaffByRole, insertNotifications } from './notification.queries';
+import {
+	activeStaffByRole,
+	insertNotifications,
+	agencyNotificationSettings
+} from './notification.queries';
 
 export interface EscalationPayload {
 	agencyId: string;
@@ -40,6 +50,13 @@ export async function escalate(p: EscalationPayload): Promise<{ outcome: Escalat
 	if (!step) return { outcome: 'gone' };
 	const last = !escalationStep(p.type, p.step + 1);
 	const result = await withService(async (tx) => {
+		if (
+			notificationDisabled(
+				p.type,
+				notificationOverrides(await agencyNotificationSettings(tx, p.agencyId))
+			)
+		)
+			return { outcome: 'gone' as const };
 		const event = await eventRows(tx, p.agencyId, p.type, p.referenceId, p.notificationId);
 		if (!event.length) return { outcome: 'gone' as const };
 		if (event.some((r) => r.readAt)) return { outcome: 'acknowledged' as const };
