@@ -41,6 +41,8 @@ export interface ClinicalFilter {
 	from: Date;
 	to: Date;
 	approvedOnly: boolean;
+	/** Internal service cap; never read from an HTTP input. */
+	rowLimit?: number;
 }
 export async function clinicalRows(
 	tx: Tx,
@@ -52,7 +54,7 @@ export async function clinicalRows(
 		eq(clients.agency_id, agencyId),
 		f.clientId ? eq(clients.id, f.clientId) : undefined
 	);
-	const cap = 1001;
+	const cap = (f.rowLimit ?? 1000) + 1;
 	switch (f.type) {
 		case 'goals':
 			return tx
@@ -252,7 +254,7 @@ export async function clinicalRows(
 	}
 }
 
-export function clinicalNoteHistory(tx: Tx, agencyId: string, ids: string[]) {
+export function clinicalNoteHistory(tx: Tx, agencyId: string, ids: string[], limit = 5000) {
 	return tx
 		.select({
 			noteId: noteHistory.note_id,
@@ -269,5 +271,5 @@ export function clinicalNoteHistory(tx: Tx, agencyId: string, ids: string[]) {
 			)
 		)
 		.orderBy(asc(noteHistory.occurred_at))
-		.limit(5001);
+		.limit(limit + 1);
 }
