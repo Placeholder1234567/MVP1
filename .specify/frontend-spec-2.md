@@ -2167,6 +2167,8 @@ When the service worker detects a new version is available (via `updatefound` ev
    - New version activates on next full page load
    - No persistent nag -- one toast per update, once
 
+**As built:** `UpdateToast.svelte` with `src/lib/pwa/update.svelte.ts`. The app watches the registration for a waiting worker (and asks the browser to check hourly while visible, since a single-page app rarely does a full navigation). Unsaved work is detected the way forms already guard a reload: a synthetic, cancelable `beforeunload` event, which any dirty form cancels; then the toast says "Save your draft first, then refresh." and stays up. Otherwise Refresh posts `skip-waiting` to the waiting worker and reloads on `controllerchange` (a plain `location.reload()` would keep the old worker while this tab is open). Dismissed or ignored, the update starts the next time every tab is closed. In dark themes the Refresh link is underlined in the pill's text color, since lemon on the light pill can't be read.
+
 ---
 
 ### 8.6 Push Notification Permission
