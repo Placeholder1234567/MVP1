@@ -1,6 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import type { PowerSyncDatabase } from '@powersync/web';
-import type { Database } from '#lib/sync/schema.ts';
+import { syncedTables, type Database } from '#lib/sync/schema.ts';
+import { retryStatement, type FailedWrite } from '#lib/sync/failed-writes.ts';
 import { chartingLabels } from '#lib/config/charting-preset.ts';
 import { isTheme, type Theme } from '#lib/domain/theme.ts';
 import { unseenMessages } from '#lib/domain/message-reads.ts';
@@ -72,7 +73,9 @@ export class CareSession {
 		return unseenMessages(this.messages, this.messageReads, this.user.profileId, this.homeId)
 			.length;
 	}
-	failed = $state<{ id: string; message: string }[]>([]);
+	failed = $state<FailedWrite[]>([]);
+	/** One-time messages from sync, e.g. a dose someone else also recorded. */
+	notices = $state<{ id: string; message: string }[]>([]);
 	status = $state('Connecting…');
 	pending = $state(0);
 	checkingSync = $state(true);
@@ -88,6 +91,38 @@ export class CareSession {
 	private uploads: UploadStatus | undefined;
 	async refreshUploadStatus(): Promise<void> {
 		await this.uploads?.refresh();
+	}
+	/**
+	 * Queues a refused change again. Returns what happened, for the person:
+	 * 'queued', 'wait' (the device hasn't caught up with the server yet) or
+	 * 'gone' (nothing left to retry; the change can only be discarded).
+	 */
+	async retryFailed(write: FailedWrite): Promise<'queued' | 'wait' | 'gone'> {
+		const db = this.db;
+		if (!db) return 'wait';
+		return db.writeTransaction(async (tx) => {
+			const known = (t: string) =>
+				Object.hasOwn(syncedTables, t)
+					? syncedTables[t as keyof typeof syncedTables].columns.map((c) => c.name)
+					: null;
+			const exists = known(write.table_name)
+				? (await tx.getOptional(`SELECT 1 FROM "${write.table_name}" WHERE id = ?`, [
+						write.record_id
+					])) !== null
+				: false;
+			const next = retryStatement(write, known, exists);
+			if (!next) return 'gone';
+			if ('wait' in next) return 'wait';
+			await tx.execute(next.sql, next.params);
+			await tx.execute('DELETE FROM failed_writes WHERE id = ?', [write.id]);
+			return 'queued';
+		});
+	}
+	async discardFailed(id: string) {
+		await this.db?.execute('DELETE FROM failed_writes WHERE id = ?', [id]);
+	}
+	async dismissNotice(id: string) {
+		await this.db?.execute('UPDATE sync_notices SET seen = 1 WHERE id = ?', [id]);
 	}
 	/** Whether the agency's plan includes a feature. */
 	has(feature: string) {
@@ -178,9 +213,13 @@ export class CareSession {
 			(r) => (this.settings = r[0] ?? null)
 		);
 		watch<Database['profiles']>('SELECT * FROM profiles ORDER BY name', (r) => (this.staff = r));
-		watch<{ id: string; message: string }>(
-			'SELECT id, message FROM failed_writes ORDER BY failed_at DESC',
+		watch<FailedWrite>(
+			'SELECT id, record_id, table_name, op, message, data, failed_at FROM failed_writes ORDER BY failed_at DESC',
 			(r) => (this.failed = r)
+		);
+		watch<{ id: string; message: string }>(
+			'SELECT id, message FROM sync_notices WHERE seen = 0 ORDER BY created_at',
+			(r) => (this.notices = r)
 		);
 		const uploads = new UploadStatus(
 			async () => (await db.getUploadQueueStats()).count,

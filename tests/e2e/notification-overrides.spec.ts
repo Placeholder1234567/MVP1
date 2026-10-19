@@ -1,7 +1,8 @@
+import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from '@playwright/test';
 test('an admin can save agency notification rules without disabling safety alerts', async ({
 	page
-}) => {
+}, info) => {
 	test.setTimeout(180000);
 	await page.goto('/login');
 	await page.getByLabel('Email', { exact: true }).fill('admin@guad.test');
@@ -12,9 +13,25 @@ test('an admin can save agency notification rules without disabling safety alert
 	if (await confirm.isVisible()) await confirm.fill('654321');
 	await page.getByRole('button', { name: /^(Save PIN and open|Unlock)$/ }).click();
 	await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
-	await page.goto('/dashboard/setup');
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	// Keep the in-memory unlock key during navigation; a full load correctly locks again.
+	if (info.project.name === 'phone')
+		await page.getByRole('button', { name: 'Search', exact: true }).click();
+	else await page.keyboard.press('Control+k');
+	await page.getByRole('combobox', { name: /^Search people/ }).fill('setup');
+	await page
+		.getByRole('option', { name: /^Setup/ })
+		.first()
+		.click();
 	const form = page.getByRole('form', { name: 'Agency notification rules' });
 	await expect(form).toBeVisible();
+	expect(
+		(
+			await new AxeBuilder({ page })
+				.include('form[aria-labelledby="notification-rules-heading"]')
+				.analyze()
+		).violations
+	).toEqual([]);
 	await expect(form.getByRole('checkbox', { name: 'Health alerts', exact: true })).toHaveCount(0);
 	await expect(form.getByRole('checkbox', { name: 'Coverage offers', exact: true })).toHaveCount(0);
 	const required = form.getByRole('checkbox', { name: 'Require daily summary email', exact: true });

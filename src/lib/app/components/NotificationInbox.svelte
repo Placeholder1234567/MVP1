@@ -60,6 +60,11 @@
 		if (type === 'referral_status_change' && app.user.role !== 'caregiver')
 			return '/(app)/dashboard/intake';
 		if (type === 'daily_summary' && app.user.role !== 'caregiver') return '/(app)/dashboard';
+		if (
+			(type === 'access_review' || type === 'email_delivery_problem') &&
+			app.user.role === 'admin'
+		)
+			return '/(app)/dashboard/staff';
 		return '/(app)/today';
 	}
 	async function load(reset = false) {

@@ -221,6 +221,8 @@ In the client health setup (office view), let supervisors set thresholds:
 
 Store in `client.health.thresholds: { syHi: 140, syLo: 90, ... }`
 
+**As built:** blood glucose is a limit pair like the others (`glucoseLo` 70, `glucoseHi` 250 in `VITAL_LIMITS`; flags at or above the high limit or below the low one), so a nurse can set a person's own range on the People screen, and the trend chart shades it. Weight flags `weight_change` when it is 5 lb or more (`WEIGHT_CHANGE_LB`) from the person's previous weight reading; the vitals form warns as it is typed, and the server checks against the last weight recorded before the entry. Both raise the usual `health_alert`. Respiratory rate and SpO2 still have no limits (none are specified).
+
 **3b. Color flagging on entry**
 When a DSP enters vitals, immediately color the field:
 - Green border: within range
@@ -278,6 +280,8 @@ Provide blank templates with headers matching common Therap export formats:
 
 **4c. Therap column presets**
 Since Therap's CSV exports have known (if inconsistent) field names, include preset mappings so admins can select "I exported from Therap" and columns auto-map.
+
+**As built:** `src/lib/domain/csv-mapping.ts` on Reports → Review CSV imports. There is no separate "I exported from Therap" switch: a file whose columns aren't Guad's template columns is read by recognized names (Last Name / First Name, Home, DOB / Date of Birth, Guardian + Phone, Individual, Med Name, Time, PRN, Frequency, Prescriber, Goal Text, Measurement Method, Target, Current Baseline, Role, Med Certified, Home Assignments and common variants). Homes and people are matched by exact name (capitals aside) and only when one matches; dates like 3/7/1990 and times like 8:00 AM become Guad's formats; PRN yes becomes "As needed"; frequency and prescriber are kept in the medication notes, and the baseline in the goal target; a goal file with no area column uses "General". The preview lists how each column was read and which columns are left out, and every row then goes through the same checks as a template file, so nothing unresolved is imported. A second template download uses these common column names (4b). Excel files still need saving as CSV first.
 
 ### Priority 5 — Reporting & Export
 

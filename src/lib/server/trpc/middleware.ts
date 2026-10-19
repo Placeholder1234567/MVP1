@@ -7,6 +7,7 @@ import { userRequests } from '../rate-limit.ts';
 import { withUser, type Tx } from '../db/index.ts';
 import { hasRole, type Role } from '../services/auth/index.ts';
 import type { FeatureFlag } from '../../entitlements/tier-features.ts';
+import { upgradeMessage } from '../../entitlements/upgrade.ts';
 import type { Context } from './context.ts';
 
 const t = initTRPC.context<Context>().create({
@@ -25,6 +26,18 @@ const t = initTRPC.context<Context>().create({
 				data: { code: shape.data.code, httpStatus: shape.data.httpStatus, opId }
 			};
 		}
+		// A plan gate tells the app which feature is missing, so it can show
+		// the upgrade dialog (entitlements.md §9).
+		if (error.cause instanceof FeatureRequired)
+			return {
+				...shape,
+				data: {
+					code: shape.data.code,
+					httpStatus: shape.data.httpStatus,
+					upgradeRequired: true,
+					feature: error.cause.feature
+				}
+			};
 		return { ...shape, data: { code: shape.data.code, httpStatus: shape.data.httpStatus } };
 	}
 });
@@ -104,6 +117,14 @@ export function roleProcedure(minRole: Role) {
 	});
 }
 
+/** Thrown (as a TRPCError cause) when the agency's plan lacks a feature. */
+export class FeatureRequired extends Error {
+	name = 'FeatureRequired';
+	constructor(public readonly feature: FeatureFlag) {
+		super('Feature not on plan');
+	}
+}
+
 /**
  * requireFeature (entitlements.md §5): the agency's plan must include the
  * feature. The effective feature set is loaded with the user's profile, so
@@ -115,7 +136,8 @@ export function featureProcedure(feature: FeatureFlag | FeatureFlag[]) {
 		if (!any.some((f) => ctx.user.features.includes(f))) {
 			throw new TRPCError({
 				code: 'FORBIDDEN',
-				message: 'This feature is not included in your agency’s plan'
+				message: upgradeMessage(any[0]),
+				cause: new FeatureRequired(any[0])
 			});
 		}
 		return next();

@@ -106,6 +106,7 @@
 			{@render kpi('Shifts with a signed note', data.documentation.completeness, '%')}
 			{@render kpi('Notes signed', data.documentation.signed)}
 			{@render kpi('Drafted with Lomi', data.documentation.lomiRate, '%')}
+			{@render kpi('Lomi drafts sent back', data.documentation.lomiSentBackRate, '%', 'lower')}
 			{@render kpi('Hours to approve', data.documentation.hoursToApprove, ' h', 'lower')}
 			{@render kpi('Notes sent back', data.documentation.sentBack, '', 'lower')}
 		</div>

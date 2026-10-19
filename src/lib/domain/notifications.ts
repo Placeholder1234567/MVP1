@@ -44,7 +44,9 @@ export const DEFAULT_CHANNELS = {
 	referral_status_change: r([], [], ['push']),
 	system_maintenance: r(['push'], ['push', 'email'], ['push', 'email']),
 	// A staff address bounced for good or reported Guad as spam (notifications.md §7).
-	email_delivery_problem: r([], [], ['push'])
+	email_delivery_problem: r([], [], ['push']),
+	// Dormant accounts, stale home access, a new admin (security.md "Access Reviews").
+	access_review: r([], [], ['push', 'email'])
 } satisfies Record<string, Row>;
 
 export type NotificationType = keyof typeof DEFAULT_CHANNELS;
@@ -78,7 +80,8 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	system_maintenance: 'System maintenance',
 	controlled_count_discrepancy: 'Controlled medication count discrepancies',
 	controlled_countersign: 'Requests to witness a count',
-	email_delivery_problem: 'Email delivery problems'
+	email_delivery_problem: 'Email delivery problems',
+	access_review: 'Access review alerts'
 };
 
 /** Always sent, whatever the user's preferences say (clinical safety, compliance). */

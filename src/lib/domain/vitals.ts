@@ -10,8 +10,28 @@ export const VITAL_LIMITS = {
 	sysHi: 140,
 	sysLo: 90,
 	diaHi: 90,
-	diaLo: 60
+	diaLo: 60,
+	// charting-guide.md "Vital Sign Alerts": blood glucose 250 or above, or below 70
+	glucoseHi: 250,
+	glucoseLo: 70
 } as const;
+
+/** A weight this far from the person's last weight is flagged (charting-guide.md). */
+export const WEIGHT_CHANGE_LB = 5;
+
+/** Whether a weight moved at least WEIGHT_CHANGE_LB from the previous one. */
+export function weightChanged(
+	weight: number | null | undefined,
+	previous: number | null | undefined
+) {
+	return (
+		weight != null &&
+		previous != null &&
+		Number.isFinite(weight) &&
+		Number.isFinite(previous) &&
+		Math.abs(weight - previous) >= WEIGHT_CHANGE_LB
+	);
+}
 
 export type VitalLimits = { -readonly [K in keyof typeof VITAL_LIMITS]: number };
 export type VitalLimitKey = keyof VitalLimits;
@@ -28,7 +48,8 @@ export const VITAL_LIMIT_PAIRS: readonly {
 	{ label: 'Temperature', unit: '°F', lo: 'tempLo', hi: 'tempHi', min: 90, max: 106 },
 	{ label: 'Pulse', unit: 'bpm', lo: 'pulseLo', hi: 'pulseHi', min: 20, max: 220 },
 	{ label: 'Blood pressure, top', unit: 'mmHg', lo: 'sysLo', hi: 'sysHi', min: 50, max: 250 },
-	{ label: 'Blood pressure, bottom', unit: 'mmHg', lo: 'diaLo', hi: 'diaHi', min: 30, max: 150 }
+	{ label: 'Blood pressure, bottom', unit: 'mmHg', lo: 'diaLo', hi: 'diaHi', min: 30, max: 150 },
+	{ label: 'Blood glucose', unit: 'mg/dL', lo: 'glucoseLo', hi: 'glucoseHi', min: 20, max: 600 }
 ];
 
 /**
@@ -67,14 +88,16 @@ export interface Vitals {
 	pulse?: number | null;
 	sys?: number | null;
 	dia?: number | null;
+	glucose?: number | null;
 }
 
-export type VitalFlag = 'temperature' | 'pulse' | 'blood_pressure';
+export type VitalFlag = 'temperature' | 'pulse' | 'blood_pressure' | 'glucose';
 
 /**
  * Which readings are outside the limits. Matches the MVP exactly: temperature,
  * systolic and diastolic flag at or above the high limit; pulse flags only
- * above it. Readings below a low limit always flag.
+ * above it. Readings below a low limit always flag. Blood glucose (not in the
+ * MVP) flags at or above its high limit, as charting-guide.md words it.
  */
 export function vitalFlags(v: Vitals, lim: VitalLimits = VITAL_LIMITS): VitalFlag[] {
 	const flags: VitalFlag[] = [];
@@ -87,5 +110,7 @@ export function vitalFlags(v: Vitals, lim: VitalLimits = VITAL_LIMITS): VitalFla
 	) {
 		flags.push('blood_pressure');
 	}
+	if (has(v.glucose) && (v.glucose >= lim.glucoseHi || v.glucose < lim.glucoseLo))
+		flags.push('glucose');
 	return flags;
 }

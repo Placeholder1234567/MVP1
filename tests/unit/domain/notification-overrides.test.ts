@@ -52,6 +52,7 @@ it('validates safety exclusions, quiet-hour duration and conflicting admin choic
 });
 
 it('protects essential workflow transports without changing their personal channel defaults', () => {
+	expect(AGENCY_REQUIRED_NOTIFICATIONS.has('access_review')).toBe(true);
 	for (const type of AGENCY_REQUIRED_NOTIFICATIONS) {
 		const settings = { notification_overrides: { disabledTypes: [type] } };
 		expect(notificationDisabled(type, notificationOverrides(settings))).toBe(false);

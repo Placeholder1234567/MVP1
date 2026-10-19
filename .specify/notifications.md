@@ -380,6 +380,19 @@ Update `notifications.sent_at`
 | **Template** | `"Email to a staff member keeps bouncing"` or `"A staff member marked Guad email as spam"`. Links to the staff record; names no one. |
 | **Escalation** | None |
 
+### 2.20 access_review
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | The daily `access-review-sweep` finds active accounts with no session for 90+ days, or caregivers with home access where they had no shift in 30 days (security.md "Automated Detection"). At most once a week per agency. Also sent at once when an admin account is invited or someone is made an admin. |
+| **Recipients** | The agency's admins (for a new admin, every admin except the new one) |
+| **Channels** | In-app + push + email |
+| **Priority** | Normal (weekly review), High (new admin) |
+| **Template** | `"Access review: {n} active accounts unused for 90+ days; {n} caregivers have home access with no shift there in 30 days"` or `"Access review: a new admin account was added"`. Counts only; the Staff screen shows who. |
+| **PHI Safety** | Safe. No names. |
+| **Deep Link** | `/dashboard/staff` |
+| **Escalation** | None |
+
 ### Notification Type Summary Table
 
 | Type | Priority | Push | SMS | Email | Mandatory | Escalation |
@@ -408,6 +421,8 @@ Update `notifications.sent_at`
 | `daily_summary` | Low | Y | N | Y | N | None |
 | `referral_status_change` | Low | Y | N | N | N | None |
 | `system_maintenance` | Low | Y | N | Y | N | None |
+| `email_delivery_problem` | Normal | Y | N | N | N | None |
+| `access_review` | Normal (High for a new admin) | Y | N | Y | N | None (at most weekly) |
 
 `*` SMS sent only on escalation if push is unacknowledged, not on initial send. Exception: `clock_missed` sends SMS immediately to the supervisor (not escalation-only).
 
@@ -670,6 +685,8 @@ The service worker `notificationclick` handler:
 - When the user opens the notification center or taps a notification, recalculate the unread count via `trpc.notification.getUnreadCount.query()` and update the badge.
 - On `visibilitychange` to `visible`, refresh the badge count.
 
+
+**As built:** `src/lib/pwa/badge.ts`. The app sets the badge to the unread in-app alerts on this device (the same number as the Alerts link; it comes from the synced `notifications` table, so no extra request), refreshes it on `visibilitychange`, and clears it on sign-out. When a push arrives while the app is closed, the service worker sets the badge to the number of Guad notifications in the tray; the app corrects it when it opens. A number only, never alert content. Browsers without the Badging API are skipped silently.
 ### iOS PWA Push (Safari 16.4+)
 
 - iOS PWA push is supported on Safari 16.4+ (iOS 16.4+). The same FCM integration works.
@@ -733,6 +750,8 @@ All SMS messages must be under 160 characters to avoid multi-segment billing. Te
 - Monthly SMS usage per agency is counted from `notifications` (channel = `sms`, status = `sent`); no separate counter is needed.
 - Admin dashboard shows monthly SMS usage and estimated cost.
 - Alert agency admin when usage exceeds 80% of the plan's included SMS volume.
+
+**As built:** Setup → **Messaging usage** (`agency.messagingUsage`, admin only; `services/notification/usage.ts`) shows this calendar month's texts, emails and push alerts actually sent (in the agency's time zone; failed and held deliveries don't count) and the text cost at about a cent each (`SMS_COST_CENTS`, infrastructure.md). It also lists staff with texts off for every type (they replied STOP or turned texts off), which covers "Admin UI shows which users have opted out of SMS"; only they can turn texts back on. Segment counts aren't stored: every template stays under 160 characters, so a text is one segment. The 80% alert waits on the plan's included text volume, which entitlements.md doesn't define yet (an owner decision).
 
 ### Incoming Replies (two-way SMS)
 

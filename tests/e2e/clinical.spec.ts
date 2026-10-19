@@ -15,9 +15,10 @@ test('expanded health readings and explicit bowel observations survive offline s
 	await signIn(page, 'supervisor@guad.test');
 	await openPerson(page, person, true);
 	await page.getByRole('link', { name: /^Health Vitals/ }).click();
+	// Respiratory rate and SpO2; blood glucose has limits (charting-guide.md).
 	await expect(
 		page.getByText('No alert limits configured; follow the care plan', { exact: true })
-	).toHaveCount(3);
+	).toHaveCount(2);
 	await context.setOffline(true);
 	await page.getByLabel('Respiratory rate', { exact: true }).fill('18');
 	await page.getByLabel('SpO2', { exact: true }).fill('97');
@@ -87,7 +88,7 @@ async function signIn(page: Page, email: string, home = 'Oak House') {
 
 async function synced(page: Page) {
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
-	await expect(page.getByText('changes need attention', { exact: false })).toHaveCount(0);
+	await expect(page.getByText('could not be saved', { exact: false })).toHaveCount(0);
 }
 
 async function openPerson(page: Page, name: string, supervisor = false) {

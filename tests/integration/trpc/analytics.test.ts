@@ -161,6 +161,8 @@ it('reports this week’s coverage, documentation and care for a home', async ()
 	expect(now(r.coverage.avgFillMinutes)).toBeGreaterThanOrEqual(29);
 	expect(now(r.documentation.signed)).toBe(1);
 	expect(now(r.documentation.lomiRate)).toBe(0);
+	// No Lomi-drafted notes signed yet: no rate rather than 0%.
+	expect(now(r.documentation.lomiSentBackRate)).toBeNull();
 	expect(now(r.documentation.hoursToApprove)).toBe(0);
 	expect(now(r.care.dosesGiven)).toBe(1);
 	expect(now(r.care.refusedOrHeld)).toBe(1);
@@ -191,4 +193,18 @@ it('covers all homes by default and is for supervisors on the Complete plan', as
 	await expect((await as(PRO_SUP)).analytics.weekly({})).rejects.toMatchObject({
 		code: 'FORBIDDEN'
 	});
+});
+
+it('reports how many Lomi-drafted notes were sent back', async () => {
+	const carer = await as(CARER);
+	const drafted = await carer.note.create({
+		clientId: PERSON,
+		type: 'behavior',
+		content: { antecedent: 'Synthetic' },
+		lomiDrafted: true
+	});
+	await carer.note.sign({ id: drafted.id });
+	await (await as(SUP)).note.sendBack({ id: drafted.id, comment: 'Add what happened after.' });
+	const r = await (await as(SUP)).analytics.weekly({ homeId: HOME });
+	expect(r.documentation.lomiSentBackRate.at(-1)).toBe(100);
 });

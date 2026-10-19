@@ -20,6 +20,7 @@ import {
 } from '../../identity.ts';
 import { providers } from '../../messaging/index.ts';
 import { listHomes } from '../home/index.ts';
+import { adminAdded } from '../notification/index.ts';
 import type { CurrentUser } from './auth.types';
 import {
 	insertProfile,
@@ -104,6 +105,7 @@ export async function inviteStaff(tx: Tx, admin: CurrentUser, input: z.infer<typ
 		throw new ServiceError('RULE_VIOLATION', 'Someone with this email is already on your staff');
 
 	const created = await createStaffAccount(tx, admin.agencyId, { ...data, email });
+	if (data.role === 'admin') await adminAdded(tx, admin.agencyId, created.id);
 	return { id: created.id, email, name: data.name, role: data.role };
 }
 
@@ -183,6 +185,8 @@ export async function updateStaff(
 		active: data.active
 	});
 	if (!row) throw new ServiceError('NOT_FOUND', 'Staff member not found');
+	if (data.role === 'admin' && before.role !== 'admin')
+		await adminAdded(tx, admin.agencyId, data.id);
 	if (data.active !== undefined && data.active !== before.active) {
 		const uid = before.authUid;
 		afterCommit(() => (data.active ? enableIdentity(uid) : disableIdentity(uid)));

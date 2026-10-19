@@ -79,3 +79,14 @@ export async function setMfaEnabled(tx: Tx, agencyId: string, profileId: string)
 		.set({ mfa_enabled: true, updated_at: new Date() })
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId)));
 }
+
+/**
+ * Stamps a new session for the access review. updated_at is left alone: the
+ * column never syncs, so devices have nothing to download.
+ */
+export async function setLastSignIn(tx: Tx, agencyId: string, profileId: string, at: Date) {
+	await tx
+		.update(profiles)
+		.set({ last_sign_in_at: at })
+		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId)));
+}

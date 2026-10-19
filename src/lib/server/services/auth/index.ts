@@ -13,6 +13,7 @@ import {
 	findAgencySettingsByAuthUid,
 	findMfaFacts,
 	findProfile,
+	setLastSignIn,
 	setMfaEnabled
 } from './auth.queries';
 import { ROLE_RANK, type CurrentUser, type Role } from './auth.types';
@@ -59,6 +60,11 @@ export async function getCurrentUser(authUid: string): Promise<CurrentUser | nul
 export async function sessionLengthMs(authUid: string): Promise<number> {
 	const settings = await withService((tx) => findAgencySettingsByAuthUid(tx, authUid));
 	return sessionMinutes(settings) * 60_000;
+}
+
+/** Records that this person just got a session (security.md "Automated Detection"). */
+export async function recordSignIn(user: CurrentUser, at = new Date()) {
+	await withService((tx) => setLastSignIn(tx, user.agencyId, user.profileId, at));
 }
 
 /** The caller's own profile, read as the caller (RLS applies). */

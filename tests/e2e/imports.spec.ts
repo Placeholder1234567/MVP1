@@ -244,3 +244,41 @@ test('CSV imports require valid review, preserve offline preview and create each
 	);
 	await page.screenshot({ path: info.outputPath('csv-import-review.png'), fullPage: true });
 });
+
+test('a Therap-style people export is read by column name and imports once', async ({
+	page
+}, info) => {
+	test.skip(info.project.name !== 'desktop', 'One run is enough for column mapping.');
+	test.setTimeout(180000);
+	const last = `Mapped${randomUUID().slice(0, 6)}`;
+	await page.goto('/login');
+	await page.getByLabel('Email', { exact: true }).fill('supervisor@guad.test');
+	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
+	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
+	await page.getByLabel('Confirm PIN', { exact: true }).fill(PIN);
+	await page.getByRole('button', { name: 'Save PIN and open', exact: true }).click();
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	await page.goto('/dashboard/imports');
+	await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
+	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+	await page.getByLabel('Select CSV file', { exact: true }).setInputFiles({
+		name: 'therap-export.csv',
+		mimeType: 'text/csv',
+		buffer: Buffer.from(
+			'Last Name,First Name,Home,DOB,Guardian,Phone,Program Code\r\n' +
+				`${last},Synthetic,Oak House,3/7/1990,Synthetic guardian,555-0100,X1\r\n`
+		)
+	});
+	const read = page.getByRole('region', { name: 'How your columns were read' });
+	await expect(read).toContainText('Date of birth');
+	await expect(read).toContainText('Not imported: program code.');
+	const row = page.getByRole('region', { name: /^CSV row 2/ });
+	await expect(row.getByRole('heading')).toHaveText('CSV line 2 → Oak House');
+	await expect(row).toContainText('1990-03-07');
+	await expect(row).toContainText('Synthetic guardian (555-0100)');
+	await page.getByRole('checkbox', { name: /I reviewed every value/ }).check();
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Apply reviewed import', exact: true }).click();
+	await expect(row.getByText('Created', { exact: true })).toBeVisible();
+});

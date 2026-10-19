@@ -31,6 +31,12 @@ self.addEventListener('push', (event) => {
 				return;
 			}
 			await self.registration.showNotification(notice.title, notice.options);
+			// The icon counts alerts waiting in the tray; the app sets the exact
+			// unread count once it opens.
+			const shown = (await self.registration.getNotifications()).length;
+			await (navigator as Navigator & { setAppBadge?(n: number): Promise<void> })
+				.setAppBadge?.(shown)
+				.catch(() => {});
 		})()
 	);
 });
@@ -90,7 +96,12 @@ self.addEventListener('activate', (event) => {
 		})()
 	);
 });
-// No skipWaiting: an update must not interrupt an open chart or pending writes.
+// No skipWaiting on install: an update must not interrupt an open chart or
+// pending writes. The app asks for it once the person taps Refresh and no
+// form has unsaved changes (frontend-spec-2.md §8.5, pwa/update.svelte.ts).
+self.addEventListener('message', (event) => {
+	if (event.data?.type === 'skip-waiting') void self.skipWaiting();
+});
 self.addEventListener('fetch', (event) => {
 	const url = new URL(event.request.url);
 	const kind = pwaRequestKind(

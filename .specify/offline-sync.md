@@ -549,6 +549,8 @@ When a write permanently fails:
 4. The user can view the failed write details and either discard or retry manually.
 5. Failed writes are logged with enough context to diagnose the issue without exposing PHI in the error message.
 
+**As built:** `SyncProblems.svelte` shows the banner ("[n] change(s) could not be saved.") with a Review button listing each refused change by kind (shift note, medication record, board message…), when it failed and the server's PHI-free reason. **Try again** writes the same change to the local database (`retryStatement()` in `src/lib/sync/failed-writes.ts`; table and column names are checked against the synced schema), so it queues and uploads through the same server rules; a refused new record can only be added again once the device has caught up and dropped it, until then the app asks to wait. **Discard** deletes the entry after a confirm. `sync_notices` (e.g. `MAR_CONFLICT`: "[Name] also recorded this dose…") show once as a callout until dismissed (`seen = 1`).
+
 ### Queue Size Monitoring
 
 | Queue Depth | Status | Action |
@@ -683,6 +685,8 @@ New SW activates, old caches purged
         v
 User sees "App updated" toast on next visit
 ```
+
+**As built:** the app tells the person before the switch instead ("Update available [Refresh]", frontend-spec-2.md §8.5); the new worker takes over on Refresh, or once all tabs are closed.
 
 The service worker version is tied to the SvelteKit build hash. Every deployment produces a new service worker, which triggers the update flow.
 

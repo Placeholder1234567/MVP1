@@ -141,6 +141,13 @@
       "when": 1792380240482,
       "tag": "0019_vital_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792384239389,
+      "tag": "0020_last_sign_in",
+      "breakpoints": true
     }
   ]
 }

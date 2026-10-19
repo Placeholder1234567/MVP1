@@ -2,9 +2,14 @@
 	import { onMount, untrack } from 'svelte';
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import PushNotice from '#lib/app/PushNotice.svelte';
+	import SyncProblems from '#lib/app/SyncProblems.svelte';
+	import UpdateToast from '#lib/app/UpdateToast.svelte';
+	import PushAsk from '#lib/app/PushAsk.svelte';
+	import UpgradeDialog from '#lib/app/UpgradeDialog.svelte';
 	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
 	import EveningSuggestion from '#lib/app/EveningSuggestion.svelte';
 	import { stopWebPush } from '#lib/pwa/web-push.ts';
+	import { showBadge } from '#lib/pwa/badge.ts';
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	// Catches the browser's install offer early; Today's banner shows it.
 	import '#lib/pwa/install.svelte.ts';
@@ -28,6 +33,7 @@
 	import { provideSession } from '#lib/app/session.svelte.ts';
 	import { localTime } from '#lib/domain/time.ts';
 	import { openShiftCount } from '#lib/domain/shifts.ts';
+	import { overviewAttention } from '#lib/domain/compliance.ts';
 	import { backlogWarning, storageWarning, type DeviceWarning } from '#lib/domain/sync-backlog.ts';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
@@ -149,6 +155,17 @@
 				localTime(new Date(n.updated_at), app.user.timeZone).day === today
 		);
 	});
+	// The app icon's badge follows the unread alerts on this device, and is
+	// refreshed when the app comes back to the front (notifications.md).
+	$effect(() => {
+		const unread = app.unreadAlerts;
+		void showBadge(unread);
+		const refresh = () => {
+			if (document.visibilityState === 'visible') void showBadge(app.unreadAlerts);
+		};
+		document.addEventListener('visibilitychange', refresh);
+		return () => document.removeEventListener('visibilitychange', refresh);
+	});
 	let offersWaiting = $state(false);
 	$effect(() => {
 		if (data.user.role !== 'caregiver' || !nav.some((item) => item.href === '/shifts')) return;
@@ -180,30 +197,35 @@
 	const count = (href: string) =>
 		data.user.role === 'caregiver'
 			? 0
-			: href === '/dashboard/notes'
-				? app.notes.filter((n) => n.home_id === app.homeId && n.status === 'submitted').length
-				: href === '/messages'
-					? app.unseenMessageCount
-					: href === '/shifts'
-						? openShiftCount(app.shifts, app.homeId, new Date(), app.user.timeZone)
-						: href === '/dashboard/mar'
-							? app.doses.filter(
-									(d) =>
-										d.home_id === app.homeId &&
-										(d.status === 'refused' || d.status === 'held') &&
-										!d.acknowledged
-								).length
-							: 0;
+			: href === '/dashboard'
+				? overviewAttention(app.incidents, app.health, app.homeId)
+				: href === '/dashboard/notes'
+					? app.notes.filter((n) => n.home_id === app.homeId && n.status === 'submitted').length
+					: href === '/messages'
+						? app.unseenMessageCount
+						: href === '/shifts'
+							? openShiftCount(app.shifts, app.homeId, new Date(), app.user.timeZone)
+							: href === '/dashboard/mar'
+								? app.doses.filter(
+										(d) =>
+											d.home_id === app.homeId &&
+											(d.status === 'refused' || d.status === 'held') &&
+											!d.acknowledged
+									).length
+								: 0;
 	const countWords = (href: string, n: number) =>
-		href === '/messages'
-			? `${n} unread`
-			: href === '/shifts'
-				? `${n} open ${n === 1 ? 'shift' : 'shifts'}`
-				: href === '/dashboard/mar'
-					? `${n} refused or held to acknowledge`
-					: `${n} to review`;
+		href === '/dashboard'
+			? `${n} ${n === 1 ? 'needs' : 'need'} attention`
+			: href === '/messages'
+				? `${n} unread`
+				: href === '/shifts'
+					? `${n} open ${n === 1 ? 'shift' : 'shifts'}`
+					: href === '/dashboard/mar'
+						? `${n} refused or held to acknowledge`
+						: `${n} to review`;
 	// Red counts: things that need someone (frontend-spec-3.md §3 badge logic).
-	const urgent = (href: string) => href === '/shifts' || href === '/dashboard/mar';
+	const urgent = (href: string) =>
+		href === '/dashboard' || href === '/shifts' || href === '/dashboard/mar';
 
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
@@ -338,6 +360,7 @@
 			await app.db.disconnectAndClear();
 		}
 		await stopWebPush(app.user.profileId);
+		await showBadge(0);
 		app.dispose();
 		await closeDb();
 		await signOutEverywhere();
@@ -490,6 +513,9 @@
 				</header>
 				<main id="main" class="main-content" tabindex="-1">
 					<PushNotice />
+					<UpdateToast />
+					<PushAsk />
+					<UpgradeDialog isAdmin={data.user.role === 'admin'} />
 					<EveningSuggestion />
 					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
 					{#each [backlog, storage].filter((w) => w !== null) as w (w.text)}<p
@@ -499,16 +525,7 @@
 						>
 							{w.text}
 						</p>{/each}
-					{#if app.failed.length}<div class="callout bad" role="alert">
-							<b>{app.failed.length} changes need attention</b>
-							<p>
-								Your server did not accept these changes. Keep this device unlocked while you review
-								them.
-							</p>
-							<ul>
-								{#each app.failed as f (f.id)}<li>{f.message}</li>{/each}
-							</ul>
-						</div>{/if}
+					<SyncProblems />
 					{@render children()}
 				</main>
 			</div>

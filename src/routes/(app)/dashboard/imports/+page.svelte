@@ -17,6 +17,7 @@
 		type ImportPreviewRow,
 		type ImportPayload
 	} from '#lib/domain/csv-import.ts';
+	import { adaptImportCsv, COMMON_TEMPLATES, type ColumnMapping } from '#lib/domain/csv-mapping.ts';
 	import { ImportBatch, type ImportOutcome } from '#lib/imports/import-batch.ts';
 	import type { PageProps } from './$types';
 	let { data }: PageProps = $props();
@@ -30,6 +31,9 @@
 	let context = $state<ImportContext>({ homes: [], people: [] });
 	let rows = $state<ImportPreviewRow[]>([]);
 	let previewHeaders = $state<string[]>([]);
+	// How the file's own columns were read (empty for Guad's template columns).
+	let mapping = $state<ColumnMapping[]>([]);
+	let ignored = $state<string[]>([]);
 	let outcomes = $state<ImportOutcome[]>([]);
 	let batch: ImportBatch | undefined;
 	let busy = $state(false);
@@ -88,6 +92,8 @@
 	function clear() {
 		rows = [];
 		previewHeaders = [];
+		mapping = [];
+		ignored = [];
 		outcomes = [];
 		batch = undefined;
 		reviewed = false;
@@ -130,7 +136,9 @@
 				homes: homes.filter((h) => !h.archivedAt).map(({ id, name }) => ({ id, name })),
 				people: people.map(({ id, name, homeId, active }) => ({ id, name, homeId, active }))
 			};
-			const preliminary = previewImport(kind, parsed, context);
+			// Columns from another system or the common-names template become Guad's.
+			const adapted = adaptImportCsv(kind, parsed, context);
+			const preliminary = previewImport(kind, adapted.csv, context);
 			const existingKeys: string[] = [];
 			if (kind === 'staff') {
 				const staff = await trpc.staff.list.query({});
@@ -168,8 +176,13 @@
 					}
 				}
 			}
-			rows = previewImport(kind, parsed, { ...context, existingKeys });
-			previewHeaders = parsed.headers;
+			rows = previewImport(kind, adapted.csv, { ...context, existingKeys }).map((row) => ({
+				...row,
+				errors: [...(adapted.issues.get(row.line) ?? []), ...row.errors]
+			}));
+			previewHeaders = adapted.csv.headers;
+			mapping = adapted.mapping;
+			ignored = adapted.ignored;
 			batch = new ImportBatch(rows);
 			outcomes = [...batch.outcomes];
 			message = rows.some((row) => row.errors.length)
@@ -231,15 +244,18 @@
 			applying = false;
 		}
 	}
-	function template() {
+	function template(common = false) {
+		const headers = common
+			? COMMON_TEMPLATES[kind]
+			: [...IMPORT_HEADERS[kind], ...IMPORT_EXTRA_HEADERS[kind]];
 		const url = URL.createObjectURL(
-			new Blob([[...IMPORT_HEADERS[kind], ...IMPORT_EXTRA_HEADERS[kind]].join(',') + '\r\n'], {
+			new Blob([headers.join(',') + '\r\n'], {
 				type: 'text/csv'
 			})
 		);
 		const link = document.createElement('a');
 		link.href = url;
-		link.download = `guad-${kind}-blank.csv`;
+		link.download = `guad-${kind}-${common ? 'common' : 'blank'}.csv`;
 		link.click();
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
@@ -255,9 +271,10 @@
 	<a class="textbtn" href={resolve('/(app)/dashboard/reports')}>← Reports</a>
 	<h1>Review CSV imports</h1>
 	<p class="muted">
-		Convert your export into one of these exact templates. The preview and outcomes stay in memory;
-		the CSV file is never uploaded. Created records are saved normally. Leaving or closing loses the
-		preview and outcomes.
+		Use one of these templates, or a CSV exported from another system such as Therap: common column
+		names like Last Name, Date of Birth or Home Assignments are recognized, and the preview shows
+		how each column was read. The preview and outcomes stay in memory; the CSV file is never
+		uploaded. Created records are saved normally. Leaving or closing loses the preview and outcomes.
 	</p>
 	<p class="callout warn">
 		Import creates definitions and people, not signed notes or medication administration records.
@@ -317,7 +334,17 @@
 			commas, line breaks and doubled quotes are supported. Formula-looking cells remain literal
 			text.
 		</p>
-		<button class="btn sec" type="button" onclick={template}>Download blank template</button>
+		<div class="actions">
+			<button class="btn sec" type="button" onclick={() => template()}
+				>Download blank template</button
+			><button class="btn sec" type="button" onclick={() => template(true)}
+				>Download template with common column names</button
+			>
+		</div>
+		<p class="muted s13">
+			In the common-names template, homes and people are matched by name, exactly as written
+			(capitals aside). Dates like 3/7/1990 and times like 8:00 AM are converted.
+		</p>
 		<label
 			>Select CSV file<input
 				class="input"
@@ -331,7 +358,10 @@
 	</div>
 	<details class="card pad">
 		<summary>Accessible IDs for your template</summary>
-		<p class="muted">Copy the exact ID, not a name. Imports never guess a match.</p>
+		<p class="muted">
+			Names must match exactly (capitals aside); a name shared by two people needs the ID. Imports
+			never guess a match.
+		</p>
 		{#if kind === 'people' || kind === 'staff'}{#each context.homes as home (home.id)}<label
 					>{home.name}<input
 						class="input"
@@ -352,6 +382,16 @@
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
 	{#if rows.length}
 		<h2>Preview: {rows.length} rows · {errors} rows need attention</h2>
+		{#if mapping.length}<section class="card pad stack" aria-labelledby="mapping-heading">
+				<h3 id="mapping-heading">How your columns were read</h3>
+				<dl>
+					{#each mapping as m (m.from + m.to)}<div>
+							<dt>{m.from}</dt>
+							<dd>{m.to}</dd>
+						</div>{/each}
+				</dl>
+				{#if ignored.length}<p class="muted">Not imported: {ignored.join(', ')}.</p>{/if}
+			</section>{/if}
 		{#if applying}<p role="status">
 				{outcomes.filter((outcome) => outcome.status === 'created').length} of {rows.length} records created.
 				Keep this page open.
