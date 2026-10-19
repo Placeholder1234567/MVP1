@@ -66,7 +66,7 @@
 			<h1>Care within reach.</h1>
 			<label
 				>Home<select class="input" bind:value={app.homeId}
-					>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
+					>{#each app.openHomes as home (home.id)}<option value={home.id}>{home.name}</option
 						>{/each}</select
 				></label
 			>

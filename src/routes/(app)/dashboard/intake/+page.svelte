@@ -345,8 +345,9 @@
 									class="input"
 									bind:value={homeId}
 									onchange={() => (roomId = '')}
-									><option value="">Choose later</option>{#each app.homes as home (home.id)}<option
-											value={home.id}>{home.name}</option
+									><option value="">Choose later</option
+									>{#each app.openHomes as home (home.id)}<option value={home.id}
+											>{home.name}</option
 										>{/each}</select
 								></label
 							>{/if}
@@ -402,7 +403,7 @@
 								staffing before choosing a home. Referral notes are not used to infer clinical
 								eligibility.
 							</p>
-							{#each app.homes as home (home.id)}
+							{#each app.openHomes as home (home.id)}
 								{@const inventory = rooms.filter((r) => r.homeId === home.id)}
 								{@const openRooms = inventory.filter(
 									(r) => r.status === 'available' && !r.occupiedBy
@@ -451,8 +452,8 @@
 								required
 								bind:value={homeId}
 								onchange={() => (roomId = '')}
-								><option value="">Choose a home</option>{#each app.homes as home (home.id)}<option
-										value={home.id}>{home.name}</option
+								><option value="">Choose a home</option
+								>{#each app.openHomes as home (home.id)}<option value={home.id}>{home.name}</option
 									>{/each}</select
 							></label
 						>

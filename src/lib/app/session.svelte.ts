@@ -36,6 +36,8 @@ export class CareSession {
 	db: PowerSyncDatabase | undefined;
 	homeId = $state('');
 	homes = $state<Database['homes'][]>([]);
+	/** Homes still in use; archived ones keep their records but take no new work. */
+	openHomes = $derived(this.homes.filter((h) => !h.archived_at));
 	people = $state<Database['clients'][]>([]);
 	notes = $state<Database['notes'][]>([]);
 	goals = $state<Database['goals'][]>([]);
@@ -113,7 +115,8 @@ export class CareSession {
 		watch<Database['homes']>('SELECT * FROM homes ORDER BY name', (r) => {
 			this.homes =
 				this.user.role === 'caregiver' ? r.filter((h) => this.user.homeIds.includes(h.id)) : r;
-			if (!this.homes.some((h) => h.id === this.homeId)) this.homeId = this.homes[0]?.id ?? '';
+			if (!this.homes.some((h) => h.id === this.homeId))
+				this.homeId = (this.homes.find((h) => !h.archived_at) ?? this.homes[0])?.id ?? '';
 		});
 		watch<Database['clients']>('SELECT * FROM clients ORDER BY name', (r) => (this.people = r));
 		watch<Database['notes']>(

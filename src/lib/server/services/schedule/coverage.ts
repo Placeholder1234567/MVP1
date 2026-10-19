@@ -9,6 +9,7 @@ import {
 import { ServiceError } from '../../errors';
 import { cancel, enqueue } from '../../jobs/queue.ts';
 import type { CurrentUser } from '../auth/index.ts';
+import { requireOpenHome } from '../home/index.ts';
 import { postLomiUpdate } from '../message/index.ts';
 import { notify, notifyHomeSupervisors } from '../notification/index.ts';
 import { scheduleHome, scheduleStaff } from './schedule.queries';
@@ -54,8 +55,7 @@ export async function startCoverage(
 ) {
 	if (shiftIsPast(input.day, input.shift, new Date(), user.timeZone))
 		throw new ServiceError('VALIDATION_FAILED', 'Choose a current or upcoming shift');
-	if (!(await scheduleHome(tx, user.agencyId, input.homeId)))
-		throw new ServiceError('NOT_FOUND', 'Home not found');
+	requireOpenHome(await scheduleHome(tx, user.agencyId, input.homeId));
 	if (posted && user.role === 'caregiver')
 		throw new ServiceError('FORBIDDEN', 'Supervisor access required');
 	return asService(tx, async (t) => {
