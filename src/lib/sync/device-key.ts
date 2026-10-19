@@ -150,14 +150,13 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 	const record = await readRecord(profileId);
 	if (!record?.wrapped) throw new WrongPinError(0);
 	const { salt, iv, ciphertext } = record.wrapped;
+	let plain: ArrayBuffer;
 	try {
-		const plain = await crypto.subtle.decrypt(
+		plain = await crypto.subtle.decrypt(
 			{ name: 'AES-GCM', iv: unb64(iv) },
 			await pinKey(pin, unb64(salt)),
 			unb64(ciphertext)
 		);
-		if (record.failedAttempts) await writeRecord({ ...record, failedAttempts: 0 }, profileId);
-		return new Uint8Array(plain);
 	} catch {
 		const failedAttempts = record.failedAttempts + 1;
 		const left = MAX_PIN_ATTEMPTS - failedAttempts;
@@ -167,6 +166,11 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 		);
 		throw new WrongPinError(left);
 	}
+	// Outside the try: a failed write here (another tab writing the file, a
+	// full disk) must not count a correct PIN as a wrong one.
+	if (record.failedAttempts)
+		await writeRecord({ ...record, failedAttempts: 0 }, profileId).catch(() => {});
+	return new Uint8Array(plain);
 }
 
 /** Key bytes as the hex string SQLite3MultipleCiphers takes as its key. */
