@@ -604,6 +604,24 @@ it('a pick for a shift taken since is skipped with its reason and does not block
 	expect(after.slots.find((s) => s.day === monday && s.shift === 'pm')?.assigned_to).toBe(eli);
 });
 
+it('two picks for one shift: the first is kept and the second skipped, not silently swapped in', async () => {
+	const supervisor = await as(sam);
+	const week = weekStart(addDays(day, 105));
+	const tuesday = addDays(week, 2);
+	const result = await supervisor.schedule.applySuggestions({
+		homeId: oak,
+		weekStart: week,
+		picks: [
+			{ day: tuesday, shift: 'pm', profileId: eli },
+			{ day: tuesday, shift: 'pm', profileId: bea }
+		]
+	});
+	expect(result.copied).toBe(1);
+	expect(result.skipped).toEqual([{ day: tuesday, shift: 'pm', reason: 'unavailable' }]);
+	const after = await supervisor.schedule.get({ homeId: oak, weekStart: week });
+	expect(after.slots.find((s) => s.day === tuesday && s.shift === 'pm')?.assigned_to).toBe(eli);
+});
+
 it('a supervisor sets a forgotten clock-out, checked against the clock-in and other records', async () => {
 	const user = await as(eli);
 	const id = randomUUID();
