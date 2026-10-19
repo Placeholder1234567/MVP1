@@ -685,6 +685,8 @@ The service worker `notificationclick` handler:
 - When the user opens the notification center or taps a notification, recalculate the unread count via `trpc.notification.getUnreadCount.query()` and update the badge.
 - On `visibilitychange` to `visible`, refresh the badge count.
 
+
+**As built:** `src/lib/pwa/badge.ts`. The app sets the badge to the unread in-app alerts on this device (the same number as the Alerts link; it comes from the synced `notifications` table, so no extra request), refreshes it on `visibilitychange`, and clears it on sign-out. When a push arrives while the app is closed, the service worker sets the badge to the number of Guad notifications in the tray; the app corrects it when it opens. A number only, never alert content. Browsers without the Badging API are skipped silently.
 ### iOS PWA Push (Safari 16.4+)
 
 - iOS PWA push is supported on Safari 16.4+ (iOS 16.4+). The same FCM integration works.

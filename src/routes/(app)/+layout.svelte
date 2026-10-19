@@ -8,6 +8,7 @@
 	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
 	import EveningSuggestion from '#lib/app/EveningSuggestion.svelte';
 	import { stopWebPush } from '#lib/pwa/web-push.ts';
+	import { showBadge } from '#lib/pwa/badge.ts';
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	// Catches the browser's install offer early; Today's banner shows it.
 	import '#lib/pwa/install.svelte.ts';
@@ -152,6 +153,17 @@
 				!!n.updated_at &&
 				localTime(new Date(n.updated_at), app.user.timeZone).day === today
 		);
+	});
+	// The app icon's badge follows the unread alerts on this device, and is
+	// refreshed when the app comes back to the front (notifications.md).
+	$effect(() => {
+		const unread = app.unreadAlerts;
+		void showBadge(unread);
+		const refresh = () => {
+			if (document.visibilityState === 'visible') void showBadge(app.unreadAlerts);
+		};
+		document.addEventListener('visibilitychange', refresh);
+		return () => document.removeEventListener('visibilitychange', refresh);
 	});
 	let offersWaiting = $state(false);
 	$effect(() => {
@@ -347,6 +359,7 @@
 			await app.db.disconnectAndClear();
 		}
 		await stopWebPush(app.user.profileId);
+		await showBadge(0);
 		app.dispose();
 		await closeDb();
 		await signOutEverywhere();

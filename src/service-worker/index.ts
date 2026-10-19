@@ -31,6 +31,12 @@ self.addEventListener('push', (event) => {
 				return;
 			}
 			await self.registration.showNotification(notice.title, notice.options);
+			// The icon counts alerts waiting in the tray; the app sets the exact
+			// unread count once it opens.
+			const shown = (await self.registration.getNotifications()).length;
+			await (navigator as Navigator & { setAppBadge?(n: number): Promise<void> })
+				.setAppBadge?.(shown)
+				.catch(() => {});
 		})()
 	);
 });
