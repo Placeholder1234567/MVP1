@@ -52,12 +52,11 @@
 		links are temporary and are not saved notifications.
 	</p>
 	<form class="card pad stack" aria-label="Synthetic notification preview" onsubmit={preview}>
-		<label
-			>Notification type<select class="input" bind:value={selected} disabled={busy}
-				>{#each NOTIFICATION_TYPES as type (type)}<option value={type}
-						>{NOTIFICATION_LABELS[type]}</option
-					>{/each}</select
-			></label
+		<label for="notification-type">Notification type</label>
+		<select id="notification-type" class="input" bind:value={selected} disabled={busy}
+			>{#each NOTIFICATION_TYPES as type (type)}<option value={type}
+					>{NOTIFICATION_LABELS[type]}</option
+				>{/each}</select
 		>
 		<button class="btn" disabled={busy}>Preview notification</button>
 		{#if message}<p role="status">{message}</p>{/if}

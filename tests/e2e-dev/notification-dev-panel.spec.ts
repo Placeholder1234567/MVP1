@@ -6,6 +6,8 @@ test('a synthetic admin previews notification templates without queuing or sendi
 }, info) => {
 	expect((await page.goto('/dev/notifications'))?.status()).toBe(404);
 	await page.goto('/login');
+	// The real dev server loads modules on demand; wait before interacting with SSR controls.
+	await page.waitForLoadState('networkidle');
 	await page.getByLabel('Email', { exact: true }).fill('admin@guad.test');
 	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
 	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
