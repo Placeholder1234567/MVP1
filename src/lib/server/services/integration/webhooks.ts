@@ -29,6 +29,7 @@ import { open, seal } from '../../sealing.ts';
 import type { ApiCaller } from './keys';
 import {
 	activeWebhooks,
+	AUDIT_PAGE,
 	auditChanges,
 	countDeliveries,
 	countWebhooks,
@@ -275,11 +276,16 @@ export async function testWebhook(caller: ApiCaller, id: string) {
 	};
 }
 
+/** Pages of audit rows one sweep reads per agency (25 × 2,000), to bound a single run. */
+const MAX_SWEEP_PAGES = 25;
+
 /** How far back each sweep looks; a delivery per webhook and audit row is unique, so overlap is safe. */
 const SWEEP_WINDOW_MS = 15 * 60_000;
 
 /** webhook-sweep: new audited changes become deliveries for subscribed webhooks. */
-export async function sweepWebhooks(now = new Date()): Promise<{ queued: number }> {
+export async function sweepWebhooks(
+	now = new Date()
+): Promise<{ queued: number; requeued: number }> {
 	const ids = await withService(async (tx) => {
 		const hooks = await activeWebhooks(tx);
 		const byAgency = new Map<string, typeof hooks>();
@@ -288,7 +294,14 @@ export async function sweepWebhooks(now = new Date()): Promise<{ queued: number 
 		for (const [agencyId, list] of byAgency) {
 			const oldest = new Date(Math.min(...list.map((h) => h.createdAt.getTime())));
 			const since = new Date(Math.max(oldest.getTime(), now.getTime() - SWEEP_WINDOW_MS));
-			const changes = await auditChanges(tx, agencyId, WEBHOOK_TABLES, since);
+			// Every page, not just the first: a burst of more than one page of
+			// changes in the window would otherwise age out unsent.
+			const changes: Awaited<ReturnType<typeof auditChanges>> = [];
+			for (let page = 0; page < MAX_SWEEP_PAGES; page++) {
+				const next = await auditChanges(tx, agencyId, WEBHOOK_TABLES, since, page);
+				changes.push(...next);
+				if (next.length < AUDIT_PAGE) break;
+			}
 			const rows = changes.flatMap((c) => {
 				const found = webhookEventFor(c as AuditChange);
 				if (!found) return [];
@@ -320,7 +333,7 @@ export async function sweepWebhooks(now = new Date()): Promise<{ queued: number 
 	const due = await withService((tx) => overdueDeliveries(tx, new Date(now.getTime() - 60_000)));
 	for (const d of due)
 		await enqueue('webhook-deliver', { id: d.id }, { taskName: `webhook-${d.id}-${d.attempts}` });
-	return { queued: ids.length + due.length };
+	return { queued: ids.length, requeued: due.length };
 }
 
 /** webhook-deliver: one attempt; schedules the next one or marks the delivery failed. */

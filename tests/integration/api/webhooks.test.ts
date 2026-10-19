@@ -368,3 +368,40 @@ describe('keys, recovery and the admin screen', () => {
 		expect(got).toEqual([[{ address: '93.184.216.34', family: 4 }], ['93.184.216.34', 4]]);
 	});
 });
+
+describe('bursts', () => {
+	it('a burst of more than one page of changes is all delivered', async () => {
+		integration.setWebhookTransportForTests(async () => ({ statusCode: 200, ms: 1 }));
+		const hook = (
+			await (
+				await call(list.POST, '/api/v1/webhooks', writeKey, {
+					method: 'POST',
+					body: { url: 'https://hooks.example.test/burst', events: ['incident.created'] }
+				})
+			).json()
+		).id as string;
+		// More audit rows than one page (2,000) in the window.
+		const n = 2100;
+		await withService((t) =>
+			t.insert(s.incidents).values(
+				Array.from({ length: n }, () => ({
+					agency_id: AGENCY,
+					client_id: PERSON,
+					home_id: HOME,
+					type: 'Fall',
+					severity: 'Low' as const,
+					occurred_at: new Date(),
+					description: 'Synthetic'
+				}))
+			)
+		);
+		await integration.sweepWebhooks();
+		const rows = await withService((t) =>
+			t
+				.select({ id: s.webhookDeliveries.id })
+				.from(s.webhookDeliveries)
+				.where(eq(s.webhookDeliveries.webhook_id, hook))
+		);
+		expect(rows).toHaveLength(n);
+	}, 60_000);
+});

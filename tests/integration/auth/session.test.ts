@@ -34,6 +34,12 @@ async function emulatorSignIn(email: string): Promise<string> {
 
 /** What the browser does with the sync token: exchange it for an ID token. */
 async function exchangeCustomToken(token: string): Promise<Record<string, unknown>> {
+	return JSON.parse(
+		Buffer.from((await customTokenIdToken(token)).split('.')[1], 'base64url').toString()
+	);
+}
+
+async function customTokenIdToken(token: string): Promise<string> {
 	const res = await fetch(
 		`${EMU}/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=demo-key`,
 		{
@@ -43,7 +49,7 @@ async function exchangeCustomToken(token: string): Promise<Record<string, unknow
 		}
 	);
 	const { idToken } = await res.json();
-	return JSON.parse(Buffer.from(idToken.split('.')[1], 'base64url').toString());
+	return idToken;
 }
 
 const agencyId = randomUUID();
@@ -154,6 +160,16 @@ describe('sign-in', () => {
 		if (cred.kind !== 'custom-token') throw new Error(`expected custom-token, got ${cred.kind}`);
 		const claims = await exchangeCustomToken(cred.customToken);
 		expect(claims.sub).toBe(uid);
+	});
+
+	it('an ID token from the sync token can’t start a session or witness a count', async () => {
+		const cred = await identity.createSyncCredential(uid);
+		if (cred.kind !== 'custom-token') throw new Error(`expected custom-token, got ${cred.kind}`);
+		const idToken = await customTokenIdToken(cred.customToken);
+		await expect(identity.createSession(idToken)).rejects.toMatchObject({
+			code: 'invalid_token'
+		});
+		expect(await identity.verifyWitnessSignIn(idToken)).toBeNull();
 	});
 
 	it('signing out everywhere makes existing cookies stop verifying', async () => {

@@ -139,8 +139,21 @@ export async function deactivateKeyWebhooks(tx: Tx, agencyId: string, keyId: str
 		.where(and(eq(webhooks.agency_id, agencyId), eq(webhooks.created_by_key_id, keyId)));
 }
 
-/** Audited changes to event tables after `since`, oldest first. */
-export function auditChanges(tx: Tx, agencyId: string, tables: readonly string[], since: Date) {
+/** One page of the sweep's audit reads. */
+export const AUDIT_PAGE = 2000;
+
+/**
+ * Audited changes to event tables after `since`, oldest first, one page at a
+ * time (`page` from 0). Offsets rather than a (created_at, id) cursor: the
+ * database keeps microseconds that a JavaScript Date would drop.
+ */
+export function auditChanges(
+	tx: Tx,
+	agencyId: string,
+	tables: readonly string[],
+	since: Date,
+	page = 0
+) {
 	return tx
 		.select({
 			id: auditLog.id,
@@ -159,17 +172,25 @@ export function auditChanges(tx: Tx, agencyId: string, tables: readonly string[]
 			)
 		)
 		.orderBy(asc(auditLog.created_at), asc(auditLog.id))
-		.limit(2000);
+		.limit(AUDIT_PAGE)
+		.offset(page * AUDIT_PAGE);
 }
 
-/** New deliveries; ones already made for the same webhook and audit row are skipped. */
-export function insertDeliveries(tx: Tx, rows: (typeof webhookDeliveries.$inferInsert)[]) {
-	if (!rows.length) return Promise.resolve([]);
-	return tx
-		.insert(webhookDeliveries)
-		.values(rows)
-		.onConflictDoNothing({ target: [webhookDeliveries.webhook_id, webhookDeliveries.audit_id] })
-		.returning({ id: webhookDeliveries.id });
+/**
+ * New deliveries; ones already made for the same webhook and audit row are
+ * skipped. Inserted in chunks, under Postgres's limit on query parameters.
+ */
+export async function insertDeliveries(tx: Tx, rows: (typeof webhookDeliveries.$inferInsert)[]) {
+	const ids: { id: string }[] = [];
+	for (let i = 0; i < rows.length; i += 1000)
+		ids.push(
+			...(await tx
+				.insert(webhookDeliveries)
+				.values(rows.slice(i, i + 1000))
+				.onConflictDoNothing({ target: [webhookDeliveries.webhook_id, webhookDeliveries.audit_id] })
+				.returning({ id: webhookDeliveries.id }))
+		);
+	return ids;
 }
 
 export async function deliveryWithWebhook(tx: Tx, id: string) {

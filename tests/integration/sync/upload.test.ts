@@ -624,6 +624,18 @@ describe('sync.upload: messages and everything else', () => {
 				data: jpeg.toString('base64')
 			});
 			await expect(cara.message.photo({ id: maple })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+			// Reusing that unseen photo's ID can't overwrite it; a retry of your own is a no-op.
+			const before = files.get(`photos/${AGENCY}/${maple}.jpg`);
+			const other = Buffer.concat([jpeg.subarray(0, -2), Buffer.from([0xff, 0xd9])]);
+			other[other.length - 3] = 7;
+			await expect(
+				cara.message.uploadPhoto({ id: maple, homeId: OAK, data: other.toString('base64') })
+			).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+			expect(files.get(`photos/${AGENCY}/${maple}.jpg`)).toBe(before);
+			await expect(
+				cara.message.uploadPhoto({ id: photo, homeId: OAK, data: jpeg.toString('base64') })
+			).resolves.toMatchObject({ id: photo });
 		} finally {
 			setStorageForTests(undefined);
 		}

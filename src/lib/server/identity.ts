@@ -51,6 +51,11 @@ export async function createSession(
 	} catch {
 		throw new SignInError('invalid_token', 'Sign-in could not be verified');
 	}
+	// The sync token (createSyncCredential) is a custom token: an ID token from
+	// it proves a session already existed, not a password or TOTP sign-in.
+	if (decoded.firebase?.sign_in_provider === 'custom') {
+		throw new SignInError('invalid_token', 'Sign-in could not be verified');
+	}
 	if (Date.now() / 1000 - decoded.auth_time > RECENT_SIGN_IN_S) {
 		throw new SignInError('stale_sign_in', 'Please sign in again');
 	}
@@ -72,6 +77,7 @@ export async function verifyWitnessSignIn(
 ): Promise<{ uid: string; secondFactor: boolean } | null> {
 	try {
 		const decoded = await auth().verifyIdToken(idToken, true);
+		if (decoded.firebase?.sign_in_provider === 'custom') return null;
 		if (Date.now() / 1000 - decoded.auth_time > RECENT_SIGN_IN_S) return null;
 		return { uid: decoded.uid, secondFactor: Boolean(decoded.firebase?.sign_in_second_factor) };
 	} catch {
