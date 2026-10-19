@@ -14,6 +14,7 @@ import {
 	createIdentity,
 	deleteIdentity,
 	disableIdentity,
+	activeIdentityByEmail,
 	enableIdentity,
 	passwordSetupLink,
 	resetSecondFactors
@@ -26,6 +27,7 @@ import {
 	insertProfile,
 	recordMfaReset,
 	selectStaff,
+	signInInUse,
 	selectStaffMember,
 	staffByEmail,
 	updateProfileRow
@@ -130,9 +132,15 @@ export async function createStaffAccount(
 	try {
 		uid = await createIdentity({ email, displayName: data.name });
 	} catch (e) {
-		if ((e as { code?: string }).code === 'auth/email-already-exists')
+		if ((e as { code?: string }).code !== 'auth/email-already-exists') throw e;
+		// The sign-in is created before the profile, outside the transaction.
+		// If an earlier invite's transaction rolled back after that, the
+		// sign-in was left with no profile; reuse it rather than block the
+		// email for good. One that any profile uses is refused as before.
+		const existing = await activeIdentityByEmail(email);
+		if (!existing || (await asService(tx, (t) => signInInUse(t, existing.uid))))
 			throw new ServiceError('RULE_VIOLATION', 'This email already has a Guad sign-in');
-		throw e;
+		uid = existing.uid;
 	}
 	let created;
 	try {

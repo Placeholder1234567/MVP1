@@ -118,6 +118,28 @@ describe('staff.*', () => {
 		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 	});
 
+	it('reuses a sign-in a rolled-back invite left behind, but never one in use', async () => {
+		const address = `orphan-${randomUUID()}@example.test`;
+		// What a rolled-back invite leaves: a sign-in with no profile.
+		const orphan = await identity.createIdentity({ email: address, displayName: 'Synthetic' });
+		createdUids.push(orphan);
+		const input = {
+			email: address,
+			name: 'Synthetic Retry',
+			role: 'caregiver' as const,
+			homeIds: [OAK]
+		};
+		const invited = await (await as(ADMIN)).staff.invite(input);
+		const [row] = await withService((t) =>
+			t.select().from(s.profiles).where(eq(s.profiles.id, invited.id))
+		);
+		expect(row.auth_uid).toBe(orphan);
+		// Now in use: another agency can't take it.
+		await expect(
+			(await as(OTHER_ADMIN)).staff.invite({ ...input, homeIds: [FOREIGN_HOME] })
+		).rejects.toMatchObject({ code: 'CONFLICT', message: 'This email already has a Guad sign-in' });
+	});
+
 	it('lists staff for supervisors, without identity details', async () => {
 		const list = await (await as(SUP)).staff.list({ role: 'caregiver' });
 		expect(list.map((p) => p.id)).toEqual(expect.arrayContaining([CARA, ELM_CARER, invitedId]));
