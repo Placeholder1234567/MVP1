@@ -26,8 +26,18 @@ export interface DaySnapshot {
 export interface DaySummary {
 	summary: string;
 	highlights: { text: string }[];
-	recommendations: { text: string }[];
+	/** "Suggested next steps": operational, from nextSteps() below, never the model */
+	recommendations: NextStep[];
 	fallback: boolean;
+}
+
+/** Where a next step is done in the app. */
+export type NextStepPlace =
+	'incidents' | 'health' | 'medications' | 'schedule' | 'notes' | 'review' | 'timesheets';
+
+export interface NextStep {
+	text: string;
+	place: NextStepPlace;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -47,6 +57,57 @@ export function fallbackSummary(s: DaySnapshot): string {
 	if (s.notesToReview) parts.push(`${plural(s.notesToReview, 'note')} waiting for review.`);
 	if (s.clockExceptions) parts.push(`${plural(s.clockExceptions, 'clock exception')} to check.`);
 	return parts.length ? parts.map(sentence).join(' ') : 'Nothing needs follow-up right now.';
+}
+
+/**
+ * Suggested next steps for the supervisor, from fixed templates over the
+ * day's counts. Deliberately operational (review, staff, record, check),
+ * never clinical: Guad is not clinical decision support (prd.md non-goal 4;
+ * supervisors and direct-support staff are mostly not licensed clinicians,
+ * so FDA's clinician-support exemption wouldn't cover advice to them).
+ * The model never writes these. Highest priority first, at most `limit`.
+ */
+export function nextSteps(s: DaySnapshot, limit = 3): NextStep[] {
+	const steps: NextStep[] = [];
+	if (s.incidents.length)
+		steps.push({
+			text: `Review ${plural(s.incidents.length, 'open incident')}`,
+			place: 'incidents'
+		});
+	if (s.healthAlerts.length)
+		steps.push({
+			text: `Look at ${plural(s.healthAlerts.length, 'health reading')} flagged outside the agency’s range`,
+			place: 'health'
+		});
+	if (s.dosesNotRecorded)
+		steps.push({
+			text: `Check ${plural(s.dosesNotRecorded, 'scheduled dose')} with no record yet`,
+			place: 'medications'
+		});
+	if (s.meds.length)
+		steps.push({
+			text: `Confirm ${plural(s.meds.length, 'refused or held dose')} ${s.meds.length === 1 ? 'was' : 'were'} reported as your procedure requires`,
+			place: 'medications'
+		});
+	const searching = s.coverage.filter((c) => c.status === 'searching').length;
+	if (s.openShifts.length)
+		steps.push({
+			text: `Fill ${plural(s.openShifts.length, 'open shift')}${searching ? ` (${searching} looking for cover)` : ''}`,
+			place: 'schedule'
+		});
+	if (s.missingNotes.length)
+		steps.push({
+			text: `Remind staff: no note yet for ${s.missingNotes.slice(0, 3).join(', ')}${s.missingNotes.length > 3 ? ` and ${s.missingNotes.length - 3} more` : ''}`,
+			place: 'notes'
+		});
+	if (s.notesToReview)
+		steps.push({ text: `Review ${plural(s.notesToReview, 'submitted note')}`, place: 'review' });
+	if (s.clockExceptions)
+		steps.push({
+			text: `Check ${plural(s.clockExceptions, 'clock record')} needing review`,
+			place: 'timesheets'
+		});
+	return steps.slice(0, limit);
 }
 
 /** Strips markdown the briefing must not contain (headings, bullets, emphasis). */

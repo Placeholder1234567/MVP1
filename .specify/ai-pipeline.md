@@ -408,10 +408,12 @@ ABC format (Antecedent-Behavior-Consequence) compatible with Therap GER when `ch
 {
   summary: string,
   highlights: Array<{ text: string }>,
-  recommendations: Array<{ text: string }>,
+  recommendations: Array<{ text: string, place: 'incidents' | 'health' | 'medications' | 'schedule' | 'notes' | 'review' | 'timesheets' }>,
   fallback: boolean
 }
 ```
+
+`recommendations` are shown as **"Suggested next steps"** and are **not written by the model**. `nextSteps()` in `domain/day-summary.ts` builds them from fixed templates over the snapshot, such as "Review 2 open incidents" or "Fill 1 open shift", each linking to where the work is done. They cover only operational follow-up (review, staff, record, check), never clinical advice. Guad is not clinical decision support (prd.md non-goal 4). Supervisors and direct-support staff are mostly not licensed clinicians, so FDA's clinician decision-support exemption wouldn't apply to advice shown to them (research/product-2026-10.md §D). The prompt also tells the model to state facts only, with no diagnoses or medication or treatment suggestions.
 
 When the caller's agency lacks `analytics_advanced`, `highlights` and `recommendations` are returned as empty arrays (Professional tier). Complete tier gets populated arrays.
 
