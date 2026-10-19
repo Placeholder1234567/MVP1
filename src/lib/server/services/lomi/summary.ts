@@ -17,6 +17,7 @@ import {
 	type DaySnapshot,
 	type DaySummary
 } from '../../../domain/index.ts';
+import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -49,7 +50,19 @@ export async function daySnapshot(
 	const start = localInstant(day, '00:00', user.timeZone);
 	const end = localInstant(addDays(day, 1), '00:00', user.timeZone);
 	const people = await homePeople(tx, user.agencyId, homeId);
-	const r = await dayRecords(tx, user.agencyId, homeId, day, start, end);
+	const all = await dayRecords(tx, user.agencyId, homeId, day, start, end);
+	// Only what the agency's plan includes goes into the snapshot (and so to
+	// the model): an extra like lomi_summary doesn't bring in other data.
+	const has = (f: FeatureFlag) => user.features.includes(f);
+	const r = {
+		...all,
+		dayNotes: has('charting') ? all.dayNotes : [],
+		toReview: has('charting') ? all.toReview : [],
+		openIncidents: has('incidents') ? all.openIncidents : [],
+		doses: has('mar') ? all.doses : [],
+		meds: has('mar') ? all.meds : [],
+		health: has('health') ? all.health : []
+	};
 	const first = new Map(people.map((p) => [p.id, p.firstName || p.name.split(/\s+/)[0]]));
 	const who = (id: string) => first.get(id) ?? 'Someone';
 
@@ -72,7 +85,7 @@ export async function daySnapshot(
 		coverage: r.coverage.map((c) => ({ shift: c.shift, status: c.status })),
 		notes: r.dayNotes.map((n) => ({ person: who(n.clientId), type: n.type, status: n.status })),
 		missingNotes: people
-			.filter((p) => !written.has(p.id))
+			.filter((p) => has('charting') && !written.has(p.id))
 			.map((p) => who(p.id))
 			.sort(),
 		notesToReview: r.toReview.length,

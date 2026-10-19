@@ -106,7 +106,8 @@ export async function draftNote(
 	await reserve(user, 'draft');
 	try {
 		const fields = input.type === 'behavior' ? BEHAVIOR_SECTIONS : SHIFT_SECTIONS;
-		const goals = input.type === 'shift' ? person.goals : [];
+		// Goals go to the model only when the plan includes them.
+		const goals = input.type === 'shift' && user.features.includes('goals') ? person.goals : [];
 		const value = await modelJson({
 			task: 'Draft each requested section as a string, empty if unstated. Also return goalReferences: an array of {goalId,evidence} only for relevant active goals. Evidence must be a verbatim quote from observations. Do not generate goal trials or scores.',
 			person: person.firstName,
