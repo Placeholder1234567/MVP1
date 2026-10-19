@@ -56,8 +56,12 @@ it('only an admin can save rules and only for their own agency, preserving other
 	expect((await (await as(stranger)).agency.get()).settings).toEqual({ unrelated: 'keep' });
 	expect(await (await as(staff)).notification.quietHours()).toMatchObject({
 		start: '22:00',
-		end: '06:00'
+		end: '06:00',
+		agencySet: true
 	});
+	await expect(
+		(await as(staff)).notification.setQuietHours({ start: '21:00', end: '05:00' })
+	).rejects.toThrow('Your agency sets quiet hours.');
 });
 it('rejects disabling a safety alert and invalid agency quiet hours', async () => {
 	const me = await as(admin);

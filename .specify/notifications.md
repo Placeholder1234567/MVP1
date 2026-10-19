@@ -991,8 +991,10 @@ Admin overrides are stored in `agencies.settings` under the `notification_overri
 `{ disabledTypes, requireSummaryEmail, quietHours }` under that key through the
 existing admin-only `agency.update`. Quiet hours are null (use personal hours)
 or a 4–10 hour `{ start, end }` window in agency time. Email and urgent/high
-alerts retain their quiet-hours exemptions. Mandatory safety types cannot be
-disabled. A required daily-summary email cannot also be disabled. Delivery
+alerts retain their quiet-hours exemptions. Mandatory safety types and essential workflow transports (coverage offers,
+witness requests, incident deadline and medication follow-ups, maintenance and
+delivery-problem notices) cannot be disabled. Personal channel defaults are
+unchanged. Personal quiet-hours controls explain and lock agency policy. A required daily-summary email cannot also be disabled. Delivery
 rechecks current agency quiet hours and disabling for pending rows; disabled
 pending deliveries are marked failed/suppressed without contacting a provider.
 Escalation also stops for disabled optional types. Existing in-app history is

@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import {
 	notificationOverrides,
-	notificationDisabled
+	notificationDisabled,
+	AGENCY_REQUIRED_NOTIFICATIONS
 } from '../../../src/lib/domain/notification-overrides';
 import { NotificationOverridesInput } from '../../../src/lib/server/services/notification/overrides-input';
 
@@ -48,4 +49,18 @@ it('validates safety exclusions, quiet-hour duration and conflicting admin choic
 		NotificationOverridesInput.parse({ ...base, quietHours: { start: '22:00', end: '06:00' } })
 			.quietHours
 	).toEqual({ start: '22:00', end: '06:00' });
+});
+
+it('protects essential workflow transports without changing their personal channel defaults', () => {
+	for (const type of AGENCY_REQUIRED_NOTIFICATIONS) {
+		const settings = { notification_overrides: { disabledTypes: [type] } };
+		expect(notificationDisabled(type, notificationOverrides(settings))).toBe(false);
+		expect(
+			NotificationOverridesInput.safeParse({
+				disabledTypes: [type],
+				requireSummaryEmail: false,
+				quietHours: null
+			}).success
+		).toBe(false);
+	}
 });

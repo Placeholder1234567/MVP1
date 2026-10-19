@@ -33,7 +33,8 @@ export async function quietHours(tx: Tx, user: CurrentUser) {
 		end:
 			agencyWindow?.end ??
 			(settings?.start && settings?.end ? settings.end.slice(0, 5) : DEFAULT_QUIET_HOURS.end),
-		timeZone: agency.timeZone
+		timeZone: agency.timeZone,
+		agencySet: !!agencyWindow
 	};
 }
 export async function saveQuietHours(
@@ -42,6 +43,8 @@ export async function saveQuietHours(
 	input: z.infer<typeof QuietHoursInput>
 ) {
 	const value = QuietHoursInput.parse(input);
+	if ((await quietHours(tx, user)).agencySet)
+		throw new ServiceError('RULE_VIOLATION', 'Your agency sets quiet hours.');
 	await tx
 		.insert(userSettings)
 		.values({

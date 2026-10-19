@@ -1,6 +1,18 @@
 import { MANDATORY, isNotificationType, type NotificationType } from './notifications';
 import { validQuietHours } from './quiet-hours';
 
+/** Essential workflow transports remain available without changing user channel defaults. */
+export const AGENCY_REQUIRED_NOTIFICATIONS = new Set<string>([
+	...MANDATORY,
+	'coverage_offer',
+	'controlled_countersign',
+	'incident_contact_overdue',
+	'prn_followup',
+	'med_overdue',
+	'system_maintenance',
+	'email_delivery_problem'
+]);
+
 export interface NotificationOverrides {
 	disabledTypes: NotificationType[];
 	requireSummaryEmail: boolean;
@@ -18,7 +30,9 @@ export function notificationOverrides(settings: unknown): NotificationOverrides 
 					...new Set(
 						raw.disabledTypes.filter(
 							(t): t is NotificationType =>
-								typeof t === 'string' && isNotificationType(t) && !MANDATORY.has(t)
+								typeof t === 'string' &&
+								isNotificationType(t) &&
+								!AGENCY_REQUIRED_NOTIFICATIONS.has(t)
 						)
 					)
 				]
@@ -37,7 +51,7 @@ export function notificationOverrides(settings: unknown): NotificationOverrides 
 export function notificationDisabled(type: string, rules: NotificationOverrides): boolean {
 	return (
 		isNotificationType(type) &&
-		!MANDATORY.has(type) &&
+		!AGENCY_REQUIRED_NOTIFICATIONS.has(type) &&
 		rules.disabledTypes.includes(type) &&
 		!(type === 'daily_summary' && rules.requireSummaryEmail)
 	);

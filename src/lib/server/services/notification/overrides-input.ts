@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { MANDATORY, NOTIFICATION_TYPES } from '../../../domain/notifications';
+import { NOTIFICATION_TYPES } from '../../../domain/notifications';
+import { AGENCY_REQUIRED_NOTIFICATIONS } from '../../../domain/notification-overrides';
 import { validQuietHours } from '../../../domain/quiet-hours';
 
 /** Agency admins cannot disable mandatory safety notifications. */
@@ -10,8 +11,8 @@ export const NotificationOverridesInput = z
 			.max(NOTIFICATION_TYPES.length)
 			.refine((types) => new Set(types).size === types.length, 'Choose each type once.')
 			.refine(
-				(types) => types.every((t) => !MANDATORY.has(t)),
-				'Safety alerts cannot be disabled.'
+				(types) => types.every((t) => !AGENCY_REQUIRED_NOTIFICATIONS.has(t)),
+				'Safety and essential workflow alerts cannot be disabled.'
 			),
 		requireSummaryEmail: z.boolean(),
 		quietHours: z
