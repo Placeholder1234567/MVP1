@@ -9,7 +9,8 @@ process.env.FIREBASE_AUTH_EMULATOR_HOST ??= '127.0.0.1:9099';
 process.env.PUBLIC_FIREBASE_PROJECT_ID ??= 'demo-guad';
 
 const identity = await import('../../../src/lib/server/identity');
-const { getCurrentUser, hasRole } = await import('../../../src/lib/server/services/auth');
+const { getCurrentUser, hasRole, sessionLengthMs } =
+	await import('../../../src/lib/server/services/auth');
 const { closeDb, withService } = await import('../../../src/lib/server/db');
 const { agencies, profiles } = await import('../../../src/lib/server/db/schema');
 
@@ -55,7 +56,12 @@ beforeAll(async () => {
 	await withService(async (tx) => {
 		await tx
 			.insert(agencies)
-			.values({ id: agencyId, name: 'Session Test Agency', subscription_tier: 'complete', slug: `session-${agencyId}` });
+			.values({
+				id: agencyId,
+				name: 'Session Test Agency',
+				subscription_tier: 'complete',
+				slug: `session-${agencyId}`
+			});
 		await tx.insert(profiles).values({
 			id: profileId,
 			agency_id: agencyId,
@@ -78,6 +84,25 @@ describe('sign-in', () => {
 		expect(session.uid).toBe(uid);
 		expect(session.expiresIn).toBe(identity.SESSION_MAX_MS);
 		expect(await identity.verifySession(session.cookie)).toEqual({ uid });
+	});
+
+	it('uses the agency’s shorter session length when it sets one', async () => {
+		expect(await sessionLengthMs(uid)).toBe(identity.SESSION_MAX_MS);
+		await withService((tx) =>
+			tx
+				.update(agencies)
+				.set({ settings: { session_minutes: 30 } })
+				.where(eq(agencies.id, agencyId))
+		);
+		try {
+			const session = await identity.createSession(await emulatorSignIn(email), sessionLengthMs);
+			expect(session.expiresIn).toBe(30 * 60_000);
+			expect(await identity.verifySession(session.cookie)).toEqual({ uid });
+		} finally {
+			await withService((tx) =>
+				tx.update(agencies).set({ settings: {} }).where(eq(agencies.id, agencyId))
+			);
+		}
 	});
 
 	it('rejects a forged or missing token', async () => {

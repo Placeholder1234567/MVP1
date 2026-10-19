@@ -9,7 +9,7 @@ import {
 	SignInError,
 	verifySession
 } from '#lib/server/identity.ts';
-import { checkMfa, getCurrentUser } from '#lib/server/services/auth/index.ts';
+import { checkMfa, getCurrentUser, sessionLengthMs } from '#lib/server/services/auth/index.ts';
 import { signInsByIp } from '#lib/server/rate-limit.ts';
 import type { RequestHandler } from './$types';
 
@@ -29,7 +29,8 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 
 	let session;
 	try {
-		session = await createSession(parsed.data.idToken);
+		// The agency may set a shorter session than the 12-hour default.
+		session = await createSession(parsed.data.idToken, sessionLengthMs);
 	} catch (e) {
 		if (e instanceof SignInError) error(401, e.message);
 		throw e;

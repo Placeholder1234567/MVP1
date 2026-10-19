@@ -5,6 +5,8 @@ import {
 	INCIDENT_TYPES,
 	RULE_HOURS_MAX,
 	RULE_WHEN_MAX,
+	SESSION_MINUTES_MAX,
+	SESSION_MINUTES_MIN,
 	STATE_CODES
 } from '../../../domain/index.ts';
 import type { Tx } from '../../db';
@@ -37,6 +39,8 @@ export async function getAgency(tx: Tx, agencyId: string) {
 export const AgencySettings = z
 	.object({
 		mfa_required_roles: z.array(z.enum(['caregiver', 'supervisor'])).optional(),
+		/** Sign-in length in minutes (domain/session-length.ts); applies to new sign-ins. */
+		session_minutes: z.number().int().min(SESSION_MINUTES_MIN).max(SESSION_MINUTES_MAX).optional(),
 		/** Controlled medication count book rules (domain/controlled.ts). */
 		controlled_rules: z
 			.object({

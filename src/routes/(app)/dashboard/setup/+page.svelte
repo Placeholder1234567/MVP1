@@ -3,6 +3,11 @@
 	// preset (labels and form order only), time zone, MFA for caregivers, and
 	// homes with their clock-in geofence. Needs a connection.
 	import { onMount } from 'svelte';
+	import {
+		SESSION_MINUTES_DEFAULT,
+		SESSION_MINUTES_MIN,
+		sessionMinutes
+	} from '#lib/domain/session-length.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import ControlledRulesSettings from '#lib/app/ControlledRulesSettings.svelte';
 	import MaintenanceNotice from '#lib/app/MaintenanceNotice.svelte';
@@ -18,7 +23,17 @@
 	let name = $state('');
 	let preset = $state<'therap' | 'default'>('default');
 	let timezone = $state('');
+	// security.md: 12 hours by default, down to 15 minutes.
+	const SESSION_CHOICES: [number, string][] = [
+		[SESSION_MINUTES_DEFAULT, '12 hours (default)'],
+		[8 * 60, '8 hours'],
+		[4 * 60, '4 hours'],
+		[60, '1 hour'],
+		[30, '30 minutes'],
+		[SESSION_MINUTES_MIN, '15 minutes']
+	];
 	let caregiverMfa = $state(false);
+	let sessionLength = $state(String(SESSION_MINUTES_DEFAULT));
 	let editingHome = $state<string | null>(null);
 	let home = $state({ name: '', address: '', lat: '', lng: '', radius: '150' });
 
@@ -30,6 +45,7 @@
 			timezone = agency.timezone ?? '';
 			const roles = (agency.settings as { mfa_required_roles?: string[] }).mfa_required_roles;
 			caregiverMfa = Array.isArray(roles) && roles.includes('caregiver');
+			sessionLength = String(sessionMinutes(agency.settings));
 		} catch {
 			message = 'Connect to load settings.';
 		}
@@ -45,7 +61,10 @@
 				name,
 				chartingPreset: preset,
 				timezone,
-				settings: { mfa_required_roles: caregiverMfa ? ['caregiver'] : [] }
+				settings: {
+					mfa_required_roles: caregiverMfa ? ['caregiver'] : [],
+					session_minutes: Number(sessionLength)
+				}
 			});
 			message = 'Agency settings saved. Labels update on the next page load.';
 			await load();
@@ -150,6 +169,17 @@
 					><input type="checkbox" bind:checked={caregiverMfa} /> Require two-step sign-in for caregivers
 					too</label
 				>
+				<label
+					>Sign staff out after<select class="input" bind:value={sessionLength}
+						>{#each SESSION_CHOICES as [minutes, label] (minutes)}<option value={String(minutes)}
+								>{label}</option
+							>{/each}</select
+					></label
+				>
+				<p class="muted">
+					Applies from each person's next sign-in. The app also locks with the device PIN when it's
+					been in the background.
+				</p>
 				<p class="muted">
 					Admins always need two-step sign-in; supervisors after 30 days. Your plan:
 					{agency.subscriptionTier}.
