@@ -16,7 +16,8 @@ const caller = mw.createCallerFactory(appRouter);
 const agency = randomUUID(),
 	admin = randomUUID(),
 	cara = randomUUID(),
-	sam = randomUUID();
+	sam = randomUUID(),
+	dee = randomUUID();
 const uid = (id: string) => `usage-${id}`;
 const as = async (id: string) => caller({ user: await getCurrentUser(uid(id)), request: {} });
 
@@ -34,7 +35,8 @@ beforeAll(async () => {
 				[
 					[admin, 'admin', 'Ada Synthetic'],
 					[cara, 'caregiver', 'Cara Synthetic'],
-					[sam, 'supervisor', 'Sam Synthetic']
+					[sam, 'supervisor', 'Sam Synthetic'],
+					[dee, 'caregiver', 'Dee Synthetic']
 				] as const
 			).map(([id, role, name]) => ({
 				id,
@@ -71,6 +73,15 @@ beforeAll(async () => {
 		// Cara replied STOP; Sam has preferences with texts still on.
 		await setSmsOptOut(tx, agency, { id: cara, role: 'caregiver' }, true);
 		await setSmsOptOut(tx, agency, { id: sam, role: 'supervisor' }, false);
+		// Dee saved one setting; every other type keeps its default (coverage offers by text).
+		await tx.insert(s.notificationPreferences).values({
+			agency_id: agency,
+			profile_id: dee,
+			notification_type: 'note_approved',
+			push_enabled: true,
+			sms_enabled: false,
+			email_enabled: false
+		});
 	});
 });
 

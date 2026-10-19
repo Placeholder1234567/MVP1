@@ -5,6 +5,12 @@
 
 export const DORMANT_DAYS = 90;
 export const HOME_UNUSED_DAYS = 30;
+/**
+ * Sign-ins are recorded from this day on (profiles.last_sign_in_at). Without
+ * one, an account counts from here or its creation, whichever is later, so
+ * nobody who signs in daily is called dormant the day this ships.
+ */
+export const SIGN_IN_TRACKED_FROM = new Date('2026-10-19T00:00:00Z');
 const DAY_MS = 86_400_000;
 
 export interface ReviewProfile {
@@ -35,7 +41,8 @@ export function isDormant(
 	p: Pick<ReviewProfile, 'active' | 'createdAt' | 'lastSignInAt'>,
 	now: Date
 ) {
-	const since = p.lastSignInAt ?? p.createdAt;
+	const since =
+		p.lastSignInAt ?? new Date(Math.max(p.createdAt.getTime(), SIGN_IN_TRACKED_FROM.getTime()));
 	return p.active && now.getTime() - since.getTime() >= DORMANT_DAYS * DAY_MS;
 }
 

@@ -25,8 +25,11 @@
 		dismissed = true;
 	}
 
-	function refresh() {
-		if (applyUpdate() === 'unsaved') message = 'Save your draft first, then refresh.';
+	async function refresh() {
+		const outcome = await applyUpdate();
+		if (outcome === 'unsaved') message = 'Save your draft first, then refresh.';
+		else if (outcome === 'unsaved-elsewhere')
+			message = 'Save your work in your other Guad window first, then refresh.';
 	}
 </script>
 
