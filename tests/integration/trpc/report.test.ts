@@ -517,7 +517,12 @@ it('exports authentic signed goal history, stopped goals and weighted progress w
 		)
 	).toBe(true);
 	// The audit row names what the file covered and whose records were in it.
-	const goalsAudit = audits.find((a) => (a.new_values as { type?: string }).type === 'goals')!;
+	// The full export's row (the empty and approved-only ones are audited too; no order).
+	const goalsAudit = audits.find(
+		(a) =>
+			(a.new_values as { type?: string }).type === 'goals' &&
+			(a.new_values as { rows?: number }).rows === 3
+	)!;
 	expect(goalsAudit.new_values).toMatchObject({
 		homeId: expect.any(String),
 		fromDay: expect.any(String),
