@@ -488,9 +488,10 @@ PowerSync replays write through sync.upload
             │     -> Remove from local DB, keep details in _failed_writes
             │     -> Show toast with the reason
             │
-            ├── RLS violation (e.g., user deactivated):
-            │     -> Remove from local DB
+            ├── Session revoked (e.g., user deactivated):
+            │     -> Keep the queue, encrypted, on the device (never drop it)
             │     -> Force re-auth
+            │     -> Planned: hand the queue to supervisor review (§ Logout and Session Events)
             │
             └── Network error:
                   -> Keep in queue
@@ -604,7 +605,7 @@ Purging removes data from the local wa-sqlite database only. Server data is unaf
 |-------|------------|
 | **Explicit logout** | **Never deletes unsynced work.** If the upload queue is empty, delete the OPFS database, purge the service worker cache, reset stores and revoke the session. If changes are still pending, logout first tries to sync. If the device is offline, the user sees "You have [n] changes that haven't synced yet. Stay signed in until you're back online." Logout then just locks the app (in-memory key dropped, PIN needed to reopen), and the database is deleted only after the queue drains on a later sign-in. |
 | **Session timeout** (12 hours inactivity, configurable per agency) | Drop the in-memory database key and redirect to login. The OPFS database stays on the device (encrypted, unreadable without the PIN-wrapped key). On re-auth, unwrap the key, flush the write queue, then resume sync. |
-| **Account deactivation** (`profiles.active = false`) | Server revokes the session and deletes the server copy of the device's database key. On the next connection, writes still in the queue are uploaded with the deactivated user's identity and flagged for supervisor review (they are clinical records made while the person was working) before local data is cleared. |
+| **Account deactivation** (`profiles.active = false`) | Server revokes the session and deletes the server copy of the device's database key. **As built:** uploads are refused (the session is gone), so writes still in the queue stay encrypted on the device and nothing is applied or deleted. **Planned:** the device hands the queue to a write-only quarantine (`quarantined_uploads`) that supervisors review, then clears local data once the server confirms receipt. Accepted records keep the original author and times and are marked as late entries; rejected ones are kept with a reason. HIPAA's termination rule (45 CFR 164.308(a)(3)(ii)(C)) ends future access, not records already made, and dropping a MAR dose or incident risks a double dose or a missed state deadline. Design and open decisions: research/compliance-2026-10.md §3. |
 | **App backgrounded** (mobile PWA, 5+ minutes) | PIN/biometric required to resume. After 5 wrong PINs the wrapped key is deleted. Local data stays encrypted until an online sign-in re-fetches the key; it is not deleted while the queue is non-empty. |
 | **Browser tab closed** | The Identity Platform session cookie (HttpOnly) survives. On re-open the client calls `/auth/sync-token` and gets a fresh short-lived ID token (kept in memory only). If the session cookie has expired, the user signs in again; unsynced local data is kept. |
 | **Role change** (e.g., caregiver promoted to supervisor) | Server updates `profiles.role`. The sync streams read the role live, so wider-scope data starts syncing within seconds; no token refresh is needed. |
@@ -879,7 +880,7 @@ Every feature that touches synced data must pass this checklist before shipping:
 | 3 | **Reconnect and sync** | After creating/editing offline, go online. Wait for sync. | Sync indicator turns green. Record appears on server. |
 | 4 | **Conflict: server wins** | Create a record offline. Have the server modify the same record. Go online. | Server version prevails. Local version is overwritten. User sees toast notification. |
 | 5 | **Constraint violation** | Create a duplicate record offline (e.g., same MAR). Go online. | Duplicate is rejected. User sees error toast. Local duplicate is removed. |
-| 6 | **RLS rejection** | Deactivate the user's account on the server while they are offline. User creates records offline. Go online. | All writes are rejected. User is redirected to login. Local data is cleared. |
+| 6 | **Deactivated while offline** | Deactivate the user's account on the server while they are offline. User creates records offline. Go online. | No write reaches the live records. User is redirected to login. The queue stays encrypted on the device and is never silently deleted. (Planned: it lands in quarantine for supervisor review, then local data is cleared.) |
 | 7 | **Logout never loses work** | Create records offline. Tap logout without reconnecting. | Logout is held: user sees the unsynced-changes message, app locks instead of wiping. After reconnecting and signing in, the queue drains, then the database can be deleted. |
 | 8 | **Session timeout** | Create records offline. Wait for session timeout (configurable, default 12 hours). | OPFS database preserved (encrypted). On re-auth the PIN-wrapped key is unwrapped and the write queue flushes. |
 | 9 | **Large queue** | Create 100+ records offline. Go online. | All records sync in correct order. Progress is visible in UI. No writes are lost. |
