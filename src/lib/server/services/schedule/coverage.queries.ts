@@ -166,11 +166,16 @@ export async function eligibilityData(tx: Tx, agencyId: string, key: SlotKey) {
 		.from(profiles)
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.role, 'caregiver')));
 	const week = weekStart(key.day);
+	// One day either side of the week too: an overnight shift runs into the next day.
 	const scheduled = await tx
-		.select({ profileId: slots.assigned_to, day: slots.day })
+		.select({ profileId: slots.assigned_to, day: slots.day, shift: slots.shift })
 		.from(slots)
 		.where(
-			and(eq(slots.agency_id, agencyId), gte(slots.day, week), lte(slots.day, addDays(week, 6)))
+			and(
+				eq(slots.agency_id, agencyId),
+				gte(slots.day, addDays(week, -1)),
+				lte(slots.day, addDays(week, 7))
+			)
 		);
 	const meds = await tx
 		.select({ times: medications.scheduled_times })

@@ -2,6 +2,8 @@ import { afterCommit, asService, withService, type Tx } from '../../db';
 import {
 	coverageBoardText,
 	eligibility,
+	shiftsInWeek,
+	workingAround,
 	shiftIsPast,
 	type CoverageBoardEvent,
 	type ShiftKey
@@ -33,18 +35,13 @@ const timeouts = (id: string) =>
 	});
 async function checks(tx: Tx, agencyId: string, key: q.SlotKey, excludeId?: string | null) {
 	const d = await q.eligibilityData(tx, agencyId, key);
-	const weeklyShifts = new Map<string, number>();
-	for (const row of d.scheduled)
-		if (row.profileId) weeklyShifts.set(row.profileId, (weeklyShifts.get(row.profileId) ?? 0) + 1);
 	return eligibility(d.staff, {
 		homeId: key.homeId,
 		shift: key.shift,
 		excludeId,
 		doseTimes: d.doseTimes,
-		workingThatDay: new Set(
-			d.scheduled.filter((s) => s.day === key.day && s.profileId).map((s) => s.profileId!)
-		),
-		weeklyShifts
+		workingThatDay: workingAround(d.scheduled, key.day, key.shift),
+		weeklyShifts: shiftsInWeek(d.scheduled, key.day)
 	});
 }
 export async function startCoverage(
