@@ -47,6 +47,17 @@ export async function findProfile(tx: Tx, agencyId: string, profileId: string) {
 	return row ?? null;
 }
 
+/** The agency settings of an active profile, by Identity Platform UID. */
+export async function findAgencySettingsByAuthUid(tx: Tx, authUid: string) {
+	const [row] = await tx
+		.select({ settings: agencies.settings })
+		.from(profiles)
+		.innerJoin(agencies, eq(agencies.id, profiles.agency_id))
+		.where(and(eq(profiles.auth_uid, authUid), eq(profiles.active, true)))
+		.limit(1);
+	return row?.settings ?? null;
+}
+
 /** What the MFA policy needs about a profile (security.md "MFA Policy"). */
 export async function findMfaFacts(tx: Tx, profileId: string) {
 	const [row] = await tx
