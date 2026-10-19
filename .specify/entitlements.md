@@ -1039,6 +1039,12 @@ function getUpgradeMessage(feature: string): string {
 - No trial periods or feature previews.
 - Admin users see a "Contact Support" link. Non-admin users see a message to contact their administrator.
 
+**As built:**
+- **Server:** `featureProcedure` throws FORBIDDEN with a `FeatureRequired` cause. The tRPC error formatter adds `data.upgradeRequired` and `data.feature`, and the message is the plan-specific text (`entitlements/upgrade.ts`).
+- **Client:** a client link (`src/lib/trpc.ts`) opens `UpgradeDialog.svelte`. It's rendered in the app layout as a modal `<dialog>`, titled "Not on your plan".
+- **Dialog content:** admins get a Contact support mailto link, and everyone else is told to ask their administrator.
+- **Errors still reach the caller.** The support address is `SUPPORT_EMAIL` in `upgrade.ts`.
+
 ---
 
 ## 10. Testing Entitlements
