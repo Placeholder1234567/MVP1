@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import PrivacyShield from '#lib/app/PrivacyShield.svelte';
 	import PushNotice from '#lib/app/PushNotice.svelte';
+	import SyncProblems from '#lib/app/SyncProblems.svelte';
 	import UpdateToast from '#lib/app/UpdateToast.svelte';
 	import UpgradeDialog from '#lib/app/UpgradeDialog.svelte';
 	import ThemeToggle from '#lib/app/ThemeToggle.svelte';
@@ -509,16 +510,7 @@
 						>
 							{w.text}
 						</p>{/each}
-					{#if app.failed.length}<div class="callout bad" role="alert">
-							<b>{app.failed.length} changes need attention</b>
-							<p>
-								Your server did not accept these changes. Keep this device unlocked while you review
-								them.
-							</p>
-							<ul>
-								{#each app.failed as f (f.id)}<li>{f.message}</li>{/each}
-							</ul>
-						</div>{/if}
+					<SyncProblems />
 					{@render children()}
 				</main>
 			</div>
