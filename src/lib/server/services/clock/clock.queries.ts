@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, lt, lte, ne, notExists, or } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import { clockRecords, homes, profiles, notifications } from '../../db/schema';
 
@@ -52,7 +52,12 @@ export async function updateClock(
 	set: Partial<
 		Pick<
 			typeof clockRecords.$inferInsert,
-			'clock_out_at' | 'clock_out_lat' | 'clock_out_lng' | 'acknowledged'
+			| 'clock_out_at'
+			| 'clock_out_lat'
+			| 'clock_out_lng'
+			| 'acknowledged'
+			| 'reason'
+			| 'manual_override'
 		>
 	>
 ) {
@@ -104,7 +109,8 @@ export async function overlappingClock(
 	agencyId: string,
 	profileId: string,
 	from: Date,
-	to: Date
+	to: Date,
+	exceptId?: string
 ) {
 	return (
 		await tx
@@ -114,6 +120,7 @@ export async function overlappingClock(
 				and(
 					eq(clockRecords.agency_id, agencyId),
 					eq(clockRecords.profile_id, profileId),
+					exceptId ? ne(clockRecords.id, exceptId) : undefined,
 					lt(clockRecords.clock_in_at, to),
 					or(isNull(clockRecords.clock_out_at), gt(clockRecords.clock_out_at, from))
 				)
@@ -132,9 +139,23 @@ export function missedClocks(tx: Tx) {
 		.where(
 			and(
 				isNull(clockRecords.clock_out_at),
-				lt(clockRecords.clock_in_at, new Date(Date.now() - 9 * 3600000))
+				lt(clockRecords.clock_in_at, new Date(Date.now() - 9 * 3600000)),
+				// Already-flagged records would otherwise fill the batch and hide new ones.
+				notExists(
+					tx
+						.select({ id: notifications.id })
+						.from(notifications)
+						.where(
+							and(
+								eq(notifications.agency_id, clockRecords.agency_id),
+								eq(notifications.reference_id, clockRecords.id),
+								eq(notifications.type, 'clock_missed')
+							)
+						)
+				)
 			)
 		)
+		.orderBy(desc(clockRecords.clock_in_at))
 		.limit(500);
 }
 export async function hasClockAlert(tx: Tx, agencyId: string, id: string) {

@@ -30,6 +30,7 @@ import {
 	weekSlots
 } from './schedule.queries';
 import { settleCoverage } from './coverage';
+import { lockSlot } from './coverage.queries';
 import { eligibilityData, requestById } from './coverage.queries';
 export {
 	startCoverage,
@@ -56,10 +57,24 @@ export const myShifts = (
 export async function setScheduleSlot(
 	tx: Tx,
 	user: CurrentUser,
-	input: { homeId: string; day: string; shift: 'am' | 'pm' | 'on'; profileId: string | null }
+	input: {
+		homeId: string;
+		day: string;
+		shift: 'am' | 'pm' | 'on';
+		profileId: string | null;
+		/** Who the supervisor's screen showed on the shift; refused if that changed */
+		seen?: string | null;
+	}
 ) {
 	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
 	requireOpenHome(await scheduleHome(tx, user.agencyId, input.homeId));
+	// Locked like a coverage reply, so an offer accepted meanwhile isn't silently replaced.
+	const current = await asService(tx, (t) => lockSlot(t, user.agencyId, input));
+	if (input.seen !== undefined && (current?.assigned_to ?? null) !== input.seen)
+		throw new ServiceError(
+			'RULE_VIOLATION',
+			'This shift changed since your schedule last updated. Check who has it and try again.'
+		);
 	if (input.profileId) {
 		const staff = await asService(tx, (t) => scheduleStaff(t, user.agencyId, input.profileId!));
 		if (!staff?.active || !staff.home_ids?.includes(input.homeId))

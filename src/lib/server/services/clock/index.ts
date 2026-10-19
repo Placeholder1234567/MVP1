@@ -46,6 +46,9 @@ export async function clockIn(tx: Tx, user: CurrentUser, input: z.input<typeof N
 	}
 	if (await activeClock(tx, user.agencyId, user.profileId))
 		throw new ServiceError('RULE_VIOLATION', 'You are already clocked in');
+	// A punch queued offline can arrive after a supervisor entered the same hours by hand.
+	if (await overlappingClock(tx, user.agencyId, user.profileId, at, new Date(at.getTime() + 1)))
+		throw new ServiceError('RULE_VIOLATION', 'This clock-in overlaps an existing clock record');
 	const home = await clockHome(tx, user.agencyId, p.homeId);
 	if (!home || !user.homeIds.includes(p.homeId))
 		throw new ServiceError('FORBIDDEN', 'Clock in at one of your assigned homes');
@@ -86,6 +89,8 @@ export async function clockOut(
 	checkTime(at);
 	if (at < row.clock_in_at)
 		throw new ServiceError('VALIDATION_FAILED', 'Clock-out must be after clock-in');
+	if (await overlappingClock(tx, user.agencyId, user.profileId, row.clock_in_at, at, row.id))
+		throw new ServiceError('RULE_VIOLATION', 'This clock-out overlaps another clock record');
 	return updateClock(tx, user.agencyId, row.id, {
 		clock_out_at: at,
 		clock_out_lat: input.lat,
@@ -122,6 +127,41 @@ export async function manualClock(
 		profile_id: input.profileId,
 		home_id: input.homeId,
 		clock_in_at: input.clockInAt,
+		clock_out_at: input.clockOutAt,
+		reason: input.reason,
+		manual_override: true,
+		acknowledged: false
+	});
+}
+// A forgotten clock-out: the supervisor sets when the shift really ended.
+export async function correctClockOut(
+	tx: Tx,
+	user: CurrentUser,
+	input: { id: string; clockOutAt: Date; reason: string }
+) {
+	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
+	const found = await findClock(tx, user.agencyId, input.id);
+	if (!found) throw new ServiceError('NOT_FOUND', 'Clock record not found');
+	await asService(tx, (t) => lockClockOwner(t, user.agencyId, found.profile_id));
+	const row = await findClock(tx, user.agencyId, input.id);
+	if (!row) throw new ServiceError('NOT_FOUND', 'Clock record not found');
+	if (input.clockOutAt <= row.clock_in_at || input.clockOutAt > new Date())
+		throw new ServiceError(
+			'VALIDATION_FAILED',
+			'Choose a time after the clock-in and not later than now'
+		);
+	if (
+		await overlappingClock(
+			tx,
+			user.agencyId,
+			row.profile_id,
+			row.clock_in_at,
+			input.clockOutAt,
+			row.id
+		)
+	)
+		throw new ServiceError('RULE_VIOLATION', 'This entry overlaps an existing clock record');
+	return updateClock(tx, user.agencyId, row.id, {
 		clock_out_at: input.clockOutAt,
 		reason: input.reason,
 		manual_override: true,

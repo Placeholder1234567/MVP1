@@ -256,7 +256,7 @@ src/lib/server/services/
 - `verifyLocation(lat, lng, home): { verified: boolean, distance: number }` — pure function: compare GPS to home lat/lng against configured radius (default 150m).
 - `getTimesheets(agencyId, profileId?, dateRange): Timesheet[]` — aggregated hours by staff member, ready for payroll export.
 - `getMissedPunches(agencyId, day): ClockRecord[]` — clock-ins without clock-outs (or vice versa) for a given day.
-- `manualOverride(agencyId, clockId, supervisorId, data): ClockRecord` — supervisor corrects a clock record; sets `manual_override = true`.
+- `manualOverride(agencyId, clockId, supervisorId, data): ClockRecord` — supervisor corrects a clock record; sets `manual_override = true`. As built: `manualClock` adds a missed punch and `correctClockOut` sets the clock-out of an existing record (a forgotten one, which otherwise only the caregiver could close, at the current time). Clock-ins and clock-outs, including ones queued offline, are refused when they overlap another of the person's records, so a late offline punch can't double hours a supervisor already entered.
 - `acknowledgeOverride(agencyId, clockId, staffId): void` — staff acknowledges a manual correction.
 - `exportPayroll(agencyId, dateRange, format): Buffer` — generate CSV/Excel export of timesheets.
 
