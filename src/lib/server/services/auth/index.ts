@@ -31,6 +31,7 @@ export {
 	StaffUpdateInput,
 	updateOwnProfile,
 	createStaffAccount,
+	endSessionsForRoles,
 	updateStaff
 } from './staff';
 
