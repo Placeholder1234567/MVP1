@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
+import { and, arrayContains, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	clients,
@@ -76,7 +76,9 @@ export function assignedCaregivers(
 					...shifts.map((s) => and(eq(scheduleSlots.day, s.day), eq(scheduleSlots.shift, s.shift)))
 				),
 				eq(profiles.agency_id, agencyId),
-				eq(profiles.active, true)
+				eq(profiles.active, true),
+				// Still working at the home: a slot can outlast a change of homes.
+				arrayContains(profiles.home_ids, [homeId])
 			)
 		);
 }
