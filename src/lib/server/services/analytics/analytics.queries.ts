@@ -91,25 +91,37 @@ export function incidentsSince(tx: Tx, agencyId: string, since: Date, homeId?: s
 
 /** Goal trials in the window, with the goal and the person's first name. */
 export function goalTrialsSince(tx: Tx, agencyId: string, since: Date, homeId?: string) {
-	return tx
-		.select({
-			goalId: noteGoals.goal_id,
-			trials: noteGoals.trials,
-			goalText: goals.text,
-			firstName: clients.first_name,
-			name: clients.name
-		})
-		.from(noteGoals)
-		.innerJoin(goals, eq(goals.id, noteGoals.goal_id))
-		.innerJoin(clients, eq(clients.id, goals.client_id))
-		.where(
-			and(
-				eq(noteGoals.agency_id, agencyId),
-				gte(noteGoals.created_at, since),
-				eq(noteGoals.not_attempted, false),
-				...home(noteGoals.home_id, homeId)
+	return (
+		tx
+			.select({
+				goalId: noteGoals.goal_id,
+				trials: noteGoals.trials,
+				goalText: goals.text,
+				firstName: clients.first_name,
+				name: clients.name
+			})
+			.from(noteGoals)
+			// Only trials on signed notes: drafts and notes sent back aren't the record yet
+			// (the goals report counts the same way).
+			.innerJoin(
+				notes,
+				and(
+					eq(notes.id, noteGoals.note_id),
+					eq(notes.agency_id, noteGoals.agency_id),
+					inArray(notes.status, ['submitted', 'approved'])
+				)
 			)
-		);
+			.innerJoin(goals, eq(goals.id, noteGoals.goal_id))
+			.innerJoin(clients, eq(clients.id, goals.client_id))
+			.where(
+				and(
+					eq(noteGoals.agency_id, agencyId),
+					gte(noteGoals.created_at, since),
+					eq(noteGoals.not_attempted, false),
+					...home(noteGoals.home_id, homeId)
+				)
+			)
+	);
 }
 
 /** Scheduled medications of active people, for medication compliance. */

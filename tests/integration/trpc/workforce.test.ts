@@ -119,8 +119,17 @@ it('exports audited payroll CSV and JSON with clipped totals and no location or 
 	expect(audit.every((r) => r.performed_by === sam)).toBe(true);
 	expect(audit.map((r) => r.new_values)).toEqual(
 		expect.arrayContaining([
-			{ type: 'timesheets', format: 'csv', rows: 1 },
-			{ type: 'timesheets', format: 'json', rows: 1 }
+			// What the file covered and whose hours were in it, for tracing a lost download.
+			expect.objectContaining({
+				type: 'timesheets',
+				format: 'csv',
+				rows: 1,
+				homeId: oak,
+				staffIds: [cara],
+				from: from.toISOString(),
+				to: to.toISOString()
+			}),
+			expect.objectContaining({ type: 'timesheets', format: 'json', rows: 1 })
 		])
 	);
 });
