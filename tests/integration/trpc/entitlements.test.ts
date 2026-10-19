@@ -13,7 +13,8 @@ const { createCallerFactory } = await import('../../../src/lib/server/trpc/middl
 const { TIER_FEATURES } = await import('../../../src/lib/entitlements/tier-features');
 
 const createCaller = createCallerFactory(appRouter);
-const PLAN_MESSAGE = 'This feature is not included in your agency’s plan';
+// Plan gates say which plan a feature needs (entitlements.md §9).
+const PLAN_MESSAGE = /requires (an active|a Professional or Complete|a Complete) subscription/;
 
 const STARTER = randomUUID();
 const OVERRIDE = randomUUID();
@@ -87,7 +88,12 @@ describe('feature gating', () => {
 		const cg = await as('cg');
 		await expect(
 			cg.note.create({ clientId: people.starter, type: 'shift', content: {} })
-		).rejects.toMatchObject({ code: 'FORBIDDEN', message: PLAN_MESSAGE });
+		).rejects.toMatchObject({
+			code: 'FORBIDDEN',
+			message: 'Clinical charting requires a Professional or Complete subscription.',
+			// The app reads the missing feature to show its upgrade dialog.
+			cause: { name: 'FeatureRequired', feature: 'charting' }
+		});
 		await expect(cg.health.list({ clientId: people.starter })).rejects.toMatchObject({
 			code: 'FORBIDDEN'
 		});
@@ -108,6 +114,31 @@ describe('feature gating', () => {
 				current: { activities: '', meals: '', mood: '', health: '' }
 			})
 		).rejects.toMatchObject({ code: 'FORBIDDEN', message: PLAN_MESSAGE });
+	});
+
+	it('over HTTP, a plan gate tells the app which feature to offer an upgrade for', async () => {
+		const { fetchRequestHandler } = await import('@trpc/server/adapters/fetch');
+		const user = await getCurrentUser(uid('cg'));
+		const res = await fetchRequestHandler({
+			endpoint: '/api/trpc',
+			req: new Request(
+				`http://localhost/api/trpc/health.list?input=${encodeURIComponent(
+					JSON.stringify({ json: { clientId: people.starter } })
+				)}`
+			),
+			router: appRouter,
+			createContext: () => ({ user, request: {} })
+		});
+		const body = await res.json();
+		expect(res.status).toBe(403);
+		expect(body.error.json.data).toMatchObject({
+			code: 'FORBIDDEN',
+			upgradeRequired: true,
+			feature: 'health'
+		});
+		expect(body.error.json.message).toBe(
+			'Health entry tracking requires a Professional or Complete subscription.'
+		);
 	});
 
 	it('the plan is checked before the role', async () => {
