@@ -587,9 +587,10 @@ describe('mar.* and medication.list', () => {
 		});
 		expect(rejected.applied).toEqual([]);
 		expect(rejected.rejected).toEqual(
-			rejectedIds.map((id) => ({
+			rejectedIds.map((id, index) => ({
 				id,
 				table: 'mar_records',
+				index,
 				code: 'VALIDATION_FAILED',
 				message: 'Explain the correction'
 			}))
@@ -705,6 +706,7 @@ describe('mar.* and medication.list', () => {
 				{
 					id,
 					table: 'mar_records',
+					index: 0,
 					code: code === 'BAD_REQUEST' ? 'VALIDATION_FAILED' : 'NOT_FOUND',
 					message
 				}

@@ -161,7 +161,13 @@ describe('sync.upload: notes', () => {
 		]);
 		expect(r.applied).toEqual([id, id, id]);
 		expect(r.rejected).toEqual([
-			{ id, table: 'notes', code: 'RULE_VIOLATION', message: 'This note was already signed' }
+			{
+				id,
+				table: 'notes',
+				index: 3,
+				code: 'RULE_VIOLATION',
+				message: 'This note was already signed'
+			}
 		]);
 		const [row] = await withService((t) => t.select().from(s.notes).where(eq(s.notes.id, id)));
 		expect(row.status).toBe('submitted');

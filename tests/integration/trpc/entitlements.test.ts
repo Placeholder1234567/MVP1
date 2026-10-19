@@ -195,6 +195,7 @@ describe('feature gating', () => {
 			{
 				id: note,
 				table: 'notes',
+				index: 0,
 				code: 'FEATURE_NOT_INCLUDED',
 				message: 'This feature is not included in your agency’s plan.'
 			}
