@@ -345,3 +345,70 @@ describe('controlled medications', () => {
 		});
 	});
 });
+
+describe('moving a person', () => {
+	it('the count book moves with them and the next count still sees every receipt and dose', async () => {
+		const mover = randomUUID();
+		const med = randomUUID();
+		await withService(async (t) => {
+			await t
+				.insert(s.clients)
+				.values({ id: mover, agency_id: AGENCY, home_id: OAK, name: 'Person Moving' });
+			await t.insert(s.medications).values({
+				id: med,
+				agency_id: AGENCY,
+				client_id: mover,
+				name: 'Synthetic moving controlled med',
+				prn_instructions: 'As needed for synthetic test',
+				controlled: true,
+				controlled_schedule: 'II',
+				units_per_dose: 1
+			});
+			await t.insert(s.controlledCounts).values({
+				agency_id: AGENCY,
+				home_id: OAK,
+				client_id: mover,
+				medication_id: med,
+				kind: 'receipt',
+				quantity: 30,
+				recorded_by: SAM,
+				recorded_by_name: 'Sam Supervisor',
+				recorded_at: at(5)
+			});
+			// An older dose that no longer syncs to devices stays at Oak.
+			await t.insert(s.marRecords).values({
+				agency_id: AGENCY,
+				home_id: OAK,
+				client_id: mover,
+				medication_id: med,
+				day: localTime(at(4), 'America/New_York').day,
+				status: 'given',
+				is_prn: true,
+				recorded_by: CARA,
+				recorded_by_name: 'Cara Giver',
+				recorded_at: at(4),
+				device_sync: false
+			});
+		});
+		await (await as(SAM)).client.update({ id: mover, homeId: MAPLE });
+
+		const book = await withService((t) =>
+			t
+				.select({ home: s.controlledCounts.home_id })
+				.from(s.controlledCounts)
+				.where(eq(s.controlledCounts.medication_id, med))
+		);
+		expect(book).toEqual([{ home: MAPLE }]);
+
+		const count = await (
+			await as(MAPLE_CARER)
+		).medication.countEntry({
+			id: randomUUID(),
+			medicationId: med,
+			kind: 'count',
+			quantity: 29,
+			witnessId: SAM
+		});
+		expect(count).toMatchObject({ expected: 29, discrepancy: false });
+	});
+});
