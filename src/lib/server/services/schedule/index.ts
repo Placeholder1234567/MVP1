@@ -64,6 +64,8 @@ export async function setScheduleSlot(
 		profileId: string | null;
 		/** Who the supervisor's screen showed on the shift; refused if that changed */
 		seen?: string | null;
+		/** Template, copy-week and suggestion fills: only a slot that is still open, not being covered */
+		onlyOpen?: boolean;
 	}
 ) {
 	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
@@ -75,6 +77,9 @@ export async function setScheduleSlot(
 			'RULE_VIOLATION',
 			'This shift changed since your schedule last updated. Check who has it and try again.'
 		);
+	// The fill was planned from an unlocked read; recheck now the slot is locked.
+	if (input.onlyOpen && (current?.assigned_to || current?.status === 'filling'))
+		throw new ServiceError('RULE_VIOLATION', 'This shift is no longer open');
 	if (input.profileId) {
 		const staff = await asService(tx, (t) => scheduleStaff(t, user.agencyId, input.profileId!));
 		if (!staff?.active || !staff.home_ids?.includes(input.homeId))
@@ -159,7 +164,7 @@ async function fillOpenSlots(
 	for (const slot of plan.copy) {
 		try {
 			// A savepoint per slot: one unavailable person doesn't undo the rest.
-			await tx.transaction((sp) => setScheduleSlot(sp, user, { homeId, ...slot }));
+			await tx.transaction((sp) => setScheduleSlot(sp, user, { homeId, ...slot, onlyOpen: true }));
 			copied++;
 		} catch (e) {
 			if (!(e instanceof ServiceError)) throw e;
