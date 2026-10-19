@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import {
 	INCIDENT_TYPES,
+	incidentBoardText,
 	incidentNotifyRules,
 	parseIncidentRules,
 	parseReportDetails,
@@ -13,6 +14,7 @@ import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { findVisibleClient } from '../charting/index.ts';
+import { postLomiUpdate } from '../message/index.ts';
 import { notifyHomeSupervisors } from '../notification/index.ts';
 import {
 	addNotifiedParty,
@@ -98,6 +100,8 @@ export async function createIncident(
 			referenceId: i.id,
 			referenceType: 'incidents'
 		});
+		const board = incidentBoardText(user.name, i.type, i.severity);
+		if (board && client.homeId) await postLomiUpdate(tx, agencyId, client.homeId, board, i.id);
 	}
 	return {
 		id: i.id,

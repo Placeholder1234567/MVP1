@@ -88,7 +88,9 @@ export function incidentReviewPart(
 		status: string | null;
 	}[],
 	since: Date,
-	at: Date
+	at: Date,
+	/** Only incidents reported before this (for an earlier window) */
+	until?: Date
 ): Part {
 	const limit = INCIDENT_REVIEW_AFTER_HOURS * 3_600_000;
 	let done = 0;
@@ -96,6 +98,7 @@ export function incidentReviewPart(
 	for (const i of incidents) {
 		const reported = i.created_at ? Date.parse(i.created_at) : NaN;
 		if (!Number.isFinite(reported) || reported < since.getTime()) continue;
+		if (until && reported >= until.getTime()) continue;
 		const due = reported + limit;
 		if (i.status === 'open') {
 			if (at.getTime() >= due) of++;
@@ -107,4 +110,49 @@ export function incidentReviewPart(
 		if (Number.isFinite(reviewed) && reviewed <= due) done++;
 	}
 	return { done, of };
+}
+
+export interface ScoreChange {
+	/** Whole percentage points, current minus previous */
+	points: number;
+	direction: 'up' | 'down' | 'steady';
+}
+
+/**
+ * The compliance score against the previous seven days, in percentage points
+ * (frontend-spec-3.md §4.1 "delta arrow"). Within 2 points is steady. Null
+ * when either week had nothing to measure.
+ */
+export function scoreChange(previous: number | null, current: number | null): ScoreChange | null {
+	if (previous === null || current === null) return null;
+	const points = current - previous;
+	return { points, direction: points > 2 ? 'up' : points < -2 ? 'down' : 'steady' };
+}
+
+/**
+ * The Overview's attention count (frontend-spec-3.md §3): what is only on the
+ * overview at this home, so has no link of its own to badge: open incidents
+ * and flagged health readings not yet acknowledged.
+ */
+export function overviewAttention(
+	incidents: readonly { home_id: string | null; status: string | null }[],
+	health: readonly {
+		home_id: string | null;
+		flags: string | null;
+		acknowledged: number | null;
+	}[],
+	homeId: string
+): number {
+	const flagged = (flags: string | null) => {
+		try {
+			const list = JSON.parse(flags ?? '[]');
+			return Array.isArray(list) && list.length > 0;
+		} catch {
+			return false;
+		}
+	};
+	return (
+		incidents.filter((i) => i.home_id === homeId && i.status === 'open').length +
+		health.filter((h) => h.home_id === homeId && !h.acknowledged && flagged(h.flags)).length
+	);
 }

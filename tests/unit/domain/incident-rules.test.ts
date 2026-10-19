@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_INCIDENT_RULES,
+	incidentBoardText,
 	incidentNotifyRules,
 	mandatedReportNotice,
 	parseIncidentRules
@@ -123,5 +124,17 @@ describe('critical incidents', () => {
 		expect(mandatedReportNotice('Suspected exploitation', rules)).toMatch(
 			'Report it yourself too: APS 1-800-555-0100.'
 		);
+	});
+});
+
+describe('incidentBoardText', () => {
+	it('names the reporter by first name, the type and severity, never the person', () => {
+		expect(incidentBoardText('Cara Giver', 'Fall', 'High')).toBe(
+			'Cara reported an incident (fall, high severity). A supervisor will follow up.'
+		);
+	});
+	it('stays off the board for abuse, neglect, exploitation and death', () => {
+		for (const type of ['Suspected abuse or neglect', 'Suspected exploitation', 'Death'] as const)
+			expect(incidentBoardText('Cara Giver', type, 'High')).toBeNull();
 	});
 });

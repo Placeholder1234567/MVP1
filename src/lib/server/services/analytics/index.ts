@@ -111,6 +111,17 @@ export async function weeklyAnalytics(
 			),
 			signed: signedByWeek.map((s) => s.length),
 			lomiRate: signedByWeek.map((s) => percent(s.filter((e) => e.lomiDrafted).length, s.length)),
+			// ai-pipeline.md "Quality Monitoring": of the Lomi-drafted notes signed
+			// in the week, the share sent back afterwards (target under 10%).
+			lomiSentBackRate: signedByWeek.map((week) => {
+				const lomi = week.filter((e) => e.lomiDrafted);
+				return percent(
+					lomi.filter((s) =>
+						events.some((e) => e.noteId === s.noteId && e.action === 'returned' && e.at > s.at)
+					).length,
+					lomi.length
+				);
+			}),
 			hoursToApprove: approvedByWeek.map((a) =>
 				average(
 					a

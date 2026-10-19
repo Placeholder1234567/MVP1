@@ -25,6 +25,10 @@ test('a fever with a fast pulse shows as a sepsis sign to supervisors', async ({
 	await page.getByRole('button', { name: 'Save vitals', exact: true }).click();
 	await expect(page.getByText(/^Vitals saved for /)).toBeVisible();
 
+	// The flagged reading counts toward the Overview link's attention count.
+	await expect(
+		page.getByRole('link', { name: 'Overview', exact: true }).first()
+	).toHaveAccessibleDescription(/^\d+ needs? attention$/);
 	await page.getByRole('link', { name: 'Overview', exact: true }).first().click();
 	const watch = page.getByRole('region', { name: 'Lomi’s health watch' });
 	const theo = watch.getByRole('article', { name: 'Theo Demo' });

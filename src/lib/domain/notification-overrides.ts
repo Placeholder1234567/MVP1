@@ -10,7 +10,8 @@ export const AGENCY_REQUIRED_NOTIFICATIONS = new Set<string>([
 	'prn_followup',
 	'med_overdue',
 	'system_maintenance',
-	'email_delivery_problem'
+	'email_delivery_problem',
+	'access_review'
 ]);
 
 export interface NotificationOverrides {

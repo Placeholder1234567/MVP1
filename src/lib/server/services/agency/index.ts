@@ -157,3 +157,5 @@ export async function provisionAgency(tx: Tx, input: z.input<typeof NewAgency>) 
 	});
 	return { agencyId: agency.id, adminProfileId: admin.id, templates };
 }
+
+export { PlanChange, setAgencyPlan } from './plan';

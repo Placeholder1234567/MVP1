@@ -48,6 +48,8 @@ export {
 	controlledCountersignRequest
 } from './care-events';
 export { sweepCareReminders } from './care-reminders';
+export { messagingUsage } from './usage';
+export { adminAdded, sweepAccessReview } from './access-review';
 export {
 	announceMaintenance,
 	MaintenanceInput,

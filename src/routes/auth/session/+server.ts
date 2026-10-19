@@ -9,7 +9,12 @@ import {
 	SignInError,
 	verifySession
 } from '#lib/server/identity.ts';
-import { checkMfa, getCurrentUser, sessionLengthMs } from '#lib/server/services/auth/index.ts';
+import {
+	checkMfa,
+	getCurrentUser,
+	recordSignIn,
+	sessionLengthMs
+} from '#lib/server/services/auth/index.ts';
 import { signInsByIp } from '#lib/server/rate-limit.ts';
 import type { RequestHandler } from './$types';
 
@@ -57,6 +62,8 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		if (mfa.kind === 'grace' && !session.secondFactor) mfaGraceDaysLeft = mfa.daysLeft;
 	}
 
+	// For the access review: accounts unused for 90 days get flagged.
+	await recordSignIn(user);
 	cookies.set(SESSION_COOKIE, session.cookie, {
 		path: '/',
 		httpOnly: true,

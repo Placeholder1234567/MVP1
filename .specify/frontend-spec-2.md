@@ -918,6 +918,8 @@ On blur: if value is out of range, field border turns `var(--bad)`, helper text 
 
 **Post-submit:** Lomi posts to the home's team messages: "[DSP name] reported an incident ([type], [severity] severity). A supervisor will follow up." Success screen with green checkmark.
 
+**As built:** `incidentBoardText()` (domain/charting.ts), posted by `createIncident` once per new report, online or synced; reporter's first name, no person's name. Suspected abuse or neglect, suspected exploitation and death are never announced on the board (`UNANNOUNCED_INCIDENT_TYPES`): the report may concern a coworker who reads it, reporters are kept confidential, and a death is told by a supervisor.
+
 **Auto-save (Rebuild target -- not in MVP):** All wizard state persists to PowerSync local DB on every input change (debounced 500ms). On return to the wizard after interruption, restore saved state. Show "Draft saved [timestamp]" indicator at bottom of form. *(Note: IndexedDB/localStorage must NOT be used for PHI-containing data per the project constitution. PowerSync OPFS is the only permitted client-side PHI cache.)*
 
 ---
@@ -2055,6 +2057,8 @@ Extended offline (banner):
 
 **Per-record-type rules:**
 
+**As built (note conflicts):** `NoteEditor.svelte`. When another device's save replaces the text on screen (same note, still a draft or returned), a notice says "This note was updated on another device." with **Restore my version**, which puts back what the screen showed as an ordinary unsaved edit; the kept copy lives only in memory and is gone after a save or leaving the note. When the author's open note is returned or approved, the notice says "Your supervisor already returned this note. Read their comment, then sign it again." (or "approved"). The comparison is on the note text only, so the server trimming a goal reason never raises a false notice.
+
 | Record type | Resolution | User UI |
 |-------------|-----------|---------|
 | Shift notes | Last-write-wins while draft/returned | Toast + "Restore my version" |
@@ -2167,6 +2171,8 @@ When the service worker detects a new version is available (via `updatefound` ev
    - New version activates on next full page load
    - No persistent nag -- one toast per update, once
 
+**As built:** `UpdateToast.svelte` with `src/lib/pwa/update.svelte.ts`. The app watches the registration for a waiting worker (and asks the browser to check hourly while visible, since a single-page app rarely does a full navigation). Unsaved work is detected the way forms already guard a reload: a synthetic, cancelable `beforeunload` event, which any dirty form cancels; then the toast says "Save your draft first, then refresh." and stays up. Refresh also asks every other open Guad tab (a BroadcastChannel) and refuses with "Save your work in your other Guad window first" if one has unsaved work. Otherwise it posts `skip-waiting` to the waiting worker, and every tab reloads on `controllerchange`, so none keeps running the old build after its cached files are gone (a plain `location.reload()` would keep the old worker while this tab is open). Dismissed or ignored, the update starts the next time every tab is closed. In dark themes the Refresh link is underlined in the pill's text color, since lemon on the light pill can't be read.
+
 ---
 
 ### 8.6 Push Notification Permission
@@ -2196,6 +2202,8 @@ When the service worker detects a new version is available (via `updatefound` ev
 - "Turn on notifications" triggers the actual browser permission prompt
 - "Not now" dismisses; do not re-ask for 30 days
 - If browser permission denied: "Notifications are blocked. To enable them, go to your browser settings." with a link to instructions
+
+**As built:** `PushAsk.svelte` (rules in `domain/push-ask.ts`). "3+ days" counts distinct days the app was opened on this device (`device_flags.use-days`, local only), not sessions. The sheet appears only where push can work (configured for the deployment and the agency, supported by the browser) and while the browser's permission is still undecided; "Not now" is remembered on the device (`push-ask-dismissed`) for 30 days. The reasons follow the role (caregivers: coverage offers, notes sent back, medications due; supervisors and admins: unfilled shifts, notes to review, incidents and health readings). When the browser blocks it, the sheet links to Me → Notifications.
 
 **HIPAA constraints on notification content:**
 

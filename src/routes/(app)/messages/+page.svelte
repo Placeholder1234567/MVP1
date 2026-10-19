@@ -306,7 +306,8 @@
 	<div class="spread">
 		<b
 			>{message.from_name}{#if !message.created_by && message.from_name === 'Lomi'}<span
-					class="muted s13">&nbsp;· coverage update</span
+					class="muted s13"
+					>&nbsp;· {message.incident_id ? 'incident update' : 'coverage update'}</span
 				>{/if}</b
 		><small class="muted">{message.sent_at ? new Date(message.sent_at).toLocaleString() : ''}</small
 		>

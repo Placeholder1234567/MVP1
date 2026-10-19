@@ -7,6 +7,7 @@ import {
 	escalate,
 	sendDigest,
 	sweepDigests,
+	sweepAccessReview,
 	sweepCareReminders,
 	sweepMedReminders,
 	sweepNotifications
@@ -133,6 +134,13 @@ const JOBS = {
 		maxAttempts: 1,
 		run: () => sweepCareReminders()
 	}),
+	// Dormant accounts and stale home access (security.md "Automated Detection").
+	'access-review-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => sweepAccessReview()
+	}),
 	'notifications-sweep': job({
 		queue: 'maintenance',
 		payload: z.object({}).passthrough(),
@@ -222,5 +230,7 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	{ job: 'care-reminder-sweep', cron: '*/15 * * * *' },
 	{ job: 'webhook-sweep', cron: '* * * * *' },
 	{ job: 'report-cleanup', cron: '17 * * * *' },
-	{ job: 'sync-window', cron: '0 8 * * *' }
+	{ job: 'sync-window', cron: '0 8 * * *' },
+	// Admins hear at most weekly (access-review.ts); 14:00 UTC is US morning.
+	{ job: 'access-review-sweep', cron: '0 14 * * *' }
 ];
