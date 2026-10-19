@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 
-const { closeDb, withService } = await import('../../../src/lib/server/db');
+const { closeDb, withService, withUser } = await import('../../../src/lib/server/db');
 const s = await import('../../../src/lib/server/db/schema');
 const { getCurrentUser } = await import('../../../src/lib/server/services/auth');
 const { appRouter } = await import('../../../src/lib/server/trpc/router');
@@ -326,6 +326,53 @@ describe('note.*', () => {
 			code: 'CONFLICT',
 			message: 'This note was already approved'
 		});
+		// A second approval would notify the author twice.
+		await expect(sam.note.approve({ id: noteId })).rejects.toMatchObject({
+			code: 'CONFLICT',
+			message: 'This note was already approved'
+		});
+	});
+
+	it('a discontinued goal takes no new trials', async () => {
+		const stopped = randomUUID();
+		await withService((t) =>
+			t.insert(s.goals).values({
+				id: stopped,
+				agency_id: AGENCY,
+				client_id: PERSON,
+				area: 'Daily living',
+				text: 'Synthetic stopped goal',
+				stopped_at: new Date()
+			})
+		);
+		await expect(
+			(await as(CARA)).note.create({
+				clientId: PERSON,
+				type: 'shift',
+				goals: [{ goalId: stopped, trials: ['Independent'] }]
+			})
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	});
+
+	it('goal trials can’t be written onto a signed note, even straight to the table', async () => {
+		const cara = await as(CARA);
+		const r = await cara.note.create({ clientId: PERSON, type: 'shift', content: {} });
+		await cara.note.sign({ id: r.id });
+		await expect(
+			cara.note.update({ id: r.id, goals: [{ goalId: GOAL, trials: ['Independent'] }] })
+		).rejects.toMatchObject({ code: 'CONFLICT' });
+		// The database backstop: the policy refuses the row for the author too.
+		const claims = { agency_id: AGENCY, role: 'caregiver' as const, profile_id: CARA };
+		await expect(
+			withUser(claims, {}, (t) =>
+				t.insert(s.noteGoals).values({
+					agency_id: AGENCY,
+					note_id: r.id,
+					goal_id: GOAL,
+					trials: ['Independent']
+				})
+			)
+		).rejects.toThrow();
 	});
 
 	it('lists are scoped to the caller’s homes', async () => {

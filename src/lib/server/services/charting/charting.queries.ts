@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import { clients, goals, noteGoals, noteHistory, notes } from '../../db/schema';
 
@@ -36,6 +36,20 @@ export async function findNote(tx: Tx, agencyId: string, id: string) {
 		.where(and(eq(notes.agency_id, agencyId), eq(notes.id, id)))
 		.limit(1);
 	return row ?? null;
+}
+
+/**
+ * Locks the note row until the transaction ends, so a sign, a review and a
+ * goal-trial upload for the same note run one after another. Callers run it
+ * as app_service: under RLS a caregiver couldn't lock a signed note, and the
+ * caller's own read then reports why the change is refused.
+ */
+export async function lockNote(tx: Tx, agencyId: string, id: string) {
+	await tx
+		.select({ id: notes.id })
+		.from(notes)
+		.where(and(eq(notes.agency_id, agencyId), eq(notes.id, id)))
+		.for('update');
 }
 
 export interface NoteFilter {
@@ -106,10 +120,15 @@ export async function updateNoteRow(
 
 /** Goals of a person the caller can see, by ID. */
 export function selectClientGoals(tx: Tx, agencyId: string, clientId: string) {
-	return tx
-		.select({ id: goals.id })
-		.from(goals)
-		.where(and(eq(goals.agency_id, agencyId), eq(goals.client_id, clientId)));
+	return (
+		tx
+			.select({ id: goals.id })
+			.from(goals)
+			// A discontinued goal takes no new trials (goal.stop).
+			.where(
+				and(eq(goals.agency_id, agencyId), eq(goals.client_id, clientId), isNull(goals.stopped_at))
+			)
+	);
 }
 
 export function selectNoteGoals(tx: Tx, agencyId: string, noteId: string) {
