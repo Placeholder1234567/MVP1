@@ -34,7 +34,12 @@ export async function recordExport(
 	format: string,
 	rows: number,
 	request: RequestInfo,
-	type = 'timesheets'
+	type = 'timesheets',
+	/**
+	 * What the file covers (home, person, period) and whose records are in it,
+	 * so a lost download can be traced to the people affected. IDs only.
+	 */
+	scope: Record<string, unknown> = {}
 ) {
 	await tx.insert(auditLog).values({
 		agency_id: agencyId,
@@ -44,6 +49,6 @@ export async function recordExport(
 		performed_by: profileId,
 		ip_address: request.ip,
 		user_agent: request.user_agent,
-		new_values: { type, format, rows }
+		new_values: { type, format, rows, ...scope }
 	});
 }

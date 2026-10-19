@@ -133,6 +133,13 @@ beforeAll(async () => {
 	});
 	await carer.note.sign({ id: note.id });
 	await (await as(SUP)).note.approve({ id: note.id });
+	// An unsigned draft's trials aren't the record yet: they don't count.
+	await carer.note.create({
+		clientId: PERSON,
+		type: 'shift',
+		content: {},
+		goals: [{ goalId: GOAL, trials: ['Model', 'Model', 'Model', 'Model'] }]
+	});
 	await carer.mar.record({
 		clientId: PERSON,
 		medicationId: MED,

@@ -72,7 +72,22 @@ export async function exportPayroll(
 	const content = p.format === 'csv' ? payrollCsv(report) : JSON.stringify(report, null, 2);
 	// Elevation is restricted to this append-only audit insert, never report reads.
 	await asService(tx, (t) =>
-		recordExport(t, user.agencyId, user.profileId, p.format, report.entries.length, request)
+		recordExport(
+			t,
+			user.agencyId,
+			user.profileId,
+			p.format,
+			report.entries.length,
+			request,
+			'timesheets',
+			{
+				homeId: p.homeId ?? null,
+				profileId: p.profileId ?? null,
+				from: p.from.toISOString(),
+				to: p.to.toISOString(),
+				staffIds: [...new Set(result.entries.map((r) => r.profile_id))]
+			}
+		)
 	);
 	return {
 		content,
