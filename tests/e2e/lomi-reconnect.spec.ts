@@ -77,7 +77,9 @@ for (const leave of [false, true]) {
 					.getByRole('button', { name: 'Use this reviewed draft in my note', exact: true })
 					.click();
 				await expect(review).toBeHidden();
+				const response = page.waitForResponse(/\/api\/trpc\/lomi\.draft(?:\?|$)/);
 				release();
+				await (await response).finished();
 				await expect(note).toHaveValue(observation);
 			} else {
 				await review
