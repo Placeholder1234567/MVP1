@@ -23,6 +23,7 @@ import {
 	clockOut,
 	listClocks,
 	manualClock,
+	correctClockOut,
 	Position,
 	timesheet
 } from '../../services/clock/index.ts';
@@ -59,10 +60,10 @@ export const scheduleRouter = router({
 			)
 		),
 	setSlot: featureRoleProcedure('scheduling', 'supervisor')
-		.input(slot.extend({ profileId: z.uuid() }))
+		.input(slot.extend({ profileId: z.uuid(), seen: z.uuid().nullable().optional() }))
 		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, input)),
 	clearSlot: featureRoleProcedure('scheduling', 'supervisor')
-		.input(slot)
+		.input(slot.extend({ seen: z.uuid().nullable().optional() }))
 		.mutation(({ ctx, input }) => setScheduleSlot(ctx.db, ctx.user, { ...input, profileId: null })),
 	copyWeek: featureRoleProcedure('scheduling', 'supervisor')
 		.input(z.object({ homeId: z.uuid(), fromWeek: z.iso.date(), toWeek: z.iso.date() }))
@@ -179,6 +180,15 @@ export const clockRouter = router({
 			})
 		)
 		.mutation(({ ctx, input }) => manualClock(ctx.db, ctx.user, input)),
+	correctClockOut: featureRoleProcedure('timekeeping', 'supervisor')
+		.input(
+			z.object({
+				id: z.uuid(),
+				clockOutAt: z.coerce.date(),
+				reason: z.string().trim().min(1).max(1000)
+			})
+		)
+		.mutation(({ ctx, input }) => correctClockOut(ctx.db, ctx.user, input)),
 	timesheet: featureRoleProcedure('timekeeping', 'supervisor')
 		.input(
 			z.object({ profileId: z.uuid().optional(), homeId: z.uuid().optional(), dateRange: range })

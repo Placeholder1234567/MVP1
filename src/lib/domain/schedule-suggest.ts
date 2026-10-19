@@ -4,7 +4,14 @@
 // to their week, so suggestions never double-book anyone or push them past
 // 40 hours. Among eligible staff the one with the fewest shifts that week is
 // suggested, to spread the work. Only suggestions: a supervisor applies them.
-import { eligibility, type Candidate, type Reason } from './eligibility';
+import {
+	eligibility,
+	shiftsInWeek,
+	workingAround,
+	type Assignment,
+	type Candidate,
+	type Reason
+} from './eligibility';
 import type { ShiftKey } from './shifts';
 
 export interface OpenShift {
@@ -24,28 +31,21 @@ export interface Suggestion {
 export function suggestShifts(
 	open: readonly OpenShift[],
 	staff: readonly Candidate[],
-	/** Assignments already in the week, any home */
-	scheduled: readonly { profileId: string | null; day: string }[],
+	/** Assignments already in the week (and the day either side), any home */
+	scheduled: readonly Assignment[],
 	homeId: string
 ): Suggestion[] {
-	const weekly = new Map<string, number>();
-	const working = new Map<string, Set<string>>();
-	const add = (profileId: string, day: string) => {
-		weekly.set(profileId, (weekly.get(profileId) ?? 0) + 1);
-		const set = working.get(day) ?? new Set<string>();
-		set.add(profileId);
-		working.set(day, set);
-	};
-	for (const s of scheduled) if (s.profileId) add(s.profileId, s.day);
+	const booked = [...scheduled];
 	const order = (s: OpenShift) => `${s.day}:${['am', 'pm', 'on'].indexOf(s.shift)}`;
 	return [...open]
 		.sort((a, b) => order(a).localeCompare(order(b)))
 		.map((slot) => {
+			const weekly = shiftsInWeek(booked, slot.day);
 			const results = eligibility([...staff], {
 				homeId,
 				shift: slot.shift,
 				doseTimes: slot.doseTimes,
-				workingThatDay: working.get(slot.day) ?? new Set(),
+				workingThatDay: workingAround(booked, slot.day, slot.shift),
 				weeklyShifts: weekly
 			});
 			const pick = results
@@ -54,7 +54,7 @@ export function suggestShifts(
 					(a, b) => (weekly.get(a.id) ?? 0) - (weekly.get(b.id) ?? 0) || a.id.localeCompare(b.id)
 				)[0];
 			if (pick) {
-				add(pick.id, slot.day);
+				booked.push({ profileId: pick.id, day: slot.day, shift: slot.shift });
 				return { day: slot.day, shift: slot.shift, profileId: pick.id, reason: null };
 			}
 			const counts = new Map<Reason, number>();
@@ -77,19 +77,11 @@ export function suggestShifts(
 export function checkPicks<P extends { day: string; shift: ShiftKey; profileId: string }>(
 	picks: readonly P[],
 	staff: readonly Candidate[],
-	scheduled: readonly { profileId: string | null; day: string }[],
+	scheduled: readonly Assignment[],
 	homeId: string,
 	doseTimes: string[]
 ): { ok: P[]; refused: P[] } {
-	const weekly = new Map<string, number>();
-	const working = new Map<string, Set<string>>();
-	const add = (profileId: string, day: string) => {
-		weekly.set(profileId, (weekly.get(profileId) ?? 0) + 1);
-		const set = working.get(day) ?? new Set<string>();
-		set.add(profileId);
-		working.set(day, set);
-	};
-	for (const s of scheduled) if (s.profileId) add(s.profileId, s.day);
+	const booked = [...scheduled];
 	const order = (s: P) => `${s.day}:${['am', 'pm', 'on'].indexOf(s.shift)}`;
 	const ok: P[] = [];
 	const refused: P[] = [];
@@ -100,12 +92,12 @@ export function checkPicks<P extends { day: string; shift: ShiftKey; profileId: 
 					homeId,
 					shift: pick.shift,
 					doseTimes,
-					workingThatDay: working.get(pick.day) ?? new Set(),
-					weeklyShifts: weekly
+					workingThatDay: workingAround(booked, pick.day, pick.shift),
+					weeklyShifts: shiftsInWeek(booked, pick.day)
 				})
 			: [];
 		if (result?.eligible) {
-			add(pick.profileId, pick.day);
+			booked.push({ profileId: pick.profileId, day: pick.day, shift: pick.shift });
 			ok.push(pick);
 		} else refused.push(pick);
 	}
