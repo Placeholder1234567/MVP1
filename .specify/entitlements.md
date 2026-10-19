@@ -1034,7 +1034,11 @@ function getUpgradeMessage(feature: string): string {
 ```
 
 **v1 constraints:**
-- No self-service tier change. Upgrades are handled through support/sales.
+- No self-service tier change. Upgrades are handled through support/sales. **As built:** support runs `npm run agency:set-plan -- --slug … --tier … [--feature …] --operator …` (`scripts/set-plan.ts`, `services/agency/plan.ts`).
+  - It sets `subscription_tier` and replaces `enabled_features`.
+  - It's recorded in the agency's audit log as `agency_plan`, with the before and after values and the operator.
+  - The `profiles_plan_features` trigger pushes the new feature set to devices.
+  - `--dry-run` shows the effective features without changing anything.
 - No in-app payment or Stripe integration in v1.
 - No trial periods or feature previews.
 - Admin users see a "Contact Support" link. Non-admin users see a message to contact their administrator.
