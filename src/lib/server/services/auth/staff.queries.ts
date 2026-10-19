@@ -1,4 +1,4 @@
-import { and, arrayOverlaps, asc, eq } from 'drizzle-orm';
+import { and, arrayOverlaps, asc, eq, inArray } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import type { RequestInfo } from '../../db';
 import { auditLog, profiles } from '../../db/schema';
@@ -91,4 +91,31 @@ export async function updateProfileRow(
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, id)))
 		.returning(columns);
 	return row ?? null;
+}
+
+/**
+ * Locks the agency's active admins, so two admins demoting or deactivating
+ * each other at once are serialized and can't leave the agency with none.
+ */
+export async function lockActiveAdmins(tx: Tx, agencyId: string) {
+	return tx
+		.select({ id: profiles.id })
+		.from(profiles)
+		.where(
+			and(eq(profiles.agency_id, agencyId), eq(profiles.role, 'admin'), eq(profiles.active, true))
+		)
+		.for('update');
+}
+
+export function activeUidsWithRoles(tx: Tx, agencyId: string, roles: string[]) {
+	return tx
+		.select({ uid: profiles.auth_uid })
+		.from(profiles)
+		.where(
+			and(
+				eq(profiles.agency_id, agencyId),
+				eq(profiles.active, true),
+				inArray(profiles.role, roles as ('caregiver' | 'supervisor' | 'admin')[])
+			)
+		);
 }

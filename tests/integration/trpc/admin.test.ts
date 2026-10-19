@@ -3,11 +3,11 @@
 // staff.invite creates real accounts in the Auth emulator.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 
-const { closeDb, withService } = await import('../../../src/lib/server/db');
+const { closeDb, withService, withUser } = await import('../../../src/lib/server/db');
 const s = await import('../../../src/lib/server/db/schema');
 const { getCurrentUser } = await import('../../../src/lib/server/services/auth');
 const { appRouter } = await import('../../../src/lib/server/trpc/router');
@@ -151,6 +151,78 @@ describe('staff.*', () => {
 			code: 'FORBIDDEN'
 		});
 	});
+
+	it('promotion ends the person’s sessions, so the next sign-in applies the new role’s MFA rule', async () => {
+		const admin = await as(ADMIN);
+		const [row] = await withService((t) =>
+			t.select({ uid: s.profiles.auth_uid }).from(s.profiles).where(eq(s.profiles.id, invitedId))
+		);
+		const before = (await getAuth().getUser(row.uid)).tokensValidAfterTime;
+		await new Promise((r) => setTimeout(r, 1100));
+		await admin.staff.update({ id: invitedId, role: 'admin' });
+		await vi.waitFor(async () =>
+			expect((await getAuth().getUser(row.uid)).tokensValidAfterTime).not.toBe(before)
+		);
+		await admin.staff.update({ id: invitedId, role: 'supervisor' });
+	});
+
+	it('two admins demoting each other at once leave one admin', async () => {
+		const agency = randomUUID(),
+			a = randomUUID(),
+			b = randomUUID();
+		await withService(async (t) => {
+			await t.insert(s.agencies).values({
+				id: agency,
+				name: 'Two Admins',
+				slug: `two-${agency}`,
+				subscription_tier: 'complete'
+			});
+			await t.insert(s.profiles).values(
+				[a, b].map((id) => ({
+					id,
+					agency_id: agency,
+					auth_uid: uid(id),
+					email: `${uid(id)}@example.test`,
+					name: 'Synthetic Admin',
+					role: 'admin' as const
+				}))
+			);
+		});
+		const [first, second] = [await as(a), await as(b)];
+		const results = await Promise.allSettled([
+			first.staff.update({ id: b, role: 'supervisor' }),
+			second.staff.update({ id: a, role: 'supervisor' })
+		]);
+		expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+		const admins = await withService((t) =>
+			t
+				.select({ id: s.profiles.id })
+				.from(s.profiles)
+				.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.role, 'admin')))
+		);
+		expect(admins).toHaveLength(1);
+	});
+});
+
+describe('database backstops (sql-patches/0012)', () => {
+	it('caregivers can’t add people, and admins can’t change their own plan', async () => {
+		const caregiver = { agency_id: AGENCY, role: 'caregiver' as const, profile_id: CARA };
+		await expect(
+			withUser(caregiver, {}, (t) =>
+				t.insert(s.clients).values({ agency_id: AGENCY, home_id: OAK, name: 'Synthetic Person' })
+			)
+		).rejects.toThrow();
+		const admin = { agency_id: AGENCY, role: 'admin' as const, profile_id: ADMIN };
+		await expect(
+			withUser(admin, {}, (t) =>
+				t.update(s.agencies).set({ subscription_tier: 'starter' }).where(eq(s.agencies.id, AGENCY))
+			)
+		).rejects.toThrow();
+		const [agency] = await withService((t) =>
+			t.select().from(s.agencies).where(eq(s.agencies.id, AGENCY))
+		);
+		expect(agency.subscription_tier).toBe('complete');
+	});
 });
 
 describe('auth.updateProfile', () => {
@@ -212,11 +284,25 @@ describe('client.*', () => {
 				is_prn: true
 			});
 		});
+		const room = randomUUID();
+		await withService((t) =>
+			t.insert(s.rooms).values({
+				id: room,
+				agency_id: AGENCY,
+				home_id: OAK,
+				name: 'Synthetic room',
+				occupied_by: clientId,
+				status: 'occupied'
+			})
+		);
 		await sup.client.update({ id: clientId, homeId: ELM });
 		const [moved] = await withService((t) =>
 			t.select().from(s.marRecords).where(eq(s.marRecords.id, dose))
 		);
 		expect(moved).toMatchObject({ home_id: ELM, status: 'given' });
+		// Their room at the old home is free again.
+		const [freed] = await withService((t) => t.select().from(s.rooms).where(eq(s.rooms.id, room)));
+		expect(freed).toMatchObject({ occupied_by: null, status: 'available' });
 		expect((await (await as(ELM_CARER)).client.list()).map((c) => c.id)).toContain(clientId);
 		await expect(sup.client.archive({ id: clientId })).rejects.toMatchObject({ code: 'FORBIDDEN' });
 		expect((await (await as(ADMIN)).client.archive({ id: clientId })).active).toBe(false);
