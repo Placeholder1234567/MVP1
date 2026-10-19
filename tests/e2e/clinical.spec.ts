@@ -87,7 +87,7 @@ async function signIn(page: Page, email: string, home = 'Oak House') {
 
 async function synced(page: Page) {
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
-	await expect(page.getByText('changes need attention', { exact: false })).toHaveCount(0);
+	await expect(page.getByText('could not be saved', { exact: false })).toHaveCount(0);
 }
 
 async function openPerson(page: Page, name: string, supervisor = false) {
