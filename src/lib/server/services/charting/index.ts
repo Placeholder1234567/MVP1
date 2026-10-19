@@ -2,6 +2,7 @@
 // trials. Online tRPC procedures and sync.upload both call these functions, so
 // offline writes get the same rules. The notes_enforce_transition trigger is
 // the backstop, and the notes_write_history trigger writes note_history.
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import {
 	addDays,
@@ -192,6 +193,10 @@ export async function updateNote(
 	}
 	const from = note.status as NoteStatus;
 	if (!isEditableByAuthor(from)) {
+		// A queued change sent again after the first upload committed (its
+		// response was lost) finds the note already signed: done, not refused.
+		if (options.fromOfflineQueue && (await alreadyApplied(tx, agencyId, note, set, options)))
+			return { updatedAt: note.updatedAt };
 		throw new ServiceError(
 			'RULE_VIOLATION',
 			from === 'approved' ? 'This note was already approved' : 'This note was already signed'
@@ -216,6 +221,36 @@ export async function updateNote(
 	if (!updatedAt) throw new ServiceError('RULE_VIOLATION', 'This note was already signed');
 	if (to === 'submitted' && from !== 'submitted') await noteSubmitted(tx, agencyId, id);
 	return { updatedAt };
+}
+
+/**
+ * Whether a change to a signed note is one it already carries: signing it,
+ * the same content, Lomi flag and goal rows (by the device's row IDs).
+ */
+async function alreadyApplied(
+	tx: Tx,
+	agencyId: string,
+	note: { id: string; content: unknown; lomiDrafted: boolean },
+	set: z.infer<typeof NoteChanges>,
+	options: UpdateOptions
+): Promise<boolean> {
+	if (set.status === 'draft') return false;
+	if (set.content !== undefined && !isDeepStrictEqual(set.content, note.content)) return false;
+	if (set.lomiDrafted && !note.lomiDrafted) return false;
+	for (const g of set.goals ?? []) {
+		const rowId = options.goalRowIds?.[g.goalId];
+		const row = rowId ? await findNoteGoalById(tx, agencyId, rowId) : null;
+		if (
+			!row ||
+			row.noteId !== note.id ||
+			row.goalId !== g.goalId ||
+			!isDeepStrictEqual(row.trials ?? [], g.notAttempted ? [] : g.trials) ||
+			row.notAttempted !== g.notAttempted ||
+			(row.reason ?? null) !== (g.reason ?? null)
+		)
+			return false;
+	}
+	return true;
 }
 
 /** The human-signature step: draft or returned -> submitted (note.sign). */
