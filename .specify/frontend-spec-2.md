@@ -1709,6 +1709,8 @@ Total time: 3 minutes. Lomi appears as a 40px lemon in the corner of each step w
 - Only update fields the user has NOT manually edited (track `userEdited` boolean per field via `input` event listener)
 - No user action required
 
+**Active-review increment:** The open fallback Lomi review retries on a browser online event using its original observations held in memory. It replaces only original untouched sections, preserving focus-owned sections, manual edits (including reverted edits), skipped questions and pending refinements. Responses after leaving the review, changing person/home/account or locking are discarded. Signing immediately removes the composer. Updated text still requires explicit review/use and a separate human signature. Saved/reloaded notes do not retain original observations or this edit ledger; reconnect redrafting across reload remains unfinished and requires an encrypted database design, never browser key/value storage.
+
 **No error dialogs that block documentation:**
 
 - NEVER show a blocking modal for offline state

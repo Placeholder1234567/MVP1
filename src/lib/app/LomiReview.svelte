@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import { draftLocally, vagueFlags, type DraftResult, type NoteKind } from '#lib/domain/lomi.ts';
 	import {
@@ -9,6 +9,7 @@
 		phraseRange,
 		type DraftSection
 	} from '#lib/domain/lomi-edit.ts';
+	import { mergeReconnectDraft } from '#lib/domain/reconnect-draft.ts';
 	import { lomiQuestions } from '#lib/domain/lomi-questions.ts';
 	import LomiVoice from './LomiVoice.svelte';
 	import { useSession } from './session.svelte';
@@ -31,6 +32,43 @@
 		onDirty?: () => void;
 	} = $props();
 	const app = useSession();
+	const original = untrack(() => ({
+		result,
+		clientId,
+		type,
+		said,
+		profileId: app.user.profileId,
+		homeId: app.homeId
+	}));
+	const originalContent = { ...original.result.content };
+	let alive = false;
+	let invalidated = false;
+	$effect(() => {
+		if (
+			app.privacyLocked ||
+			app.user.profileId !== original.profileId ||
+			app.homeId !== original.homeId ||
+			clientId !== original.clientId ||
+			type !== original.type ||
+			said !== original.said
+		)
+			invalidated = true;
+	});
+	let reconnectPending = $state(false);
+	let refreshing = false;
+	let manuallyEdited = $state(new Set<string>());
+	let reconnectIncident = $state(false);
+	onMount(() => {
+		alive = true;
+		const connected = () => {
+			reconnectPending = true;
+		};
+		window.addEventListener('online', connected);
+		return () => {
+			alive = false;
+			window.removeEventListener('online', connected);
+		};
+	});
 	let content = $state<Record<string, string>>(untrack(() => ({ ...result.content })));
 	let additions = $state<Record<string, string>>({});
 	let followup = $state('');
@@ -64,9 +102,92 @@
 		const current = draftLocally(Object.values(content).join(' '), type);
 		return {
 			flags: vagueFlags(Object.values(content).join(' ')),
-			incident: result.incident.detected ? result.incident : current.incident
+			incident: result.incident.detected
+				? result.incident
+				: reconnectIncident
+					? { detected: true, summary: '' }
+					: current.incident
 		};
 	});
+	// No retry loop or original observations in browser storage. A later online event
+	// can retry an unavailable service; the active review remains usable throughout.
+	$effect(() => {
+		if (!reconnectPending || busy || voiceBusy || pending || followup.trim()) return;
+		reconnectPending = false;
+		void untrack(refreshOnReconnect);
+	});
+	async function refreshOnReconnect() {
+		if (
+			!alive ||
+			invalidated ||
+			app.privacyLocked ||
+			refreshing ||
+			usedAi ||
+			!original.result.fallback ||
+			!original.said.trim()
+		)
+			return;
+		if (
+			clientId !== original.clientId ||
+			type !== original.type ||
+			said !== original.said ||
+			app.user.profileId !== original.profileId ||
+			app.homeId !== original.homeId
+		)
+			return;
+		const protectedFields = () =>
+			new Set([
+				...manuallyEdited,
+				...owned,
+				...skipped,
+				...Object.keys(additions).filter((key) => additions[key]?.trim()),
+				...(kept.size ? Object.keys(content) : [])
+			]);
+		if (
+			!Object.keys(originalContent).some(
+				(key) => !protectedFields().has(key) && content[key] === originalContent[key]
+			)
+		)
+			return;
+		refreshing = true;
+		try {
+			const next = await trpc.lomi.draft.mutate({
+				clientId: original.clientId,
+				type: original.type,
+				prompt: original.said
+			});
+			if (
+				!alive ||
+				invalidated ||
+				app.privacyLocked ||
+				next.fallback ||
+				usedAi ||
+				busy ||
+				voiceBusy ||
+				pending ||
+				followup.trim() ||
+				clientId !== original.clientId ||
+				type !== original.type ||
+				said !== original.said ||
+				app.user.profileId !== original.profileId ||
+				app.homeId !== original.homeId
+			)
+				return;
+			const merged = mergeReconnectDraft(content, originalContent, next.content, protectedFields());
+			if (!merged.updated.length) return;
+			content = merged.content;
+			reconnectIncident = next.incident.detected;
+			usedAi = true;
+			undo = null;
+			message =
+				'Lomi updated untouched sections after reconnecting. Your edits were kept. Review every section before using this draft.';
+			onDirty?.();
+		} catch {
+			// Offline/fallback text and every caregiver edit remain unchanged.
+		} finally {
+			refreshing = false;
+		}
+	}
 	function fix(section: string, phrase: string) {
 		const field = fields[section];
 		if (!field) return;
@@ -185,6 +306,7 @@
 					bind:value={content[section]}
 					disabled={busy || voiceBusy}
 					oninput={() => {
+						manuallyEdited = new Set([...manuallyEdited, section]);
 						changed();
 						undo = null;
 					}}></textarea></label
