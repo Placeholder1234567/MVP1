@@ -38,6 +38,7 @@ export {
 	listPushDevices,
 	registerPushDevice,
 	removePushDevice,
+	forgetPushDevices,
 	PushDeviceInput
 } from './settings';
 export { escalate, type EscalationPayload } from './escalation';

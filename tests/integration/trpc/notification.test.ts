@@ -6,6 +6,7 @@ import * as s from '../../../src/lib/server/db/schema';
 import { getCurrentUser } from '../../../src/lib/server/services/auth';
 import {
 	announceMaintenance,
+	forgetPushDevices,
 	notify,
 	platformAgencies,
 	platformAnnouncementId
@@ -155,6 +156,27 @@ it('manages own push registrations without exposing or transferring tokens', asy
 		await expect(cg.registerPushDevice({ token: 'bad', platform: 'web' })).rejects.toMatchObject({
 			code: 'BAD_REQUEST'
 		});
+	} finally {
+		vi.unstubAllEnvs();
+	}
+});
+
+it('signing out drops the person’s push registrations, so a shared phone can be handed over', async () => {
+	vi.stubEnv('PUSH_DRIVER', 'fcm');
+	try {
+		const cg = (await as(caregiver)).notification;
+		const ad = (await as(admin)).notification;
+		const token = `synthetic-shared:${randomUUID()}`;
+		await cg.registerPushDevice({ token, platform: 'web' });
+		await expect(ad.registerPushDevice({ token, platform: 'web' })).rejects.toMatchObject({
+			code: 'CONFLICT'
+		});
+		// What DELETE /auth/session does after ending every session.
+		expect(await forgetPushDevices(agency, caregiver)).toBe(1);
+		expect(await cg.pushDevices()).toEqual([]);
+		const handedOver = await ad.registerPushDevice({ token, platform: 'web' });
+		expect((await ad.pushDevices()).map((d) => d.id)).toContain(handedOver.id);
+		await ad.removePushDevice(handedOver);
 	} finally {
 		vi.unstubAllEnvs();
 	}
