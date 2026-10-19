@@ -176,14 +176,10 @@ export async function uploadPhoto(
 		throw new ServiceError('VALIDATION_FAILED', 'That photo is too large');
 	const clean = stripJpegMetadata(raw);
 	if (!clean) throw new ServiceError('VALIDATION_FAILED', 'Choose a photo (JPEG)');
-	const existing = await findPhoto(tx, agencyId, p.id);
-	if (existing) {
-		if (existing.uploadedBy !== user.profileId)
-			throw new ServiceError('VALIDATION_FAILED', 'Photo ID already used');
-		return { id: p.id, bytes: clean.length };
-	}
-	await mediaStorage().put(photoPath(agencyId, p.id), Buffer.from(clean), 'image/jpeg');
-	await insertPhoto(tx, {
+	// The row goes in first: the object is written only for a new ID, so a
+	// reused ID (even one on a board this user can't see) never overwrites
+	// someone else's photo. A failed write rolls the row back.
+	const inserted = await insertPhoto(tx, {
 		id: p.id,
 		agency_id: agencyId,
 		home_id: p.homeId,
@@ -193,6 +189,13 @@ export async function uploadPhoto(
 		width: p.width ?? null,
 		height: p.height ?? null
 	});
+	if (!inserted) {
+		const existing = await asService(tx, (t) => findPhoto(t, agencyId, p.id));
+		if (existing?.uploadedBy !== user.profileId)
+			throw new ServiceError('VALIDATION_FAILED', 'Photo ID already used');
+		return { id: p.id, bytes: clean.length };
+	}
+	await mediaStorage().put(photoPath(agencyId, p.id), Buffer.from(clean), 'image/jpeg');
 	return { id: p.id, bytes: clean.length };
 }
 
