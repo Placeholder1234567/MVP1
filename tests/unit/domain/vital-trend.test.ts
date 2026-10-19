@@ -36,7 +36,8 @@ describe('trendPoints', () => {
 		expect(trendPoints(entries, series('oxygen'))).toEqual([
 			{ at: '2026-10-10T08:00:00Z', value: 92, flagged: false }
 		]);
-		expect(outOfRange(series('glucose'), 400)).toBe(false);
+		expect(outOfRange(series('weight'), 400)).toBe(false);
+		expect(outOfRange(series('glucose'), 400)).toBe(true);
 	});
 });
 

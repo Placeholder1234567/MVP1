@@ -20,6 +20,7 @@ import {
 	acknowledgeHealthEntry,
 	insertHealthEntry,
 	storedVitalLimits,
+	previousWeight,
 	selectHealthEntries,
 	type HealthFilter
 } from './health.queries';
@@ -117,9 +118,10 @@ export function parseHealthData(kind: HealthKind, data: unknown) {
 export function flagsFor(
 	kind: string,
 	data: Record<string, unknown>,
-	limits: VitalLimits = VITAL_LIMITS
+	limits: VitalLimits = VITAL_LIMITS,
+	lastWeight: number | null = null
 ): string[] {
-	return healthFlags(kind, data, limits);
+	return healthFlags(kind, data, limits, lastWeight);
 }
 
 /**
@@ -144,7 +146,13 @@ export async function createHealthEntry(
 		entry.kind === 'vitals'
 			? parseVitalLimits(await storedVitalLimits(tx, agencyId, entry.clientId))
 			: VITAL_LIMITS;
-	const flags = flagsFor(entry.kind, data, limits);
+	// A weight 5 lb or more from the last one is flagged too (charting-guide.md).
+	const recordedAt = entry.recordedAt ?? new Date();
+	const lastWeight =
+		entry.kind === 'vitals' && (data as Record<string, unknown>).weight != null
+			? await previousWeight(tx, agencyId, entry.clientId, recordedAt)
+			: null;
+	const flags = flagsFor(entry.kind, data, limits, lastWeight);
 	const row = await insertHealthEntry(tx, {
 		id: entry.id,
 		agency_id: agencyId,
@@ -152,7 +160,7 @@ export async function createHealthEntry(
 		kind: entry.kind,
 		data,
 		flags,
-		recorded_at: entry.recordedAt ?? new Date(),
+		recorded_at: recordedAt,
 		recorded_by: user.profileId,
 		created_by: user.profileId
 	});

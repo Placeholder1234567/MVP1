@@ -68,6 +68,10 @@ test('a supervisor compares a resubmitted note with the version they sent back',
 
 		// The author revises and signs again (a returned note signs online).
 		await expect(page.getByText('What did Theo eat?')).toBeVisible();
+		// The open note says it was sent back while it was on screen.
+		await expect(page.getByTestId('note-conflict')).toHaveText(
+			/Your supervisor already returned this note/
+		);
 		// The caregiver's Notes tab carries a red dot while a note sent back today waits.
 		await expect(
 			page.getByRole('link', { name: 'Notes, needs attention', exact: true }).first()

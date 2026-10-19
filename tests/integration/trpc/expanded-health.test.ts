@@ -95,7 +95,7 @@ it('persists expanded numeric readings through online and queued writes and expo
 	expect(upload.rejected).toEqual([]);
 	expect(
 		(await care.health.list({ clientId: person })).find((row) => row.id === queued)
-	).toMatchObject({ data: { respiration: 0, oxygen: 0, glucose: 0 }, flags: [] });
+	).toMatchObject({ data: { respiration: 0, oxygen: 0, glucose: 0 }, flags: ['glucose'] });
 	for (const data of [{ oxygen: 101 }, { respiration: false }, { glucose: ' ' }, { glucose: 'HI' }])
 		await expect(
 			care.health.create({ clientId: person, kind: 'vitals', data })
@@ -129,6 +129,32 @@ it('persists expanded numeric readings through online and queued writes and expo
 });
 
 // Intentionally runs in CI on the migrated schema; never skip when the additive enum is present.
+it('flags a weight 5 lb or more from the last one, and glucose outside 70 to 249', async () => {
+	const care = await as(staff);
+	const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000);
+	const first = await care.health.create({
+		clientId: person,
+		kind: 'vitals',
+		data: { weight: 150 },
+		recordedAt: at(30)
+	});
+	expect(first.flags).toEqual([]);
+	const small = await care.health.create({
+		clientId: person,
+		kind: 'vitals',
+		data: { weight: 153 },
+		recordedAt: at(20)
+	});
+	expect(small.flags).toEqual([]);
+	const big = await care.health.create({
+		clientId: person,
+		kind: 'vitals',
+		data: { weight: 147, glucose: 260 },
+		recordedAt: at(10)
+	});
+	expect(big.flags).toEqual(['glucose', 'weight_change']);
+});
+
 it('stores explicit bowel observations as their own kind, including offline replay and report export', async () => {
 	const care = await as(staff),
 		office = await as(supervisor);
