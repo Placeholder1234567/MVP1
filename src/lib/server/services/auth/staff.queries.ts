@@ -15,7 +15,8 @@ const columns = {
 	mfaEnabled: profiles.mfa_enabled,
 	active: profiles.active,
 	authUid: profiles.auth_uid,
-	createdAt: profiles.created_at
+	createdAt: profiles.created_at,
+	lastSignInAt: profiles.last_sign_in_at
 };
 
 // Runs as app_user: profiles_select limits what each role can see.

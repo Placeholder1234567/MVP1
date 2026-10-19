@@ -380,6 +380,19 @@ Update `notifications.sent_at`
 | **Template** | `"Email to a staff member keeps bouncing"` or `"A staff member marked Guad email as spam"`. Links to the staff record; names no one. |
 | **Escalation** | None |
 
+### 2.20 access_review
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | The daily `access-review-sweep` finds active accounts with no session for 90+ days, or caregivers with home access where they had no shift in 30 days (security.md "Automated Detection"). At most once a week per agency. Also sent at once when an admin account is invited or someone is made an admin. |
+| **Recipients** | The agency's admins (for a new admin, every admin except the new one) |
+| **Channels** | In-app + push + email |
+| **Priority** | Normal (weekly review), High (new admin) |
+| **Template** | `"Access review: {n} active accounts unused for 90+ days; {n} caregivers have home access with no shift there in 30 days"` or `"Access review: a new admin account was added"`. Counts only; the Staff screen shows who. |
+| **PHI Safety** | Safe. No names. |
+| **Deep Link** | `/dashboard/staff` |
+| **Escalation** | None |
+
 ### Notification Type Summary Table
 
 | Type | Priority | Push | SMS | Email | Mandatory | Escalation |
@@ -408,6 +421,8 @@ Update `notifications.sent_at`
 | `daily_summary` | Low | Y | N | Y | N | None |
 | `referral_status_change` | Low | Y | N | N | N | None |
 | `system_maintenance` | Low | Y | N | Y | N | None |
+| `email_delivery_problem` | Normal | Y | N | N | N | None |
+| `access_review` | Normal (High for a new admin) | Y | N | Y | N | None (at most weekly) |
 
 `*` SMS sent only on escalation if push is unacknowledged, not on initial send. Exception: `clock_missed` sends SMS immediately to the supervisor (not escalation-only).
 
