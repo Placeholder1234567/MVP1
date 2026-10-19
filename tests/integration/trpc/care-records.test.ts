@@ -691,6 +691,20 @@ describe('incident.*', () => {
 		expect(twice.notifiedParties).toEqual(['guardian']);
 		const reviewed = await sam.incident.review({ id: r.id, followupNotes: 'Checked the rug' });
 		expect(reviewed.status).toBe('reviewed');
+		// The first review time is kept when the notes are edited again.
+		const firstReview = async () =>
+			(
+				await withService((tx) =>
+					tx
+						.select({ at: s.incidents.reviewed_at })
+						.from(s.incidents)
+						.where(eq(s.incidents.id, r.id))
+				)
+			)[0].at;
+		const first = await firstReview();
+		expect(first).toBeInstanceOf(Date);
+		await sam.incident.review({ id: r.id, followupNotes: 'Checked the rug; replaced it' });
+		expect((await firstReview())?.getTime()).toBe(first!.getTime());
 		const list = await (await as(CARA)).incident.list({ clientId: PERSON });
 		expect(list[0]).toMatchObject({ type: 'Fall', status: 'reviewed', authorName: 'Cara Giver' });
 	});
