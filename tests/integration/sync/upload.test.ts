@@ -301,6 +301,29 @@ describe('sync.upload: MAR', () => {
 		});
 	});
 
+	it('a reading from a phone whose clock runs fast is kept, stamped with the server time', async () => {
+		const id = randomUUID();
+		const ahead = new Date(Date.now() + 20 * 60_000).toISOString();
+		const r = await upload(CARA, [
+			{
+				op: 'PUT',
+				table: 'health_entries',
+				id,
+				data: {
+					client_id: OAK_PERSON,
+					kind: 'vitals',
+					data: JSON.stringify({ pulse: 72 }),
+					recorded_at: ahead
+				}
+			}
+		]);
+		expect(r.rejected).toEqual([]);
+		const [row] = await withService((t) =>
+			t.select().from(s.healthEntries).where(eq(s.healthEntries.id, id))
+		);
+		expect(row.recorded_at.getTime()).toBeLessThanOrEqual(Date.now());
+	});
+
 	it('keeps a second record for the same slot as a conflict and alerts the supervisor', async () => {
 		const id = randomUUID();
 		const r = await upload(DEV, [{ op: 'PUT', table: 'mar_records', id, data: dose() }]);

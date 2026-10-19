@@ -539,6 +539,8 @@ The client code must create parent records before child records. The PowerSync S
 
 Non-retryable errors (constraint violations, RLS rejections, 4xx HTTP status) are immediately marked as permanently failed and removed from the queue. Only transient errors (network timeout, 5xx HTTP status) trigger retry.
 
+**Device clocks.** A write that already happened on the device (a dose, reading, incident, count, message, clock punch) keeps its device time, except that a time ahead of the server is taken as the server's now (`deviceTime()` in `routers/sync.ts`). A phone whose clock runs fast would otherwise have the record refused for good by the services' 5-minute future check.
+
 ### Permanently Failed Writes
 
 When a write permanently fails:

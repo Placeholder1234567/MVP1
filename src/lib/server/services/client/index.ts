@@ -8,6 +8,7 @@ import {
 	CASE_NOTE_CATEGORIES,
 	initialsOf,
 	VITAL_LIMIT_PAIRS,
+	VITAL_LIMITS,
 	type VitalLimitKey
 } from '../../../domain/index.ts';
 import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
@@ -36,8 +37,10 @@ export const ClientFilter = z.object({
 });
 
 /**
- * A person's vital alert limits: any subset, each in its plausible range, and
- * where both ends of a pair are given the low end must be below the high.
+ * A person's vital alert limits: any subset, each in its plausible range. The
+ * low end of each pair must be below the high, counting an end left out as
+ * the default (parseVitalLimits drops a pair that isn't, so a saved limit
+ * would otherwise be silently ignored).
  */
 const VitalLimitsInput = z
 	.object(
@@ -52,9 +55,9 @@ const VitalLimitsInput = z
 	.refine(
 		(v) =>
 			VITAL_LIMIT_PAIRS.every(
-				(p) => v[p.lo] === undefined || v[p.hi] === undefined || v[p.lo]! < v[p.hi]!
+				(p) => (v[p.lo] ?? VITAL_LIMITS[p.lo]) < (v[p.hi] ?? VITAL_LIMITS[p.hi])
 			),
-		'Each low limit must be below its high limit'
+		'Each low limit must be below its high limit (the default where only one end is set)'
 	);
 
 export const HealthFields = z.object({
