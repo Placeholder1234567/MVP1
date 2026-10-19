@@ -214,4 +214,10 @@ it('reports how many Lomi-drafted notes were sent back', async () => {
 	await (await as(SUP)).note.sendBack({ id: drafted.id, comment: 'Add what happened after.' });
 	const r = await (await as(SUP)).analytics.weekly({ homeId: HOME });
 	expect(r.documentation.lomiSentBackRate.at(-1)).toBe(100);
+	// Resubmitting isn't a second signing: still one note, sent back.
+	await carer.note.update({ id: drafted.id, content: { antecedent: 'Synthetic, with after' } });
+	await carer.note.sign({ id: drafted.id });
+	const again = await (await as(SUP)).analytics.weekly({ homeId: HOME });
+	expect(again.documentation.lomiSentBackRate.at(-1)).toBe(100);
+	expect(again.documentation.signed.at(-1)).toBe(r.documentation.signed.at(-1));
 });

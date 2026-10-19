@@ -52,7 +52,8 @@ export function noteEventsSince(tx: Tx, agencyId: string, since: Date, homeId?: 
 				inArray(noteHistory.action, ['signed', 'amended and resubmitted', 'approved', 'returned']),
 				...home(notes.home_id, homeId)
 			)
-		);
+		)
+		.orderBy(noteHistory.occurred_at);
 }
 
 export function dosesSince(tx: Tx, agencyId: string, sinceDay: string, homeId?: string) {

@@ -57,6 +57,24 @@ export interface ComplianceDose {
 }
 
 /**
+ * Each dose once, as its latest correction: a correction (amends_id) replaces
+ * what it corrects, and may itself be corrected. Corrections keep the
+ * original's day and slot.
+ */
+export function latestDoses<T extends ComplianceDose>(doses: T[]): T[] {
+	const byId = new Map(doses.map((d) => [d.id, d]));
+	const latest = new Map<string, { dose: T; depth: number }>();
+	for (const d of doses) {
+		let root = d;
+		let depth = 0;
+		for (; root.amends_id && byId.has(root.amends_id); depth++) root = byId.get(root.amends_id)!;
+		const seen = latest.get(root.id);
+		if (!seen || depth > seen.depth) latest.set(root.id, { dose: d, depth });
+	}
+	return [...latest.values()].map((x) => x.dose);
+}
+
+/**
  * Medication compliance per week (US-38): scheduled doses given out of those
  * due, as on the MAR grid. A dose is due once its time has
  * passed while the medication was running; a corrected dose counts as its
