@@ -374,7 +374,7 @@
 					>{/if}
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
-		{#if editable && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
+		{#if editable && !signed && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
 					clientId={person.id}
 					type={kind as 'shift' | 'behavior'}
 					shift={(note?.shift ?? current.shift) as 'am' | 'pm' | 'on'}

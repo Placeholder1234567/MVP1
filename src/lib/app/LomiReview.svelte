@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import { draftLocally, vagueFlags, type DraftResult, type NoteKind } from '#lib/domain/lomi.ts';
 	import {
@@ -9,6 +9,7 @@
 		phraseRange,
 		type DraftSection
 	} from '#lib/domain/lomi-edit.ts';
+	import { mergeReconnectDraft } from '#lib/domain/reconnect-draft.ts';
 	import { lomiQuestions } from '#lib/domain/lomi-questions.ts';
 	import LomiVoice from './LomiVoice.svelte';
 	import { useSession } from './session.svelte';
@@ -31,6 +32,53 @@
 		onDirty?: () => void;
 	} = $props();
 	const app = useSession();
+	const original = untrack(() => ({
+		result,
+		clientId,
+		type,
+		said,
+		profileId: app.user.profileId,
+		homeId: app.homeId
+	}));
+	const originalContent = { ...original.result.content };
+	let alive = false;
+	let invalidated = false;
+	$effect(() => {
+		if (
+			app.user.profileId !== original.profileId ||
+			app.homeId !== original.homeId ||
+			clientId !== original.clientId ||
+			type !== original.type ||
+			said !== original.said
+		)
+			invalidated = true;
+	});
+	let reconnectPending = $state(false);
+	let refreshing = $state(false);
+	let privacyRevision = 0;
+	let wasMasked = false;
+	$effect(() => {
+		const masked = app.privacyLocked;
+		if (masked && !wasMasked) {
+			privacyRevision++;
+			// Preserve the reconnect event even if this request fails while masked.
+			if (untrack(() => refreshing)) reconnectPending = true;
+		}
+		wasMasked = masked;
+	});
+	let manuallyEdited = $state(new Set<string>());
+	let currentResult = $state<DraftResult>(untrack(() => result));
+	onMount(() => {
+		alive = true;
+		const connected = () => {
+			reconnectPending = true;
+		};
+		window.addEventListener('online', connected);
+		return () => {
+			alive = false;
+			window.removeEventListener('online', connected);
+		};
+	});
 	let content = $state<Record<string, string>>(untrack(() => ({ ...result.content })));
 	let additions = $state<Record<string, string>>({});
 	let followup = $state('');
@@ -64,9 +112,122 @@
 		const current = draftLocally(Object.values(content).join(' '), type);
 		return {
 			flags: vagueFlags(Object.values(content).join(' ')),
-			incident: result.incident.detected ? result.incident : current.incident
+			incident: currentResult.incident.detected
+				? currentResult.incident
+				: original.result.incident.detected
+					? original.result.incident
+					: current.incident
 		};
 	});
+	// No retry loop or original observations in browser storage. A later online event
+	// can retry an unavailable service; the active review remains usable throughout.
+	$effect(() => {
+		if (
+			!reconnectPending ||
+			app.privacyLocked ||
+			refreshing ||
+			busy ||
+			voiceBusy ||
+			pending ||
+			followup.trim()
+		)
+			return;
+		reconnectPending = false;
+		void untrack(refreshOnReconnect);
+	});
+	async function refreshOnReconnect() {
+		if (
+			!alive ||
+			invalidated ||
+			app.privacyLocked ||
+			refreshing ||
+			usedAi ||
+			!original.result.fallback ||
+			!original.said.trim()
+		)
+			return;
+		if (
+			clientId !== original.clientId ||
+			type !== original.type ||
+			said !== original.said ||
+			app.user.profileId !== original.profileId ||
+			app.homeId !== original.homeId
+		)
+			return;
+		const protectedFields = () =>
+			new Set([
+				...manuallyEdited,
+				...owned,
+				...skipped,
+				...Object.keys(additions).filter((key) => additions[key]?.trim()),
+				...(kept.size ? Object.keys(content) : [])
+			]);
+		if (
+			!Object.keys(originalContent).some(
+				(key) => !protectedFields().has(key) && content[key] === originalContent[key]
+			)
+		)
+			return;
+		refreshing = true;
+		const revision = privacyRevision;
+		try {
+			const next = await trpc.lomi.draft.mutate({
+				clientId: original.clientId,
+				type: original.type,
+				prompt: original.said
+			});
+			if (
+				!alive ||
+				invalidated ||
+				next.fallback ||
+				usedAi ||
+				clientId !== original.clientId ||
+				type !== original.type ||
+				said !== original.said ||
+				app.user.profileId !== original.profileId ||
+				app.homeId !== original.homeId
+			)
+				return;
+			if (
+				app.privacyLocked ||
+				revision !== privacyRevision ||
+				busy ||
+				voiceBusy ||
+				pending ||
+				followup.trim()
+			) {
+				// Keep the original observations queued until the review is safe to update.
+				reconnectPending = true;
+				return;
+			}
+			const merged = mergeReconnectDraft(content, originalContent, next.content, protectedFields());
+			const incident = next.incident.detected
+				? next.incident
+				: currentResult.incident.detected
+					? currentResult.incident
+					: original.result.incident;
+			if (!merged.updated.length) {
+				// New suggestions do not make unchanged fallback text AI-authored.
+				currentResult = {
+					...currentResult,
+					incident,
+					goalReferences: next.goalReferences
+				};
+				return;
+			}
+			content = merged.content;
+			currentResult = { ...next, incident };
+			usedAi = true;
+			undo = null;
+			message =
+				'Lomi updated untouched sections after reconnecting. Your edits were kept. Review every section before using this draft.';
+			onDirty?.();
+		} catch {
+			// Offline/fallback text and every caregiver edit remain unchanged.
+		} finally {
+			refreshing = false;
+		}
+	}
 	function fix(section: string, phrase: string) {
 		const field = fields[section];
 		if (!field) return;
@@ -185,6 +346,7 @@
 					bind:value={content[section]}
 					disabled={busy || voiceBusy}
 					oninput={() => {
+						manuallyEdited = new Set([...manuallyEdited, section]);
 						changed();
 						undo = null;
 					}}></textarea></label
@@ -360,7 +522,7 @@
 				your note below.
 			</p>
 			{#each goals as goal (goal.id)}
-				{@const reference = result.goalReferences?.find((item) => item.goalId === goal.id)}
+				{@const reference = currentResult.goalReferences?.find((item) => item.goalId === goal.id)}
 				<div>
 					<b>{goal.text}</b>
 					<p class="muted">
@@ -389,7 +551,7 @@
 			)
 				return;
 			onUse({
-				...result,
+				...currentResult,
 				content: { ...content },
 				flags: warnings.flags,
 				incident: warnings.incident,
