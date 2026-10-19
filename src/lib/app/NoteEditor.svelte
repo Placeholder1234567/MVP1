@@ -85,6 +85,12 @@
 	let dirty = $state(false);
 	let assisted = $state(false);
 	let scope = $state('');
+	// Conflict feedback (offline-sync.md §5, frontend-spec-2.md §8.3): what
+	// was on screen when another device's save replaced it, kept for this
+	// session only, and a review that happened while this note was open.
+	let overwritten = $state<{ content: Record<string, string>; scores: typeof scores } | null>(null);
+	let conflict = $state('');
+	let seenStatus = $state('');
 	$effect(() => {
 		onDirtyChange?.(dirty);
 	});
@@ -105,7 +111,22 @@
 			signature = false;
 			signed = false;
 			message = '';
+			overwritten = null;
+			conflict = '';
+			seenStatus = '';
 		}
+		// A supervisor returned or approved the note while it was open here.
+		const status = note?.status ?? '';
+		if (
+			seenStatus &&
+			status !== seenStatus &&
+			note?.author_id === app.user.profileId &&
+			(status === 'returned' || status === 'approved')
+		)
+			conflict = `Your supervisor already ${status} this note.${
+				status === 'returned' ? ' Read their comment, then sign it again.' : ''
+			}`;
+		seenStatus = status;
 		const id = note?.id ?? person?.id ?? '';
 		const sourceGoals = app.noteGoals.filter((g) => g.note_id === note?.id);
 		const version = `${id}:${note?.updated_at ?? ''}:${JSON.stringify(sourceGoals)}`;
@@ -123,6 +144,20 @@
 			loaded = version;
 			return;
 		}
+		// Another device's save replaced what this screen showed: say so, and
+		// keep this version so it can be put back (an ordinary edit).
+		if (
+			loaded.startsWith(id + ':') &&
+			note &&
+			isEditableByAuthor(note.status as NoteStatus) &&
+			!sameText(incoming)
+		) {
+			overwritten = {
+				content: { ...content },
+				scores: JSON.parse(JSON.stringify(scores))
+			};
+			conflict = 'This note was updated on another device.';
+		}
 		content = incoming;
 		assisted = !!note?.lomi_drafted;
 		scores = {};
@@ -139,6 +174,11 @@
 		signed = false;
 	});
 	/** The form already shows this content and goal data (key order aside: the server stores JSON). */
+	/** Whether the note text matches what is on screen (goal rows aside: the server trims reasons). */
+	function sameText(incoming: Record<string, string>) {
+		const keys = new Set([...Object.keys(incoming), ...Object.keys(content)]);
+		return [...keys].every((k) => (incoming[k] ?? '') === (content[k] ?? ''));
+	}
 	function sameNote(
 		incoming: Record<string, string>,
 		goalRows: {
@@ -271,6 +311,8 @@
 			dirty = false;
 			signed = submit;
 			signature = false;
+			conflict = '';
+			overwritten = null;
 			message = submit
 				? 'Signed and saved. Your supervisor can review it after sync.'
 				: 'Draft saved on this device.';
@@ -315,6 +357,21 @@
 		{#if signed}<div class="callout" role="status">
 				<b>Your care is recorded.</b>
 				<p>{message}</p>
+			</div>{/if}
+		{#if conflict}<div class="callout warn spread" role="status" data-testid="note-conflict">
+				<span>{conflict}</span>
+				{#if overwritten && editable}<button
+						type="button"
+						class="btn sec"
+						onclick={() => {
+							content = overwritten!.content;
+							scores = overwritten!.scores;
+							overwritten = null;
+							conflict = '';
+							dirty = true;
+							signature = false;
+						}}>Restore my version</button
+					>{/if}
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
 		{#if editable && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
