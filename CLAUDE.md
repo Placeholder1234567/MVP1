@@ -85,6 +85,7 @@ Read `.specify/` for full specs. Key files:
 | `.specify/competitive-research.md` | IDD competitor market research |
 | `.specify/therap-research.md` | Deep competitive intel on TherapServices.net |
 | `.specify/AGENTS.md` | Detailed agent instructions, patterns, domain constants |
+| `.specify/research/` | Legal and industry research behind open decisions (incident deadlines, passwords, deactivation, home archive, signup and BAA, placement, staff location, AI suggestions, report tiers). Not legal advice; `[verify]` items need counsel |
 
 ## Rules
 
