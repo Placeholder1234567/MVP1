@@ -1137,6 +1137,10 @@ email. Preview input accepts only a known type, never a recipient or agency.
 No notification rows, jobs or provider calls are created. Temporary links are
 displayed as text. Test-send buttons, agency-wide history and delayed-task
 inspection/fire controls remain unfinished.
+The cloud browser gate runs production exclusion checks (including an admin's
+page and API requests), then the unchanged preview/axe/overflow cases against
+a development server using the same isolated synthetic database and emulator.
+Production and development traces/reports are saved separately.
 - Used by the admin notification settings UI to show "This is what the notification would look like" previews.
 
 ### Automated Tests
