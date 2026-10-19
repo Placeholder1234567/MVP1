@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	complianceScore,
 	incidentReviewPart,
+	overviewAttention,
+	scoreChange,
 	shiftNotesPart
 } from '../../../src/lib/domain/compliance';
 
@@ -105,5 +107,63 @@ describe('incidentReviewPart with reviewed_at', () => {
 				new Date('2026-10-18T12:00:00Z')
 			)
 		).toEqual({ done: 1, of: 1 });
+	});
+});
+
+describe('scoreChange', () => {
+	it('is in points, steady within 2', () => {
+		expect(scoreChange(80, 88)).toEqual({ points: 8, direction: 'up' });
+		expect(scoreChange(90, 81)).toEqual({ points: -9, direction: 'down' });
+		expect(scoreChange(90, 92)).toEqual({ points: 2, direction: 'steady' });
+		expect(scoreChange(null, 90)).toBeNull();
+	});
+});
+
+describe('incidentReviewPart window', () => {
+	it('counts only incidents reported inside [since, until)', () => {
+		const at = new Date('2026-10-19T12:00:00Z');
+		const incidents = [
+			{
+				created_at: '2026-10-08T10:00:00Z',
+				updated_at: null,
+				reviewed_at: '2026-10-08T12:00:00Z',
+				status: 'reviewed'
+			},
+			{
+				created_at: '2026-10-15T10:00:00Z',
+				updated_at: null,
+				reviewed_at: '2026-10-15T11:00:00Z',
+				status: 'reviewed'
+			}
+		];
+		expect(
+			incidentReviewPart(
+				incidents,
+				new Date('2026-10-06T00:00:00Z'),
+				at,
+				new Date('2026-10-13T00:00:00Z')
+			)
+		).toEqual({ done: 1, of: 1 });
+	});
+});
+
+describe('overviewAttention', () => {
+	it('counts open incidents and unacknowledged flagged readings at the home', () => {
+		expect(
+			overviewAttention(
+				[
+					{ home_id: 'h', status: 'open' },
+					{ home_id: 'h', status: 'reviewed' },
+					{ home_id: 'x', status: 'open' }
+				],
+				[
+					{ home_id: 'h', flags: '["temperature"]', acknowledged: 0 },
+					{ home_id: 'h', flags: '["pulse"]', acknowledged: 1 },
+					{ home_id: 'h', flags: '[]', acknowledged: 0 },
+					{ home_id: 'h', flags: 'not json', acknowledged: 0 }
+				],
+				'h'
+			)
+		).toBe(2);
 	});
 });
