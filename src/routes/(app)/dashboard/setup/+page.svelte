@@ -12,6 +12,7 @@
 	import ControlledRulesSettings from '#lib/app/ControlledRulesSettings.svelte';
 	import MaintenanceNotice from '#lib/app/MaintenanceNotice.svelte';
 	import IncidentRulesSettings from '#lib/app/IncidentRulesSettings.svelte';
+	import MessagingUsage from '#lib/app/MessagingUsage.svelte';
 
 	type Agency = Awaited<ReturnType<typeof trpc.agency.get.query>>;
 	type Home = Awaited<ReturnType<typeof trpc.home.list.query>>[number];
@@ -269,6 +270,7 @@
 		</div>
 		<ControlledRulesSettings settings={agency.settings} onSaved={load} />
 		<IncidentRulesSettings settings={agency.settings} onSaved={load} />
+		<MessagingUsage />
 		<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
 	{/if}
 </section>
