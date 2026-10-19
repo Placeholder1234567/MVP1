@@ -281,6 +281,8 @@ Provide blank templates with headers matching common Therap export formats:
 **4c. Therap column presets**
 Since Therap's CSV exports have known (if inconsistent) field names, include preset mappings so admins can select "I exported from Therap" and columns auto-map.
 
+**As built:** `src/lib/domain/csv-mapping.ts` on Reports → Review CSV imports. There is no separate "I exported from Therap" switch: a file whose columns aren't Guad's template columns is read by recognized names (Last Name / First Name, Home, DOB / Date of Birth, Guardian + Phone, Individual, Med Name, Time, PRN, Frequency, Prescriber, Goal Text, Measurement Method, Target, Current Baseline, Role, Med Certified, Home Assignments and common variants). Homes and people are matched by exact name (capitals aside) and only when one matches; dates like 3/7/1990 and times like 8:00 AM become Guad's formats; PRN yes becomes "As needed"; frequency and prescriber are kept in the medication notes, and the baseline in the goal target; a goal file with no area column uses "General". The preview lists how each column was read and which columns are left out, and every row then goes through the same checks as a template file, so nothing unresolved is imported. A second template download uses these common column names (4b). Excel files still need saving as CSV first.
+
 ### Priority 5 — Reporting & Export
 
 **5a. Note history with filters**
