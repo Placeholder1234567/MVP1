@@ -1,6 +1,6 @@
 import { and, desc, eq, ne } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { clients, clientHealthInfo, homes, referralNotes, referrals, rooms } from '../../db/schema';
+import { clients, homes, referralNotes, referrals, rooms } from '../../db/schema';
 
 export type Referral = typeof referrals.$inferInsert;
 export type Room = typeof rooms.$inferInsert;
@@ -129,23 +129,6 @@ export async function saveRoom(tx: Tx, agencyId: string, id: string, data: Parti
 export async function insertRoom(tx: Tx, data: Room) {
 	return (await tx.insert(rooms).values(data).returning())[0];
 }
-export async function admit(
-	tx: Tx,
-	agencyId: string,
-	homeId: string,
-	name: string,
-	firstName?: string
-) {
-	const [person] = await tx
-		.insert(clients)
-		.values({ agency_id: agencyId, home_id: homeId, name, first_name: firstName })
-		.returning();
-	await tx
-		.insert(clientHealthInfo)
-		.values({ agency_id: agencyId, home_id: homeId, client_id: person.id });
-	return person.id;
-}
-
 export async function insertReferralNote(tx: Tx, row: typeof referralNotes.$inferInsert) {
 	const [created] = await tx.insert(referralNotes).values(row).returning({
 		id: referralNotes.id,
