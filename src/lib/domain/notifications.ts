@@ -146,6 +146,32 @@ export function needsSmsPushFallback(input: {
 	);
 }
 
+/**
+ * Whether a mandatory alert whose push failed for good (no device registered,
+ * every token dead, or out of retries) should be texted instead
+ * (notifications.md §5 "Permission Denied Fallback"). Never when texts are
+ * off for this type: that is how a STOP reply is stored, and carriers block
+ * opted-out numbers anyway.
+ */
+export function needsPushSmsFallback(input: {
+	type: string;
+	status: string;
+	active: boolean;
+	acknowledged: boolean;
+	hasPhone: boolean;
+	/** The saved SMS setting for this type; undefined when none is saved */
+	smsPreference: boolean | null | undefined;
+}): boolean {
+	return (
+		MANDATORY.has(input.type) &&
+		input.status === 'failed' &&
+		input.active &&
+		!input.acknowledged &&
+		input.hasPhone &&
+		input.smsPreference !== false
+	);
+}
+
 /** Whether a local time (HH:MM) falls in quiet hours; the window may cross midnight. */
 export function inQuietHours(
 	time: string,

@@ -703,6 +703,8 @@ If the user denies push permission or is on an unsupported platform:
 - Polling interval: every 60 seconds while app is in foreground.
 - All mandatory notifications (med_refusal, incident_high_severity, incident_reported, health_alert, coverage_unfilled) fall back to SMS if the user has a phone number on file.
 
+**As built:** when a push for a mandatory type (`MANDATORY` in `domain/notifications.ts`) fails for good (no device registered, every token dead, or out of retries), dispatch adds one SMS for the same event (`push-fallback.ts`, `needsPushSmsFallback()`; a stable ID per failed push, so retries don't add more). It is skipped when the person has no phone, is deactivated, the alert was already read, they already have a text for that event (their own channels or an earlier fallback, which also keeps the push and SMS fallbacks from feeding each other), or their saved SMS setting for that type is off. That last rule is how STOP is kept: a STOP reply saves texts off for every type, and an SMS setting someone turned off themselves is respected too. It goes through the usual quiet hours (urgent and high alerts are never held) and daily limits.
+
 ---
 
 ## 6. SMS (AWS End User Messaging)
