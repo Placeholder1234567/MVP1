@@ -46,6 +46,9 @@
 	// Vague phrases the caregiver chose to keep ("Keep as is"), per section.
 	let kept = $state(new Set<string>());
 	let voiceBusy = $state(false);
+	// Sections the caregiver has tapped into: Lomi's text there is now theirs
+	// (frontend-spec-2 §6 ghost text). Untouched ones stay slightly faded.
+	let owned = $state<string[]>([]);
 	let voiceMessage = $state('');
 	const fields: Record<string, HTMLTextAreaElement | undefined> = {};
 	const openFlags = $derived(openSectionFlags(content, kept));
@@ -154,7 +157,11 @@
 				>{labels[section] ?? section}<textarea
 					class="input"
 					class:flagged={flags.length > 0}
+					class:ghost={!owned.includes(section)}
 					maxlength="10000"
+					onfocus={() => {
+						if (!owned.includes(section)) owned = [...owned, section];
+					}}
 					bind:this={fields[section]}
 					bind:value={content[section]}
 					disabled={busy || voiceBusy}
@@ -380,6 +387,18 @@
 	}
 	.stack {
 		min-width: 0;
+	}
+	/* Lomi's words until the caregiver taps in: opacity only, no badge or icon. */
+	.ghost {
+		opacity: 0.85;
+	}
+	textarea {
+		transition: opacity 150ms ease;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		textarea {
+			transition: none;
+		}
 	}
 	.flagged {
 		background: var(--flag-bg);
