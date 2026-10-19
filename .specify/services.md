@@ -339,6 +339,9 @@ src/lib/server/services/
 - `createHome(agencyId, data): Home` — create a new home with address and geofence radius.
 - `updateHome(agencyId, homeId, data): Home` — update home details, geofence coordinates/radius.
 - `distanceTo(homeLat, homeLng, userLat, userLng): number` — Haversine distance in meters (pure function, used by Clock Service for verification).
+- `archiveHome(agencyId, homeId, timeZone)` / `restoreHome(agencyId, homeId)` — a home that has closed. Refused while active people live there, staff are clocked in there, or shifts from today on are staffed or looking for cover. Archived homes keep every record, read-only. `requireOpenHome(home)` is the guard Clock, Schedule, Client, Intake, Message (the home board) and staff assignment call before adding work at a home. A missed punch or a board message written before the archive date can still be entered.
+
+Homes are never deleted. Every foreign key to `homes` uses `ON DELETE RESTRICT`, so a home's records stay for the retention period: 6 years for HIPAA documentation (45 CFR 164.316(b)(2)) and up to 10 years under Medicaid managed-care contracts (42 CFR 438.3(u)), counted per person from their last service.
 
 **Depends on:**
 - Auth (admin role for create/update)

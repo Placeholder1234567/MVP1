@@ -75,12 +75,15 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
-| `home.list` | query | none | `Array<{ id, name, address, lat, lng, radius, createdAt }>` | caregiver | Returns homes the caller has access to. Caregivers see only homes in their `homeIds`; supervisors and admins see all agency homes. |
+| `home.list` | query | none | `Array<{ id, name, address, lat, lng, radius, archivedAt, createdAt }>` | caregiver | Returns homes the caller has access to. Caregivers see only homes in their `homeIds`; supervisors and admins see all agency homes. |
 | `home.get` | query | `{ id: uuid }` | `{ id, name, address, lat, lng, radius, createdAt, updatedAt }` | caregiver | Returns a single home. Rejects with `NOT_FOUND` if the home does not exist or is outside the caller's access. |
 | `home.create` | mutation | `{ name: string, address?: string, lat?: number, lng?: number, radius?: number }` | `{ id, name, address, lat, lng, radius, createdAt }` | admin | Creates a new home. `radius` defaults to 150 meters (geofence for clock-in verification). |
 | `home.update` | mutation | `{ id: uuid, name?: string, address?: string, lat?: number, lng?: number, radius?: number }` | `{ id, name, address, lat, lng, radius, updatedAt }` | admin | Updates home details. Changing `lat`/`lng`/`radius` affects future clock-in geofence validation. |
 
-> **Note:** There is no `home.delete` or `home.archive` procedure in v1. The `homes` schema lacks an `active` column. If an agency closes a home, it should be handled through a support process. Home archival is deferred to a future release.
+| `home.archive` | mutation | `{ id: uuid }` | `{ id, name, ..., archivedAt }` | admin | Archives a home that has closed. Rejects with `RULE_VIOLATION`, naming what to resolve first, while active people live there, anyone is clocked in there, or shifts from today on are staffed or looking for cover. Afterwards its records stay readable but no one can clock in, be scheduled, admitted, given a room or newly assigned there. A missed punch from before the archive date can still be added. Already archived is a no-op. |
+| `home.restore` | mutation | `{ id: uuid }` | `{ id, name, ..., archivedAt: null }` | admin | Puts an archived home back in use. |
+
+> **Note:** There is no `home.delete`. Homes are never deleted, and every foreign key to `homes` restricts deletes (services.md §13). `home.list` and `home.get` include `archivedAt`. Devices keep archived homes for reading history but leave them out of pickers; the top-bar home switcher lists them under "Archived" for supervisors.
 
 ### staff
 

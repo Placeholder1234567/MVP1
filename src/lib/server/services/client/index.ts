@@ -8,7 +8,7 @@ import { CASE_NOTE_CATEGORIES, initialsOf } from '../../../domain/index.ts';
 import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
-import { getHome } from '../home/index.ts';
+import { getHome, requireOpenHome } from '../home/index.ts';
 import { listMedications } from '../medication/index.ts';
 import {
 	insertCaseNote,
@@ -86,8 +86,7 @@ export async function getClient(
 }
 
 async function requireHome(tx: Tx, agencyId: string, homeId: string) {
-	if (!(await getHome(tx, agencyId, homeId)))
-		throw new ServiceError('VALIDATION_FAILED', 'That home is not in your agency');
+	requireOpenHome(await getHome(tx, agencyId, homeId), 'That home is not in your agency');
 }
 
 export async function createClient(tx: Tx, agencyId: string, input: z.infer<typeof NewClient>) {
@@ -114,7 +113,12 @@ export async function createClient(tx: Tx, agencyId: string, input: z.infer<type
 
 export async function updateClient(tx: Tx, agencyId: string, input: z.infer<typeof ClientChanges>) {
 	const data = ClientChanges.parse(input);
-	if (data.homeId) await requireHome(tx, agencyId, data.homeId);
+	const before = await selectClient(tx, agencyId, data.id);
+	if (!before) throw new ServiceError('NOT_FOUND', 'Person not found');
+	// Moving someone, or bringing them back, needs a home that's in use.
+	const homeId = data.homeId ?? before.homeId;
+	if (homeId && ((data.homeId && data.homeId !== before.homeId) || (data.active && !before.active)))
+		await requireHome(tx, agencyId, homeId);
 	const row = await updateClientRow(tx, agencyId, data.id, {
 		name: data.name,
 		initials: data.name ? initialsOf(data.name) : undefined,

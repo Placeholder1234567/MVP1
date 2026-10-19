@@ -299,7 +299,7 @@ streams:
   homes:
     auto_subscribe: true
     query: >-
-      SELECT id, agency_id, name, address, lat, lng, radius, created_at, updated_at FROM homes
+      SELECT id, agency_id, name, address, lat, lng, radius, archived_at, created_at, updated_at FROM homes
       WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
   goal_templates:
     auto_subscribe: true

@@ -160,6 +160,7 @@ const homes = new Table({
 	lat: column.real,
 	lng: column.real,
 	radius: column.integer,
+	archived_at: column.text,
 	created_at: column.text,
 	updated_at: column.text,
 });

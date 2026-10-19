@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { asService, withService, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
+import { requireOpenHome } from '../home/index.ts';
 import { notify, notifyHomeSupervisors } from '../notification/index.ts';
 import {
 	activeClock,
@@ -45,8 +46,10 @@ export async function clockIn(tx: Tx, user: CurrentUser, input: z.input<typeof N
 	}
 	if (await activeClock(tx, user.agencyId, user.profileId))
 		throw new ServiceError('RULE_VIOLATION', 'You are already clocked in');
-	if (!(await clockHome(tx, user.agencyId, p.homeId)) || !user.homeIds.includes(p.homeId))
+	const home = await clockHome(tx, user.agencyId, p.homeId);
+	if (!home || !user.homeIds.includes(p.homeId))
 		throw new ServiceError('FORBIDDEN', 'Clock in at one of your assigned homes');
+	requireOpenHome(home);
 	const row = await insertClock(tx, {
 		id: p.id,
 		agency_id: user.agencyId,
@@ -104,15 +107,14 @@ export async function manualClock(
 	if (input.clockOutAt <= input.clockInAt || input.clockOutAt > new Date())
 		throw new ServiceError('VALIDATION_FAILED', 'Choose a completed time range');
 	const owner = await asService(tx, (t) => lockClockOwner(t, user.agencyId, input.profileId));
-	if (
-		!owner?.active ||
-		!owner.homeIds?.includes(input.homeId) ||
-		!(await clockHome(tx, user.agencyId, input.homeId))
-	)
+	const home = await clockHome(tx, user.agencyId, input.homeId);
+	if (!owner?.active || !owner.homeIds?.includes(input.homeId) || !home)
 		throw new ServiceError(
 			'VALIDATION_FAILED',
 			'Choose an active staff member assigned to this home'
 		);
+	// A missed punch from before the home closed can still be corrected.
+	if (home.archived_at && input.clockInAt >= home.archived_at) requireOpenHome(home);
 	if (await overlappingClock(tx, user.agencyId, input.profileId, input.clockInAt, input.clockOutAt))
 		throw new ServiceError('RULE_VIOLATION', 'This entry overlaps an existing clock record');
 	return insertClock(tx, {

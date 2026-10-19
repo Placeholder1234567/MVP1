@@ -59,7 +59,7 @@
 	async function open(person?: Person) {
 		message = '';
 		if (!person) {
-			form = { ...blank(), homeId: app.homes[0]?.id ?? '' };
+			form = { ...blank(), homeId: app.openHomes[0]?.id ?? '' };
 			editing = '';
 			return;
 		}
@@ -163,7 +163,7 @@
 <section class="stack" aria-label="People">
 	<div class="spread">
 		<h1>People</h1>
-		<button class="btn" disabled={saving || !app.homes.length} onclick={() => open()}
+		<button class="btn" disabled={saving || !app.openHomes.length} onclick={() => open()}
 			>Add a person</button
 		>
 	</div>
@@ -179,7 +179,8 @@
 				>
 				<label
 					>Home<select class="input" required bind:value={form.homeId}
-						>{#each app.homes as home (home.id)}<option value={home.id}>{home.name}</option
+						>{#each app.homes.filter((h) => !h.archived_at || h.id === form.homeId) as home (home.id)}<option
+								value={home.id}>{home.name}{home.archived_at ? ' (archived)' : ''}</option
 							>{/each}</select
 					></label
 				>

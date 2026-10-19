@@ -6,6 +6,7 @@ import { mediaStorage } from '../../storage';
 import { PHOTO_MAX_BYTES, stripJpegMetadata } from '../../../domain/index.ts';
 import type { CurrentUser } from '../auth/index.ts';
 import { findVisibleClient } from '../charting/index.ts';
+import { getHome, requireOpenHome } from '../home/index.ts';
 import {
 	findIncidentHome,
 	findMessage,
@@ -43,6 +44,9 @@ export async function sendMessage(
 	if (m.sentAt && m.sentAt.getTime() > Date.now() + 5 * 60_000) {
 		throw new ServiceError('VALIDATION_FAILED', 'The message time is in the future');
 	}
+	// A closed home's board is read-only; a message written before it closed still lands.
+	const home = await getHome(tx, agencyId, m.homeId);
+	if (home?.archivedAt && (m.sentAt ?? new Date()) >= home.archivedAt) requireOpenHome(home);
 	if (m.clientId) {
 		const client = await findVisibleClient(tx, agencyId, m.clientId);
 		if (!client || client.homeId !== m.homeId)

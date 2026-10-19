@@ -1,11 +1,13 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import {
+	archiveHome,
 	createHome,
 	getHome,
 	HomeChanges,
 	listHomes,
 	NewHome,
+	restoreHome,
 	updateHome
 } from '../../services/home/index.ts';
 import { roleProcedure, router, userProcedure } from '../middleware.ts';
@@ -26,5 +28,16 @@ export const homeRouter = router({
 
 	update: roleProcedure('admin')
 		.input(HomeChanges)
-		.mutation(({ ctx, input }) => updateHome(ctx.db, ctx.user.agencyId, input))
+		.mutation(({ ctx, input }) => updateHome(ctx.db, ctx.user.agencyId, input)),
+
+	/** A home that has closed: records stay, read-only. Refused while in use. */
+	archive: roleProcedure('admin')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) =>
+			archiveHome(ctx.db, ctx.user.agencyId, input.id, ctx.user.timeZone)
+		),
+
+	restore: roleProcedure('admin')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) => restoreHome(ctx.db, ctx.user.agencyId, input.id))
 });

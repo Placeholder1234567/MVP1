@@ -170,14 +170,14 @@
 				>
 				<fieldset class="stack">
 					<legend>Homes they work at</legend>
-					{#each app.homes as home (home.id)}
+					{#each app.homes.filter((h) => !h.archived_at || homeIds.includes(h.id)) as home (home.id)}
 						<label class="check"
 							><input
 								type="checkbox"
 								checked={homeIds.includes(home.id)}
 								onchange={(e) => toggleHome(home.id, e.currentTarget.checked)}
 							/>
-							{home.name}</label
+							{home.name}{home.archived_at ? ' (archived)' : ''}</label
 						>
 					{/each}
 				</fieldset>
