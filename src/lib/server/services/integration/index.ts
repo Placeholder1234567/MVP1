@@ -15,10 +15,13 @@ export {
 export { evvSummary, getEvvVisit, listEvvVisits } from './evv';
 export { exportCsv, exportData, type ExportQuery } from './export';
 export {
+	adminDeleteWebhook,
+	adminWebhooks,
 	createWebhook,
 	deleteWebhook,
 	deliverWebhook,
 	getWebhook,
+	pinnedLookup as pinnedLookupForTests,
 	listWebhookDeliveries,
 	listWebhooks,
 	setWebhookTransportForTests,

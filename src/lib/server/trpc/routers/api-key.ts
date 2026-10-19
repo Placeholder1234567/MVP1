@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+	adminDeleteWebhook,
+	adminWebhooks,
 	createApiKey,
 	CreateKeyInput,
 	listApiKeys,
@@ -20,5 +22,10 @@ export const apiKeyRouter = router({
 		),
 	revoke: admin
 		.input(z.object({ id: z.uuid() }))
-		.mutation(({ ctx, input }) => revokeApiKey(ctx.db, ctx.user.agencyId, input.id))
+		.mutation(({ ctx, input }) => revokeApiKey(ctx.db, ctx.user.agencyId, input.id)),
+	/** Webhooks registered through the API, so admins can see and remove them in the app. */
+	webhooks: admin.query(({ ctx }) => adminWebhooks(ctx.db, ctx.user.agencyId)),
+	deleteWebhook: admin
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) => adminDeleteWebhook(ctx.db, ctx.user.agencyId, input.id))
 });

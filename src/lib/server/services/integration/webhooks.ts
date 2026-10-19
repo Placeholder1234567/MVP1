@@ -22,7 +22,8 @@ import {
 	webhookEventFor,
 	type AuditChange
 } from '../../../domain/index.ts';
-import { withService } from '../../db';
+import { withService, type Tx } from '../../db';
+import { ServiceError } from '../../errors';
 import { enqueue } from '../../jobs/queue.ts';
 import { open, seal } from '../../sealing.ts';
 import type { ApiCaller } from './keys';
@@ -34,6 +35,7 @@ import {
 	deliveryWithWebhook,
 	insertDeliveries,
 	insertWebhook,
+	overdueDeliveries,
 	patchWebhook,
 	recordAttempt,
 	removeWebhook,
@@ -87,7 +89,8 @@ export async function createWebhook(caller: ApiCaller, input: unknown) {
 			events: [...new Set(value.events)],
 			description: value.description,
 			secret_hash: createHash('sha256').update(secret).digest('hex'),
-			secret_sealed: seal(Buffer.from(secret), `webhook:${id}`)
+			secret_sealed: seal(Buffer.from(secret), `webhook:${id}`),
+			created_by_key_id: caller.keyId
 		})
 	);
 	return { ...iso(row), secret };
@@ -149,6 +152,19 @@ export type WebhookTransport = (
 
 const TIMEOUT_MS = 5000;
 
+/**
+ * A `lookup` for https.request that always answers with the vetted address.
+ * Node 20+ asks for every address ({ all: true }) when it may try each
+ * family in turn, and fails on a single-address answer then.
+ */
+export function pinnedLookup(target: { address: string; family: number }) {
+	return (
+		_host: string,
+		opts: { all?: boolean } | undefined,
+		cb: (e: null, address: string | { address: string; family: number }[], family?: number) => void
+	) => (opts?.all ? cb(null, [target]) : cb(null, target.address, target.family));
+}
+
 /** Resolves the host, refuses non-public addresses, then posts to the vetted address. */
 const httpsTransport: WebhookTransport = async (url, body, headers) => {
 	const started = Date.now();
@@ -169,7 +185,7 @@ const httpsTransport: WebhookTransport = async (url, body, headers) => {
 				headers: { ...headers, 'content-length': Buffer.byteLength(body).toString() },
 				timeout: TIMEOUT_MS,
 				// Connect to the address we checked, not a fresh lookup.
-				lookup: (_host, _opts, cb) => cb(null, target.address, target.family)
+				lookup: pinnedLookup(target) as never
 			},
 			(res) => {
 				res.resume();
@@ -223,6 +239,20 @@ function send(
 		'x-guad-delivery': deliveryId,
 		'x-guad-signature': signature(secret, body)
 	});
+}
+
+/**
+ * The agency's webhooks for its admins in the app (apiKey.webhooks), so one
+ * registered through the API can be seen and removed without a key.
+ */
+export async function adminWebhooks(tx: Tx, agencyId: string) {
+	return (await selectWebhooks(tx, agencyId, 100, 0)).map(iso);
+}
+
+export async function adminDeleteWebhook(tx: Tx, agencyId: string, id: string) {
+	if (!(await removeWebhook(tx, agencyId, id)))
+		throw new ServiceError('NOT_FOUND', 'Webhook not found');
+	return { deleted: true };
 }
 
 /** POST /webhooks/{id}/test: a signed test event, not stored as a delivery. */
@@ -284,7 +314,13 @@ export async function sweepWebhooks(now = new Date()): Promise<{ queued: number 
 		return queued;
 	});
 	for (const id of ids) await enqueue('webhook-deliver', { id }, { taskName: `webhook-${id}-0` });
-	return { queued: ids.length };
+	// Deliveries whose task never got queued (an enqueue that failed after the
+	// commit) or whose retry is overdue: queued again under the same task name,
+	// so one that is already waiting isn't sent twice.
+	const due = await withService((tx) => overdueDeliveries(tx, new Date(now.getTime() - 60_000)));
+	for (const d of due)
+		await enqueue('webhook-deliver', { id: d.id }, { taskName: `webhook-${d.id}-${d.attempts}` });
+	return { queued: ids.length + due.length };
 }
 
 /** webhook-deliver: one attempt; schedules the next one or marks the delivery failed. */
