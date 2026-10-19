@@ -8,6 +8,7 @@ import {
 	vitalFieldWarning
 } from '../../../src/lib/domain/clinical';
 import { parseHealthData, NewHealthEntry } from '../../../src/lib/server/services/health';
+import { VITAL_LIMITS } from '../../../src/lib/domain/vitals';
 
 describe('entered expanded health readings', () => {
 	it('preserves explicit finite decimal readings and identifies their units', () => {
@@ -26,8 +27,7 @@ describe('entered expanded health readings', () => {
 	it('bounds input without inventing clinical limits or converting blanks/booleans into readings', () => {
 		for (const [key, max] of [
 			['respiration', 1000],
-			['oxygen', 100],
-			['glucose', 10000]
+			['oxygen', 100]
 		] as const) {
 			for (const value of [0, max]) {
 				expect(healthReading(key, value)).toEqual({ ok: true, value });
@@ -52,7 +52,25 @@ describe('entered expanded health readings', () => {
 			HEALTH_FIELDS.vitals
 				.filter((field) => field.alertConfigured === false)
 				.map((field) => field.key)
-		).toEqual(['respiration', 'oxygen', 'glucose']);
+		).toEqual(['respiration', 'oxygen']);
+	});
+	it('flags blood glucose at 250 or above or below 70, and a 5 lb weight change', () => {
+		expect(healthFlags('vitals', { glucose: 249 })).toEqual([]);
+		expect(healthFlags('vitals', { glucose: 250 })).toEqual(['glucose']);
+		expect(healthFlags('vitals', { glucose: 70 })).toEqual([]);
+		expect(healthFlags('vitals', { glucose: 69.9 })).toEqual(['glucose']);
+		expect(vitalFieldWarning('glucose', 300)).toBe('Blood glucose is outside the normal range.');
+		// A person's own range, set by a nurse.
+		const own = { ...VITAL_LIMITS, glucoseHi: 180 };
+		expect(healthFlags('vitals', { glucose: 200 }, own)).toEqual(['glucose']);
+
+		expect(healthFlags('vitals', { weight: 150 }, VITAL_LIMITS, 154.9)).toEqual([]);
+		expect(healthFlags('vitals', { weight: 150 }, VITAL_LIMITS, 155)).toEqual(['weight_change']);
+		expect(healthFlags('vitals', { weight: 150 })).toEqual([]);
+		expect(vitalFieldWarning('weight', 160, VITAL_LIMITS, 150)).toBe(
+			'That is 5 lb or more from the last weight (150 lb).'
+		);
+		expect(vitalFieldWarning('weight', 152, VITAL_LIMITS, 150)).toBeNull();
 	});
 	it('keeps existing clinical alert operators and boundaries unchanged', () => {
 		for (const [key, normal, alert] of [

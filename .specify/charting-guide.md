@@ -221,6 +221,8 @@ In the client health setup (office view), let supervisors set thresholds:
 
 Store in `client.health.thresholds: { syHi: 140, syLo: 90, ... }`
 
+**As built:** blood glucose is a limit pair like the others (`glucoseLo` 70, `glucoseHi` 250 in `VITAL_LIMITS`; flags at or above the high limit or below the low one), so a nurse can set a person's own range on the People screen, and the trend chart shades it. Weight flags `weight_change` when it is 5 lb or more (`WEIGHT_CHANGE_LB`) from the person's previous weight reading; the vitals form warns as it is typed, and the server checks against the last weight recorded before the entry. Both raise the usual `health_alert`. Respiratory rate and SpO2 still have no limits (none are specified).
+
 **3b. Color flagging on entry**
 When a DSP enters vitals, immediately color the field:
 - Green border: within range
