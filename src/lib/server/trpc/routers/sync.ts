@@ -3,6 +3,7 @@
 // function its online procedure uses. Every op runs in its own savepoint, so a
 // rejected op is undone without affecting the ones before it; ops that depend
 // on a rejected one then fail on their own (e.g. a foreign key).
+import { TRPCError } from '@trpc/server';
 import { z, ZodError } from 'zod';
 import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db/index.ts';
@@ -324,8 +325,24 @@ function toReject(e: unknown): Reject {
 
 export const syncRouter = router({
 	upload: userProcedure
-		.input(z.object({ transactionId: z.number().int(), ops: z.array(Op).max(200) }))
+		.input(
+			z.object({
+				transactionId: z.number().int(),
+				/** Whose device database the queue belongs to */
+				profileId: z.uuid().optional(),
+				ops: z.array(Op).max(200)
+			})
+		)
 		.mutation(async ({ ctx, input }) => {
+			// Another person's queue (their tab still open after someone else
+			// signed in on this browser) is refused whole, before anything is
+			// applied: the writes would otherwise be recorded as this person's.
+			// UNAUTHORIZED leaves the queue on the device for its owner.
+			if (input.profileId && input.profileId !== ctx.user.profileId)
+				throw new TRPCError({
+					code: 'UNAUTHORIZED',
+					message: 'These changes belong to someone else signed in on this device.'
+				});
 			const applied: string[] = [];
 			const rejected: { id: string; table: string; code: RejectCode; message: string }[] = [];
 			const notices: { id: string; table: string; code: 'MAR_CONFLICT'; message: string }[] = [];

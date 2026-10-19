@@ -324,6 +324,28 @@ describe('sync.upload: MAR', () => {
 		expect(row.recorded_at.getTime()).toBeLessThanOrEqual(Date.now());
 	});
 
+	it('refuses a queue that belongs to someone else, applying nothing', async () => {
+		const id = randomUUID();
+		await expect(
+			(await as(CARA)).sync.upload({
+				transactionId: tx++,
+				profileId: DEV,
+				ops: [{ op: 'PUT', table: 'notes', id, data: note() }]
+			})
+		).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+		const rows = await withService((t) => t.select().from(s.notes).where(eq(s.notes.id, id)));
+		expect(rows).toEqual([]);
+		// Its own queue goes through as before.
+		const own = await (
+			await as(CARA)
+		).sync.upload({
+			transactionId: tx++,
+			profileId: CARA,
+			ops: [{ op: 'PUT', table: 'notes', id, data: note() }]
+		});
+		expect(own.applied).toEqual([id]);
+	});
+
 	it('keeps a second record for the same slot as a conflict and alerts the supervisor', async () => {
 		const id = randomUUID();
 		const r = await upload(DEV, [{ op: 'PUT', table: 'mar_records', id, data: dose() }]);

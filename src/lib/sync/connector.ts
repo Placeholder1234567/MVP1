@@ -10,6 +10,9 @@ import { trpc } from '#lib/trpc.ts';
  * through the same services as the online API.
  */
 export class GuadConnector implements PowerSyncBackendConnector {
+	/** Whose database this is: uploads are refused under anyone else's session. */
+	constructor(private readonly profileId?: string) {}
+
 	async fetchCredentials() {
 		const { token, expiresAt } = await getSyncToken();
 		return {
@@ -31,6 +34,7 @@ export class GuadConnector implements PowerSyncBackendConnector {
 
 		const result = await trpc.sync.upload.mutate({
 			transactionId: tx.transactionId ?? 0,
+			profileId: this.profileId,
 			ops: tx.crud.map((e) => ({
 				op: e.op as 'PUT' | 'PATCH' | 'DELETE',
 				table: e.table,

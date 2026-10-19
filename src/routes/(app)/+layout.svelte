@@ -383,11 +383,30 @@
 		app.dispose();
 		await closeDb();
 		await signOutEverywhere();
+		signedOutChannel()?.postMessage({ signedOut: app.user.profileId });
 		await clearShellCaches();
 		await goto(resolve('/login'), { refreshAll: true });
 	}
 	app.lock = lock;
 	app.signOut = signOut;
+	// Signing out ends every session, so this person's other tabs close their
+	// database too: left open, a tab would keep uploading its queue under the
+	// cookie of whoever signs in next (the server refuses that as well).
+	function signedOutChannel() {
+		return typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('guad-session');
+	}
+	onMount(() => {
+		const channel = signedOutChannel();
+		if (!channel) return;
+		channel.onmessage = (e: MessageEvent<{ signedOut?: string }>) => {
+			// Already signed out by the other tab: close up here without touching
+			// the session (by now it may be someone else's).
+			if (e.data?.signedOut !== app.user.profileId) return;
+			app.dispose();
+			void closeDb().then(() => goto(resolve('/login'), { refreshAll: true }));
+		};
+		return () => channel.close();
+	});
 </script>
 
 {#if step !== 'open'}

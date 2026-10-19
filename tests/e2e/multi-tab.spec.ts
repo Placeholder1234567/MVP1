@@ -52,6 +52,9 @@ test('another person signing in on a waiting tab opens their own database, never
 	await expect(second.getByText(/Guad is open in another tab/)).toBeVisible();
 	await second.getByRole('button', { name: 'Sign out', exact: true }).click();
 	await second.waitForURL(/\/login/);
+	// Signing out ends every session: Cara's first tab closes her database too,
+	// so it can't upload her queue under whoever signs in next.
+	await page.waitForURL(/\/login/);
 
 	// Dev signs in on that tab: Dev's own database opens at once (it is a
 	// different file), rather than joining the wait for Cara's.
@@ -63,6 +66,5 @@ test('another person signing in on a waiting tab opens their own database, never
 			?.map((l) => l.name)
 			.filter((n) => n?.startsWith('guad-db:'))
 	);
-	expect(held).toHaveLength(2);
-	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
+	expect(held).toHaveLength(1);
 });
