@@ -720,13 +720,18 @@ describe('incident.*', () => {
 		// Lomi tells the home's board, without the person's name (frontend-spec-2.md §3.6).
 		const board = await withService((t) =>
 			t
-				.select({ body: s.messages.body, createdBy: s.messages.created_by })
+				.select({
+					body: s.messages.body,
+					createdBy: s.messages.created_by,
+					incidentId: s.messages.incident_id
+				})
 				.from(s.messages)
 				.where(and(eq(s.messages.home_id, OAK), eq(s.messages.from_name, 'Lomi')))
 		);
 		expect(board).toContainEqual({
 			body: 'Cara reported an incident (fall, high severity). A supervisor will follow up.',
-			createdBy: null
+			createdBy: null,
+			incidentId: r.id
 		});
 
 		const sam = await as(SAM);

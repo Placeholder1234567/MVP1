@@ -83,17 +83,25 @@ export async function sendMessage(
 }
 
 /**
- * Lomi's post on a home's board (charting-ux.md §6): coverage updates. It has
- * no author (created_by is null), which is how the board tells it apart from
- * a person who happens to be called Lomi.
+ * Lomi's post on a home's board (charting-ux.md §6): coverage updates, and
+ * a new incident (linked by incidentId). It has no author (created_by is
+ * null), which is how the board tells it apart from a person who happens to
+ * be called Lomi.
  */
-export async function postLomiUpdate(tx: Tx, agencyId: string, homeId: string, body: string) {
+export async function postLomiUpdate(
+	tx: Tx,
+	agencyId: string,
+	homeId: string,
+	body: string,
+	incidentId?: string
+) {
 	await asService(tx, (t) =>
 		insertMessage(t, {
 			agency_id: agencyId,
 			home_id: homeId,
 			from_name: 'Lomi',
 			body,
+			incident_id: incidentId ?? null,
 			sent_at: new Date(),
 			created_by: null
 		})

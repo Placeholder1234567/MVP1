@@ -101,7 +101,7 @@ export async function createIncident(
 			referenceType: 'incidents'
 		});
 		const board = incidentBoardText(user.name, i.type, i.severity);
-		if (board && client.homeId) await postLomiUpdate(tx, agencyId, client.homeId, board);
+		if (board && client.homeId) await postLomiUpdate(tx, agencyId, client.homeId, board, i.id);
 	}
 	return {
 		id: i.id,
