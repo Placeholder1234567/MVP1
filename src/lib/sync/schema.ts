@@ -37,6 +37,7 @@ const client_health_info = new Table({
 	doctor: column.text,
 	guardian: column.text,
 	dob: column.text,
+	vital_limits: column.text,
 	created_at: column.text,
 	updated_at: column.text,
 });

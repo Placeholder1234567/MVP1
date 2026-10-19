@@ -1,6 +1,16 @@
 import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { clients, healthEntries, profiles } from '../../db/schema';
+import { clientHealthInfo, clients, healthEntries, profiles } from '../../db/schema';
+
+/** The person's own vital alert limits as stored (domain/vitals.ts parseVitalLimits), or null. */
+export async function storedVitalLimits(tx: Tx, agencyId: string, clientId: string) {
+	const [row] = await tx
+		.select({ limits: clientHealthInfo.vital_limits })
+		.from(clientHealthInfo)
+		.where(and(eq(clientHealthInfo.agency_id, agencyId), eq(clientHealthInfo.client_id, clientId)))
+		.limit(1);
+	return row?.limits ?? null;
+}
 
 export async function insertHealthEntry(tx: Tx, row: typeof healthEntries.$inferInsert) {
 	const inserted = await tx

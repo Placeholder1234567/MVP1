@@ -1,5 +1,7 @@
-// Placeholder limits from the MVP (mvp/src/app-core.js LIM). Production needs
-// per-person limits set by the agency nurse (mvp/README.md checklist).
+// Default limits from the MVP (mvp/src/app-core.js LIM). A nurse or supervisor
+// can set a person's own limits (client_health_info.vital_limits), for example
+// a lower blood-pressure range for someone whose normal runs low; any limit
+// they leave blank keeps the default (frontend-audit.md finding 18).
 export const VITAL_LIMITS = {
 	tempHi: 100.4,
 	tempLo: 95,
@@ -11,7 +13,54 @@ export const VITAL_LIMITS = {
 	diaLo: 60
 } as const;
 
-export type VitalLimits = { [K in keyof typeof VITAL_LIMITS]: number };
+export type VitalLimits = { -readonly [K in keyof typeof VITAL_LIMITS]: number };
+export type VitalLimitKey = keyof VitalLimits;
+
+/** The pairs a person's limits are set in, with the range a limit may take. */
+export const VITAL_LIMIT_PAIRS: readonly {
+	label: string;
+	unit: string;
+	lo: VitalLimitKey;
+	hi: VitalLimitKey;
+	min: number;
+	max: number;
+}[] = [
+	{ label: 'Temperature', unit: '°F', lo: 'tempLo', hi: 'tempHi', min: 90, max: 106 },
+	{ label: 'Pulse', unit: 'bpm', lo: 'pulseLo', hi: 'pulseHi', min: 20, max: 220 },
+	{ label: 'Blood pressure, top', unit: 'mmHg', lo: 'sysLo', hi: 'sysHi', min: 50, max: 250 },
+	{ label: 'Blood pressure, bottom', unit: 'mmHg', lo: 'diaLo', hi: 'diaHi', min: 30, max: 150 }
+];
+
+/**
+ * A person's limits from their stored overrides (JSON text on the device,
+ * an object on the server). Each pair keeps the default unless both ends
+ * are usable: in range, and low below high.
+ */
+export function parseVitalLimits(raw: unknown): VitalLimits {
+	let v = raw;
+	if (typeof v === 'string') {
+		try {
+			v = JSON.parse(v);
+		} catch {
+			v = null;
+		}
+	}
+	const set = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+	const limits: VitalLimits = { ...VITAL_LIMITS };
+	for (const p of VITAL_LIMIT_PAIRS) {
+		const num = (k: VitalLimitKey) =>
+			typeof set[k] === 'number' && set[k] >= p.min && set[k] <= p.max
+				? (set[k] as number)
+				: VITAL_LIMITS[k];
+		const lo = num(p.lo);
+		const hi = num(p.hi);
+		if (lo < hi) {
+			limits[p.lo] = lo;
+			limits[p.hi] = hi;
+		}
+	}
+	return limits;
+}
 
 export interface Vitals {
 	temp?: number | null;

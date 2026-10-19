@@ -1,9 +1,9 @@
 // Vital sign trends (frontend-spec-3.md §5.5 "Line Chart (vital sign
 // trends)"; Codex's list item "care trends"). One series per measurement
 // from saved vitals entries, with the normal range only where Guad has alert
-// limits (VITAL_LIMITS). SpO2, respiration, glucose and weight have no
-// configured limits yet, so they get no band and no flags.
-import { VITAL_LIMITS } from './vitals';
+// limits (the person's own, else VITAL_LIMITS). SpO2, respiration, glucose
+// and weight have no configured limits yet, so they get no band and no flags.
+import { VITAL_LIMITS, type VitalLimits } from './vitals';
 
 export interface TrendSeries {
 	key: string;
@@ -15,33 +15,34 @@ export interface TrendSeries {
 	highInclusive: boolean;
 }
 
-export const TREND_SERIES: readonly TrendSeries[] = [
+/** The series with normal ranges from these limits (a person's own, or the defaults). */
+export const trendSeries = (lim: VitalLimits = VITAL_LIMITS): readonly TrendSeries[] => [
 	{
 		key: 'temp',
 		label: 'Temperature',
 		unit: '°F',
-		band: [VITAL_LIMITS.tempLo, VITAL_LIMITS.tempHi],
+		band: [lim.tempLo, lim.tempHi],
 		highInclusive: true
 	},
 	{
 		key: 'pulse',
 		label: 'Pulse',
 		unit: 'bpm',
-		band: [VITAL_LIMITS.pulseLo, VITAL_LIMITS.pulseHi],
+		band: [lim.pulseLo, lim.pulseHi],
 		highInclusive: false
 	},
 	{
 		key: 'systolic',
 		label: 'Blood pressure, top',
 		unit: 'mmHg',
-		band: [VITAL_LIMITS.sysLo, VITAL_LIMITS.sysHi],
+		band: [lim.sysLo, lim.sysHi],
 		highInclusive: true
 	},
 	{
 		key: 'diastolic',
 		label: 'Blood pressure, bottom',
 		unit: 'mmHg',
-		band: [VITAL_LIMITS.diaLo, VITAL_LIMITS.diaHi],
+		band: [lim.diaLo, lim.diaHi],
 		highInclusive: true
 	},
 	{ key: 'oxygen', label: 'SpO2', unit: '%', band: null, highInclusive: false },
@@ -55,6 +56,8 @@ export const TREND_SERIES: readonly TrendSeries[] = [
 	{ key: 'glucose', label: 'Blood glucose', unit: 'mg/dL', band: null, highInclusive: false },
 	{ key: 'weight', label: 'Weight', unit: 'lb', band: null, highInclusive: false }
 ];
+
+export const TREND_SERIES = trendSeries();
 
 export interface TrendEntry {
 	recorded_at: string | null;
@@ -131,10 +134,12 @@ export function lastReadings(
  * shown as a reference under the blood pressure fields. Null when none.
  */
 export function baselineBloodPressure(
-	entries: TrendEntry[]
+	entries: TrendEntry[],
+	limits: VitalLimits = VITAL_LIMITS
 ): { systolic: number; diastolic: number; at: string } | null {
-	const top = TREND_SERIES.find((s) => s.key === 'systolic')!;
-	const bottom = TREND_SERIES.find((s) => s.key === 'diastolic')!;
+	const series = trendSeries(limits);
+	const top = series.find((s) => s.key === 'systolic')!;
+	const bottom = series.find((s) => s.key === 'diastolic')!;
 	let best: { systolic: number; diastolic: number; at: string } | null = null;
 	for (const e of entries) {
 		const systolic = reading(e.data.systolic);
