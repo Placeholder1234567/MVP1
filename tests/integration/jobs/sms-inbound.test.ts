@@ -151,9 +151,13 @@ it('STOP turns SMS off, even for mandatory alerts; START turns it back on', asyn
 			priority: 1
 		})
 	);
-	const before = sms.mock.calls.length;
+	// Coverage jobs from the preceding scenarios may still send to other staff.
+	// STOP must prevent delivery to this recipient, not freeze every agency's queue.
+	const stoppedRecipientCalls = () => sms.mock.calls.filter(([to]) => to === phones[cara]);
+	const before = stoppedRecipientCalls().length;
 	expect(await dispatchNotifications({ ids: [id] })).toMatchObject({ sent: 0, failed: 1 });
-	expect(sms.mock.calls.length).toBe(before);
+	expect(stoppedRecipientCalls()).toHaveLength(before);
+	expect(sms.mock.calls.some(([, delivery]) => delivery.notificationId === id)).toBe(false);
 
 	expect(await text(phones[cara], 'start')).toBe('opted_in');
 	expect(lastReplyTo(phones[cara])?.body).toBe(SMS_REPLY_TEXT.started);
