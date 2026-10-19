@@ -363,6 +363,17 @@ describe('client.*', () => {
 		});
 		const full = await sup.client.get({ id: created.id });
 		expect(full).toMatchObject({ healthInfo: null, goals: [], medications: [] });
+		// Health details are neither saved on create nor editable without charting.
+		const [stored] = await withService((t) =>
+			t
+				.select({ allergies: s.clientHealthInfo.allergies })
+				.from(s.clientHealthInfo)
+				.where(eq(s.clientHealthInfo.client_id, created.id))
+		);
+		expect(stored).toEqual({ allergies: null });
+		await expect(
+			sup.client.updateHealth({ clientId: created.id, allergies: 'Hidden' })
+		).rejects.toMatchObject({ code: 'FORBIDDEN' });
 	});
 });
 
