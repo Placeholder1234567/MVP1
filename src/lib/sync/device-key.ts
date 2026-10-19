@@ -100,6 +100,17 @@ export async function offlineAccessUntil(profileId: string): Promise<number> {
 	return ((await readRecord(profileId))?.verifiedAt ?? 0) + OFFLINE_ACCESS_MS;
 }
 
+/**
+ * Signing out: drops the PIN-wrapped key and the offline-access marker, so
+ * neither this lock screen nor /offline can reopen the database. The device ID
+ * stays: unsynced work in the encrypted database is reopened by the next
+ * password sign-in, which fetches the same key from the server.
+ */
+export async function forgetPin(profileId: string): Promise<void> {
+	const record = await readRecord(profileId);
+	if (record) await writeRecord({ deviceId: record.deviceId, failedAttempts: 0 }, profileId);
+}
+
 /** Stores the key wrapped with the PIN. The plain key never touches disk. */
 export async function wrapKey(key: Uint8Array, pin: string, profileId?: string): Promise<void> {
 	const id = await deviceId(profileId);

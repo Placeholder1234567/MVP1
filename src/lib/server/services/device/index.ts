@@ -22,20 +22,39 @@ export class DeviceRevokedError extends Error {
 	}
 }
 
+export class SignInAgainError extends Error {
+	constructor() {
+		super('Sign in again to unlock this device');
+	}
+}
+
+/**
+ * How soon after a sign-in an existing key is handed out again. The key opens
+ * a database that may hold unsynced work, and after 5 wrong PINs only a new
+ * password (and TOTP) sign-in may reopen it, not a session that was already
+ * open on the device.
+ */
+export const REISSUE_WINDOW_MS = 10 * 60_000;
+
 /**
  * The 256-bit key for this user's database on this device, created on first
- * use. Throws DeviceRevokedError once the device or user has been revoked.
+ * use. Throws DeviceRevokedError once the device or user has been revoked, and
+ * SignInAgainError when an existing key is asked for by a session whose
+ * sign-in (signedInAt, ms) is older than REISSUE_WINDOW_MS.
  */
 export async function issueDeviceKey(
 	agencyId: string,
 	profileId: string,
-	deviceId: string
+	deviceId: string,
+	signedInAt: number | null | undefined,
+	now = Date.now()
 ): Promise<Buffer> {
 	const aad = `${profileId}:${deviceId}`;
 	return withService(async (tx) => {
 		const existing = await findDeviceKey(tx, agencyId, profileId, deviceId);
 		if (existing) {
 			if (existing.revokedAt) throw new DeviceRevokedError();
+			if (!signedInAt || now - signedInAt > REISSUE_WINDOW_MS) throw new SignInAgainError();
 			await markIssued(tx, agencyId, existing.id);
 			return open(existing.ciphertext, aad);
 		}

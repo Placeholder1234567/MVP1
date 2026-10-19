@@ -8,6 +8,8 @@ declare global {
 		interface Locals {
 			/** Set by hooks.server.ts from a verified session cookie; null when signed out */
 			user: CurrentUser | null;
+			/** When that session's sign-in happened (ms), from the session cookie */
+			signedInAt: number | null;
 		}
 		// interface PageData {}
 		// interface PageState {}

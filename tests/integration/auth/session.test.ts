@@ -87,7 +87,7 @@ describe('sign-in', () => {
 		const session = await identity.createSession(await emulatorSignIn(email));
 		expect(session.uid).toBe(uid);
 		expect(session.expiresIn).toBe(identity.SESSION_MAX_MS);
-		expect(await identity.verifySession(session.cookie)).toEqual({ uid });
+		expect(await identity.verifySession(session.cookie)).toMatchObject({ uid });
 	});
 
 	it('uses the agency’s shorter session length when it sets one', async () => {
@@ -101,7 +101,7 @@ describe('sign-in', () => {
 		try {
 			const session = await identity.createSession(await emulatorSignIn(email), sessionLengthMs);
 			expect(session.expiresIn).toBe(30 * 60_000);
-			expect(await identity.verifySession(session.cookie)).toEqual({ uid });
+			expect(await identity.verifySession(session.cookie)).toMatchObject({ uid });
 		} finally {
 			await withService((tx) =>
 				tx.update(agencies).set({ settings: {} }).where(eq(agencies.id, agencyId))

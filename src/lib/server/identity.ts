@@ -89,11 +89,14 @@ export async function verifyWitnessSignIn(
  * Verifies a session cookie, including revocation, so a deactivated or
  * signed-out user is rejected on the next request. Returns null when invalid.
  */
-export async function verifySession(cookie: string | undefined): Promise<{ uid: string } | null> {
+export async function verifySession(
+	cookie: string | undefined
+): Promise<{ uid: string; authTime: number } | null> {
 	if (!cookie) return null;
 	try {
 		const decoded = await auth().verifySessionCookie(cookie, true);
-		return { uid: decoded.uid };
+		// authTime: when the person last signed in (seconds), not when the cookie was used.
+		return { uid: decoded.uid, authTime: decoded.auth_time };
 	} catch {
 		return null;
 	}

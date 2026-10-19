@@ -40,12 +40,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	event.locals.user = null;
+	event.locals.signedInAt = null;
 	const session = await verifySession(event.cookies.get(SESSION_COOKIE));
 	if (session) {
 		// A verified cookie with no active profile (deactivated, or never set
 		// up) is treated as signed out.
 		event.locals.user = await getCurrentUser(session.uid);
 		if (!event.locals.user) event.cookies.delete(SESSION_COOKIE, { path: '/' });
+		else event.locals.signedInAt = session.authTime * 1000;
 	}
 
 	// Preload the Figtree file too (SvelteKit's default is JS and CSS only) so
