@@ -80,6 +80,15 @@ npm run agency:provision -- --name "Sunrise Care" --slug sunrise-care --tier pro
 
 It creates the agency with the default goal templates and emails the first admin a password-setup link. Add `--print-setup-link` to also print the link, for example before SES is set up.
 
+To change an agency's plan later (support handles upgrades; there's no self-service), run this from the same kind of machine. It records the change and who made it in the agency's audit log, and staff devices get the new features on their next sync:
+
+```bash
+npm run agency:set-plan -- --slug sunrise-care --tier complete --operator you@guad.example --dry-run
+npm run agency:set-plan -- --slug sunrise-care --feature intake --operator you@guad.example
+```
+
+`--feature` (repeatable) replaces the agency's extra features on top of its tier, and `--clear-features` removes them.
+
 ## Platform maintenance
 
 Before maintenance that affects every agency (a database upgrade, say), announce it from the same kind of machine. Everyone active in each agency gets a push, an email and an in-app notice with the window in their agency's time zone and a fixed impact line (no typed text, so nothing sensitive):
