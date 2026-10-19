@@ -185,6 +185,7 @@
 				<button class="btn" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button
 				>
 			</form>
+			<a class="textbtn" href={resolve('/forgot-password')}>Forgot password?</a>
 			{#if data.demo}
 				<section class="callout stack" aria-label="Local demo accounts">
 					<b>Local demo accounts</b>

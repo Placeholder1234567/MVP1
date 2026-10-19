@@ -144,7 +144,7 @@ export async function createStaffAccount(
 	}
 	// The email goes out only once the profile is committed.
 	afterCommit(async () => {
-		const link = await passwordSetupLink(email, `${appUrl()}/login`);
+		const link = await passwordSetupLink(email, appUrl());
 		await providers().email(email, {
 			notificationId: `invite-${created.id}`,
 			title: "You're invited to Guad",

@@ -50,7 +50,7 @@ try {
 	if (values['print-setup-link']) {
 		const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
 		console.log(
-			`Setup link: ${await passwordSetupLink(values['admin-email']!.trim().toLowerCase(), `${appUrl}/login`)}`
+			`Setup link: ${await passwordSetupLink(values['admin-email']!.trim().toLowerCase(), appUrl)}`
 		);
 	}
 } catch (e) {

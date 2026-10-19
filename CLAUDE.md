@@ -173,6 +173,7 @@ PUBLIC_FIREBASE_AUTH_DOMAIN=
 PUBLIC_FIREBASE_PROJECT_ID=
 FIREBASE_AUTH_EMULATOR_HOST=     # Local dev only, e.g. 127.0.0.1:9099 (also turns MFA enforcement off: no TOTP in the emulator)
 MFA_ENFORCE=                     # "off" only before Identity Platform TOTP is enabled; never with real data
+PWNED_PASSWORDS=                 # on | off: breached-password check on /set-password (default on; off with the Auth emulator)
 
 # AI (server-only)
 VERTEX_REGION=                   # Region serving Claude on Vertex AI (or "global")
