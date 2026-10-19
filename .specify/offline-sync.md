@@ -384,8 +384,13 @@ streams:
   coverage_requests:
     auto_subscribe: true
     query: >-
+      SELECT id, agency_id, home_id, day, shift, called_out_by, status, filled_by, created_by, created_at, updated_at FROM coverage_requests
+      WHERE home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true AND p.role = 'caregiver') AND device_sync = true
+  coverage_requests_supervisors:
+    auto_subscribe: true
+    query: >-
       SELECT id, agency_id, home_id, day, shift, called_out_by, reason, status, filled_by, created_by, created_at, updated_at FROM coverage_requests
-      WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND device_sync = true
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')) AND device_sync = true
   coverage_steps:
     auto_subscribe: true
     query: >-
@@ -916,7 +921,7 @@ npm run test:e2e -- --grep @offline
 | `controlled_counts` | home_data | 30 days | Assigned homes | All homes | Yes (new entries; the witness countersigns online) |
 | `health_entries` | home_data | 30 days | Assigned homes | All homes | Yes |
 | `attendance` | home_data | 30 days | Assigned homes | All homes | Yes |
-| `coverage_requests` | home_data | 7 days | Assigned homes | All homes | No |
+| `coverage_requests` | home_data | 7 days | Assigned homes, without `reason` (the callout reason is for supervisors only) | All homes, with `reason` (`coverage_requests_supervisors`) | No |
 | `coverage_steps` | home_data | 7 days (via request) | Assigned homes | All homes | No |
 | `clock_records` | user_data + admin_clock_data | 30 days | Own records (user_data) | Own records (user_data) + all agency records (admin_clock_data) | Yes |
 | `notifications` | user_data | 7 days | Own records | Own records | No |
