@@ -45,6 +45,7 @@ test('queued care reports require a connection and an explicit download, then fo
 	await page.getByRole('combobox', { name: 'Format', exact: true }).selectOption('json');
 	const reportFrom = await page.getByLabel('From', { exact: true }).inputValue();
 	const reportThrough = await page.getByLabel('Through', { exact: true }).inputValue();
+	const reportHome = await page.getByLabel('Current home', { exact: true }).inputValue();
 	const request = page.getByRole('button', { name: 'Request background report', exact: true });
 	await context.setOffline(true);
 	await expect(request).toBeDisabled();
@@ -87,7 +88,11 @@ test('queued care reports require a connection and an explicit download, then fo
 	await page.reload();
 	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
 	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await expect(page.getByRole('region', { name: 'Current report', exact: true })).toHaveCount(0);
+	// Home selection is in memory too: reload opens the first accessible home.
+	// Explicitly return to the report's home before looking for its recent jobs.
+	await page.getByLabel('Current home', { exact: true }).selectOption(reportHome);
 	const resume = page
 		.getByRole('region', { name: 'Recent report requests', exact: true })
 		.getByRole('button', { name: 'Select Health entries request', exact: true })
