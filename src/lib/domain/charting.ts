@@ -192,3 +192,27 @@ export function incidentNotifyRules(
 	}
 	return rules;
 }
+
+/**
+ * Incidents Lomi doesn't announce on the team board. A report of suspected
+ * abuse, neglect or exploitation may concern a coworker who reads the board,
+ * and reporters are kept confidential; a death is told by a supervisor.
+ */
+export const UNANNOUNCED_INCIDENT_TYPES: readonly IncidentType[] = [
+	...MANDATED_REPORT_TYPES,
+	'Death'
+];
+
+/**
+ * Lomi's board post after an incident is filed (frontend-spec-2.md §3.6
+ * "Post-submit"), or null for the types above. No person's name.
+ */
+export function incidentBoardText(
+	authorName: string,
+	type: IncidentType,
+	severity: IncidentSeverity
+): string | null {
+	if (UNANNOUNCED_INCIDENT_TYPES.includes(type)) return null;
+	const who = authorName.trim().split(/\s+/)[0] || 'A staff member';
+	return `${who} reported an incident (${type.toLowerCase()}, ${severity.toLowerCase()} severity). A supervisor will follow up.`;
+}
