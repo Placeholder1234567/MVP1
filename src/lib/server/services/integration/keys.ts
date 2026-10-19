@@ -9,6 +9,7 @@ import { API_KEY_PATTERN, API_KEY_PREFIX_LENGTH, type ApiScope } from '../../../
 import { resolveFeatures } from '../../../entitlements/tier-features.ts';
 import { withService, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
+import { deactivateKeyWebhooks } from './webhooks.queries';
 import {
 	insertAccess,
 	insertKey,
@@ -53,6 +54,8 @@ export async function createApiKey(
 export async function revokeApiKey(tx: Tx, agencyId: string, id: string) {
 	if (!(await setRevoked(tx, agencyId, id)))
 		throw new ServiceError('NOT_FOUND', 'That key does not exist or is already revoked');
+	// Its webhooks stop too: a leaked key's webhooks mustn't keep receiving events.
+	await deactivateKeyWebhooks(tx, agencyId, id);
 	return { revoked: true };
 }
 

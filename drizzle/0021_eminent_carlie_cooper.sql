@@ -1,0 +1,2 @@
+ALTER TABLE "webhooks" ADD COLUMN "created_by_key_id" uuid;--> statement-breakpoint
+ALTER TABLE "webhooks" ADD CONSTRAINT "webhooks_created_by_key_id_api_keys_id_fk" FOREIGN KEY ("created_by_key_id") REFERENCES "public"."api_keys"("id") ON DELETE set null ON UPDATE no action;

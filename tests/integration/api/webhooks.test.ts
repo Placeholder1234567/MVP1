@@ -288,3 +288,83 @@ describe('deliveries', () => {
 		expect((await (await call(list.GET, '/api/v1/webhooks', readKey)).json()).data).toEqual([]);
 	});
 });
+
+describe('keys, recovery and the admin screen', () => {
+	const stub = () =>
+		integration.setWebhookTransportForTests(async (url, body, headers) => {
+			sent.push({ url: url.toString(), body, headers });
+			return { statusCode: 200, ms: 3 };
+		});
+	const register = async (key: string) =>
+		(
+			await (
+				await call(list.POST, '/api/v1/webhooks', key, {
+					method: 'POST',
+					body: { url: 'https://hooks.example.test/guad', events: ['incident.created'] }
+				})
+			).json()
+		).id as string;
+	const deliveriesFor = (id: string) =>
+		withService((t) =>
+			t.select().from(s.webhookDeliveries).where(eq(s.webhookDeliveries.webhook_id, id))
+		);
+
+	it('revoking a key stops the webhooks it registered', async () => {
+		stub();
+		const admin = createCaller({ user: await getCurrentUser(uid(ADMIN)), request: {} });
+		const created = await admin.apiKey.create({ name: 'Leaked', scope: 'write' });
+		const hook = await register(created.key);
+		expect((await admin.apiKey.webhooks()).map((h) => h.id)).toContain(hook);
+		await admin.apiKey.revoke({ id: created.id });
+		expect((await admin.apiKey.webhooks()).find((h) => h.id === hook)?.active).toBe(false);
+		await withService((t) =>
+			t.insert(s.incidents).values({
+				agency_id: AGENCY,
+				client_id: PERSON,
+				home_id: HOME,
+				type: 'Fall',
+				severity: 'Low',
+				occurred_at: new Date(),
+				description: 'Synthetic'
+			})
+		);
+		await integration.sweepWebhooks();
+		expect(await deliveriesFor(hook)).toEqual([]);
+		// Admins can remove it in the app, without a key.
+		await admin.apiKey.deleteWebhook({ id: hook });
+		expect((await admin.apiKey.webhooks()).map((h) => h.id)).not.toContain(hook);
+	});
+
+	it('the sweep re-queues a delivery whose task was lost', async () => {
+		stub();
+		const hook = await register(writeKey);
+		const id = randomUUID();
+		await withService((t) =>
+			t.insert(s.webhookDeliveries).values({
+				id,
+				agency_id: AGENCY,
+				webhook_id: hook,
+				event: 'incident.created',
+				audit_id: randomUUID(),
+				payload: { event: 'incident.created' },
+				attempts: 1,
+				status: 'pending',
+				next_retry_at: new Date(Date.now() - 10 * 60_000)
+			})
+		);
+		await integration.sweepWebhooks();
+		const [done] = await waitFor(async () => {
+			const rows = await deliveriesFor(hook);
+			return rows.find((r) => r.id === id && r.status === 'delivered') ? rows : undefined;
+		});
+		expect(done).toMatchObject({ status: 'delivered', attempts: 2 });
+	});
+
+	it('the pinned lookup answers both single and all-address requests', () => {
+		const lookup = integration.pinnedLookupForTests({ address: '93.184.216.34', family: 4 });
+		const got: unknown[] = [];
+		lookup('h', { all: true }, (_e, a) => got.push(a));
+		lookup('h', undefined, (_e, a, f) => got.push([a, f]));
+		expect(got).toEqual([[{ address: '93.184.216.34', family: 4 }], ['93.184.216.34', 4]]);
+	});
+});

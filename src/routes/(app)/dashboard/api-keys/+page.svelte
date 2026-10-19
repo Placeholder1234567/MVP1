@@ -8,8 +8,10 @@
 
 	type Key = Awaited<ReturnType<typeof trpc.apiKey.list.query>>[number];
 	type Created = Awaited<ReturnType<typeof trpc.apiKey.create.mutate>>;
+	type Hook = Awaited<ReturnType<typeof trpc.apiKey.webhooks.query>>[number];
 
 	let keys = $state<Key[]>([]);
+	let hooks = $state<Hook[]>([]);
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state('');
@@ -25,7 +27,7 @@
 	async function load() {
 		loading = true;
 		try {
-			keys = await trpc.apiKey.list.query();
+			[keys, hooks] = await Promise.all([trpc.apiKey.list.query(), trpc.apiKey.webhooks.query()]);
 		} catch (e) {
 			message = e instanceof Error ? e.message : 'Connect to manage API keys.';
 		} finally {
@@ -62,6 +64,20 @@
 			await load();
 		} catch (e) {
 			message = e instanceof Error ? e.message : 'Connect to revoke the key.';
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function removeHook(hook: Hook) {
+		if (!confirm(`Delete the webhook to ${hook.url}? It stops receiving events at once.`)) return;
+		saving = true;
+		message = '';
+		try {
+			await trpc.apiKey.deleteWebhook.mutate({ id: hook.id });
+			await load();
+		} catch (e) {
+			message = e instanceof Error ? e.message : 'Connect to delete the webhook.';
 		} finally {
 			saving = false;
 		}
@@ -161,10 +177,36 @@
 				<div class="row muted" role="listitem">No API keys yet.</div>
 			{/each}
 		</div>
+		<h2>Webhooks</h2>
+		<p class="muted">
+			Registered by integrations through the API. Revoking a key stops the webhooks it registered.
+		</p>
+		<div class="list card" role="list" aria-label="Webhooks">
+			{#each hooks as hook (hook.id)}
+				<div class="row" role="listitem">
+					<span class="grow">
+						<b class="url">{hook.url}{hook.active ? '' : ' · stopped'}</b>
+						<span class="muted">{hook.events.join(', ')} · created {when(hook.created_at)}</span>
+					</span>
+					<button
+						class="btn sec"
+						disabled={saving}
+						aria-label="Delete webhook to {hook.url}"
+						onclick={() => removeHook(hook)}>Delete</button
+					>
+				</div>
+			{:else}
+				<div class="row muted" role="listitem">No webhooks.</div>
+			{/each}
+		</div>
 	{/if}
 </section>
 
 <style>
+	.url {
+		overflow-wrap: anywhere;
+	}
+
 	.secret {
 		display: block;
 		padding: 10px 12px;
