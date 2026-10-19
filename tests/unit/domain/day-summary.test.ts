@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	fallbackSummary,
+	nextSteps,
 	plainBriefing,
 	type DaySnapshot
 } from '../../../src/lib/domain/day-summary';
@@ -49,5 +50,53 @@ describe('plainBriefing', () => {
 		expect(plainBriefing('## Today\n- **One** fall at Oak.\n2. Notes are due.')).toBe(
 			'Today One fall at Oak. Notes are due.'
 		);
+	});
+});
+
+describe('nextSteps', () => {
+	const busy: DaySnapshot = {
+		...empty,
+		openShifts: ['pm'],
+		coverage: [{ shift: 'pm', status: 'searching' }],
+		missingNotes: ['Ana', 'Ben', 'Cy', 'Dee'],
+		notesToReview: 2,
+		incidents: [{ person: 'Ben', type: 'Fall', severity: 'Low' }],
+		meds: [
+			{ person: 'Ben', status: 'refused' },
+			{ person: 'Ana', status: 'held' }
+		],
+		dosesNotRecorded: 1,
+		healthAlerts: [{ person: 'Ana', alert: 'Temperature above 100.4' }],
+		clockExceptions: 1
+	};
+
+	it('is empty when nothing needs doing', () => {
+		expect(nextSteps(empty)).toEqual([]);
+	});
+
+	it('lists operational steps in priority order, each with where to do it', () => {
+		expect(nextSteps(busy, 10)).toEqual([
+			{ text: 'Review 1 open incident', place: 'incidents' },
+			{ text: 'Look at 1 health reading flagged outside the agency’s range', place: 'health' },
+			{ text: 'Check 1 scheduled dose with no record yet', place: 'medications' },
+			{
+				text: 'Confirm 2 refused or held doses were reported as your procedure requires',
+				place: 'medications'
+			},
+			{ text: 'Fill 1 open shift (1 looking for cover)', place: 'schedule' },
+			{ text: 'Remind staff: no note yet for Ana, Ben, Cy and 1 more', place: 'notes' },
+			{ text: 'Review 2 submitted notes', place: 'review' },
+			{ text: 'Check 1 clock record needing review', place: 'timesheets' }
+		]);
+		expect(nextSteps(busy)).toHaveLength(3);
+	});
+
+	it('never gives clinical advice', () => {
+		const text = nextSteps(busy, 10)
+			.map((s) => s.text)
+			.join(' ');
+		expect(text).not.toMatch(/diagnos|dosage|increase|decrease|prescri|treat|administer|mg\b/i);
+		// No names of health readings or medications either, only counts.
+		expect(text).not.toMatch(/Temperature/);
 	});
 });

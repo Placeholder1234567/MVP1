@@ -135,6 +135,8 @@ it('briefs the supervisor from the day’s records', async () => {
 	const out = await (await as(SUP)).lomi.summarize({ homeId: HOME });
 	expect(out.fallback).toBe(true);
 	expect(out.highlights).toEqual([]);
+	// Suggested next steps are a Complete-plan extra (analytics_advanced).
+	expect(out.recommendations).toEqual([]);
 	expect(out.snapshot).toMatchObject({
 		day: TODAY,
 		home: 'Oak House',
