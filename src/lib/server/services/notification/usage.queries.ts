@@ -18,12 +18,14 @@ export function sentByChannel(tx: Tx, agencyId: string, from: Date) {
 		.groupBy(notifications.channel);
 }
 
-/** Each active staff member's text preferences (any type). */
+/** Active staff members' saved text preferences, one row per type they saved. */
 export function smsPreferences(tx: Tx, agencyId: string) {
 	return tx
 		.select({
 			profileId: profiles.id,
 			name: profiles.name,
+			role: profiles.role,
+			type: notificationPreferences.notification_type,
 			smsEnabled: notificationPreferences.sms_enabled
 		})
 		.from(notificationPreferences)

@@ -64,8 +64,8 @@ beforeAll(async () => {
 				[
 					[ada, 'admin', [], 200, 0],
 					[ben, 'admin', [], 200, 1],
-					// Never signed in, on staff 200 days: dormant.
-					[idle, 'caregiver', [], 200, null],
+					// Last signed in 100 days ago: dormant.
+					[idle, 'caregiver', [], 200, 100],
 					// Works at Oak, still has Elm on her list.
 					[cara, 'caregiver', [oak, elm], 60, 1],
 					// Too new to be flagged for homes she hasn't worked yet.

@@ -21,7 +21,13 @@ describe('isDormant', () => {
 	it('flags active accounts unused for 90+ days, or never used 90 days after creation', () => {
 		expect(isDormant(profile({ id: 'a', lastSignInAt: days(90) }), now)).toBe(true);
 		expect(isDormant(profile({ id: 'b', lastSignInAt: days(89) }), now)).toBe(false);
+		// Never signed in since sign-ins were first recorded (2026-10-19): counts
+		// from then, so older accounts aren't all flagged the day this ships.
 		expect(isDormant(profile({ id: 'c', lastSignInAt: null, createdAt: days(120) }), now)).toBe(
+			false
+		);
+		const later = new Date('2027-01-18T00:00:00Z');
+		expect(isDormant(profile({ id: 'c', lastSignInAt: null, createdAt: days(120) }), later)).toBe(
 			true
 		);
 		expect(isDormant(profile({ id: 'd', lastSignInAt: null, createdAt: days(10) }), now)).toBe(
