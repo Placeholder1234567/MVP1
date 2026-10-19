@@ -18,7 +18,8 @@
 		CASE_NOTE_CATEGORY_LABEL,
 		caseNoteCategoryLabel,
 		localTime,
-		TREND_SERIES,
+		trendSeries,
+		parseVitalLimits,
 		trendPoints,
 		type CaseNoteCategory
 	} from '#lib/domain/index.ts';
@@ -47,9 +48,10 @@
 				recorded_at: h.recorded_at,
 				data: parseJson<Record<string, unknown>>(h.data, {})
 			}));
-		return TREND_SERIES.map((series) => ({ series, points: trendPoints(entries, series) })).filter(
-			(t) => t.points.length
-		);
+		const limits = parseVitalLimits(app.healthInfo.find((h) => h.client_id === id)?.vital_limits);
+		return trendSeries(limits)
+			.map((series) => ({ series, points: trendPoints(entries, series) }))
+			.filter((t) => t.points.length);
 	});
 	const dayLabel = (iso: string) => {
 		const d = localTime(new Date(iso), app.user.timeZone).day;

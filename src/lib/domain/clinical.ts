@@ -1,7 +1,7 @@
 // Care-record rules shared by the device and the server: health entry fields,
 // incident wizard options and the supervisor attention queue
 // (frontend-spec-2.md §3.4-3.6, frontend-spec-3.md §4.1, charting-ux.md §4.5-4.8).
-import { vitalFlags, type VitalFlag } from './vitals';
+import { VITAL_LIMITS, vitalFlags, type VitalFlag, type VitalLimits } from './vitals';
 import {
 	incidentNotifyRules,
 	INCIDENT_TYPES,
@@ -258,15 +258,22 @@ export function healthPayload(
 }
 
 /** Vital flags for stored or typed vitals data (keys as in HEALTH_FIELDS). */
-export function healthFlags(kind: string, data: Record<string, unknown>): VitalFlag[] {
+export function healthFlags(
+	kind: string,
+	data: Record<string, unknown>,
+	limits: VitalLimits = VITAL_LIMITS
+): VitalFlag[] {
 	if (kind !== 'vitals') return [];
 	const n = (v: unknown) => (v === '' || v == null ? null : Number(v));
-	return vitalFlags({
-		temp: n(data.temp),
-		pulse: n(data.pulse),
-		sys: n(data.systolic),
-		dia: n(data.diastolic)
-	});
+	return vitalFlags(
+		{
+			temp: n(data.temp),
+			pulse: n(data.pulse),
+			sys: n(data.systolic),
+			dia: n(data.diastolic)
+		},
+		limits
+	);
 }
 
 const FIELD_NAME: Record<string, string> = {
@@ -279,11 +286,12 @@ const FIELD_NAME: Record<string, string> = {
 /** Inline warning for one vitals field (charting-ux.md §4.6), or null. */
 export function vitalFieldWarning(
 	key: string,
-	value: string | number | null | undefined
+	value: string | number | null | undefined,
+	limits: VitalLimits = VITAL_LIMITS
 ): string | null {
 	value = value == null ? '' : String(value);
 	if (!value.trim() || !Number.isFinite(Number(value))) return null;
-	if (!healthFlags('vitals', { [key]: value }).length) return null;
+	if (!healthFlags('vitals', { [key]: value }, limits).length) return null;
 	return `${FIELD_NAME[key] ?? 'This reading'} is outside the normal range.`;
 }
 

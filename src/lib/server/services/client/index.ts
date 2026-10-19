@@ -4,7 +4,12 @@
 // audit_row_change trigger, and a home change moves the client's synced
 // records with them (clients_home_change trigger).
 import { z } from 'zod';
-import { CASE_NOTE_CATEGORIES, initialsOf } from '../../../domain/index.ts';
+import {
+	CASE_NOTE_CATEGORIES,
+	initialsOf,
+	VITAL_LIMIT_PAIRS,
+	type VitalLimitKey
+} from '../../../domain/index.ts';
 import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
@@ -29,13 +34,37 @@ export const ClientFilter = z.object({
 	active: z.boolean().optional()
 });
 
+/**
+ * A person's vital alert limits: any subset, each in its plausible range, and
+ * where both ends of a pair are given the low end must be below the high.
+ */
+const VitalLimitsInput = z
+	.object(
+		Object.fromEntries(
+			VITAL_LIMIT_PAIRS.flatMap((p) => [
+				[p.lo, z.number().min(p.min).max(p.max).optional()],
+				[p.hi, z.number().min(p.min).max(p.max).optional()]
+			])
+		) as Record<VitalLimitKey, z.ZodOptional<z.ZodNumber>>
+	)
+	.strict()
+	.refine(
+		(v) =>
+			VITAL_LIMIT_PAIRS.every(
+				(p) => v[p.lo] === undefined || v[p.hi] === undefined || v[p.lo]! < v[p.hi]!
+			),
+		'Each low limit must be below its high limit'
+	);
+
 export const HealthFields = z.object({
 	allergies: text(2000).nullable().optional(),
 	conditions: text(2000).nullable().optional(),
 	diet: text(2000).nullable().optional(),
 	doctor: text(500).nullable().optional(),
 	guardian: text(500).nullable().optional(),
-	dob: z.iso.date().nullable().optional()
+	dob: z.iso.date().nullable().optional(),
+	/** This person's own vital alert limits (domain/vitals.ts); null clears them. */
+	vitalLimits: VitalLimitsInput.nullable().optional()
 });
 
 export const NewClient = z.object({
@@ -59,6 +88,12 @@ export const ClientChanges = z.object({
 });
 
 export const HealthChanges = HealthFields.extend({ clientId: z.uuid() });
+
+/** Health fields as table columns. */
+function healthColumns(h: z.infer<typeof HealthFields> = {}) {
+	const { vitalLimits, ...rest } = h;
+	return { ...rest, vital_limits: vitalLimits };
+}
 
 export function listClients(tx: Tx, agencyId: string, filter: z.infer<typeof ClientFilter>) {
 	return selectClients(tx, agencyId, ClientFilter.parse(filter));
@@ -106,7 +141,7 @@ export async function createClient(tx: Tx, agencyId: string, input: z.infer<type
 		agency_id: agencyId,
 		client_id: client.id,
 		home_id: data.homeId,
-		...data.healthInfo
+		...healthColumns(data.healthInfo)
 	});
 	return { id: client.id, name: client.name, homeId: client.homeId, createdAt: client.createdAt };
 }
@@ -146,7 +181,7 @@ export async function updateHealth(tx: Tx, agencyId: string, input: z.infer<type
 		agency_id: agencyId,
 		client_id: clientId,
 		home_id: client.homeId,
-		...fields
+		...healthColumns(fields)
 	});
 	return { clientId, ...(await selectHealthInfo(tx, agencyId, clientId)) };
 }

@@ -134,6 +134,13 @@
       "when": 1792378715004,
       "tag": "0018_home_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792380240482,
+      "tag": "0019_vital_limits",
+      "breakpoints": true
     }
   ]
 }

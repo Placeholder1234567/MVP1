@@ -49,6 +49,7 @@ export async function selectHealthInfo(tx: Tx, agencyId: string, clientId: strin
 			doctor: clientHealthInfo.doctor,
 			guardian: clientHealthInfo.guardian,
 			dob: clientHealthInfo.dob,
+			vitalLimits: clientHealthInfo.vital_limits,
 			updatedAt: clientHealthInfo.updated_at
 		})
 		.from(clientHealthInfo)
@@ -94,6 +95,7 @@ export async function upsertHealthInfo(tx: Tx, row: typeof clientHealthInfo.$inf
 				doctor: row.doctor,
 				guardian: row.guardian,
 				dob: row.dob,
+				vital_limits: row.vital_limits,
 				updated_at: new Date()
 			}
 		})

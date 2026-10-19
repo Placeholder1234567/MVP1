@@ -1,0 +1,1 @@
+ALTER TABLE "client_health_info" ADD COLUMN "vital_limits" jsonb;

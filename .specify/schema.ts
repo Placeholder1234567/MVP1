@@ -295,6 +295,11 @@ export const clientHealthInfo = pgTable(
     doctor: text('doctor'),
     guardian: text('guardian'),
     dob: date('dob'),
+    // This person's vital alert limits, set by a nurse or supervisor
+    // (domain/vitals.ts VitalLimits, any subset of tempLo/tempHi, pulseLo/
+    // pulseHi, sysLo/sysHi, diaLo/diaHi). Null or missing keys use the
+    // agency defaults (frontend-audit.md finding 18).
+    vital_limits: jsonb('vital_limits'),
     created_at: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

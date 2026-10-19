@@ -10,6 +10,7 @@ import {
 	type HealthKind,
 	type HEALTH_READING_LIMITS
 } from '../../../domain/clinical.ts';
+import { parseVitalLimits, VITAL_LIMITS, type VitalLimits } from '../../../domain/vitals.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
@@ -18,6 +19,7 @@ import { notifyHomeSupervisors } from '../notification/index.ts';
 import {
 	acknowledgeHealthEntry,
 	insertHealthEntry,
+	storedVitalLimits,
 	selectHealthEntries,
 	type HealthFilter
 } from './health.queries';
@@ -112,8 +114,12 @@ export function parseHealthData(kind: HealthKind, data: unknown) {
 }
 
 /** Metric names outside the limits, as stored in health_entries.flags. */
-export function flagsFor(kind: string, data: Record<string, unknown>): string[] {
-	return healthFlags(kind, data);
+export function flagsFor(
+	kind: string,
+	data: Record<string, unknown>,
+	limits: VitalLimits = VITAL_LIMITS
+): string[] {
+	return healthFlags(kind, data, limits);
 }
 
 /**
@@ -133,7 +139,12 @@ export async function createHealthEntry(
 	}
 	const client = await findClient(tx, agencyId, entry.clientId);
 	if (!client) throw new ServiceError('NOT_FOUND', 'That person is not in your homes');
-	const flags = flagsFor(entry.kind, data);
+	// The person's own limits where a nurse or supervisor set them.
+	const limits =
+		entry.kind === 'vitals'
+			? parseVitalLimits(await storedVitalLimits(tx, agencyId, entry.clientId))
+			: VITAL_LIMITS;
+	const flags = flagsFor(entry.kind, data, limits);
 	const row = await insertHealthEntry(tx, {
 		id: entry.id,
 		agency_id: agencyId,
