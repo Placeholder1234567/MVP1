@@ -154,6 +154,23 @@ export function inQuietHours(
 	return start <= end ? t >= start && t < end : t >= start || t < end;
 }
 
+/** Per-person deliveries allowed per channel in a rolling 24 hours (notifications.md §10). */
+export const DAILY_LIMITS: Record<Channel, number> = {
+	push: 50,
+	sms: 10,
+	email: 20
+};
+
+/**
+ * Whether a delivery is over the person's daily limit, given how many they
+ * were sent on that channel in the last 24 hours. Urgent (priority 1) push
+ * and SMS still go out; email has no bypass.
+ */
+export function overDailyLimit(channel: Channel, priority: number, sentLastDay: number): boolean {
+	if (priority === 1 && channel !== 'email') return false;
+	return sentLastDay >= DAILY_LIMITS[channel];
+}
+
 /**
  * Whether a send can go out now. Urgent (1) and high (2) priorities ignore
  * quiet hours; email ignores them too (notifications.md "Quiet Hours").

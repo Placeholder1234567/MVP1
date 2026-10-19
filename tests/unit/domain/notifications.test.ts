@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendNow, channelsFor, inQuietHours } from '../../../src/lib/domain';
+import { canSendNow, channelsFor, inQuietHours, overDailyLimit } from '../../../src/lib/domain';
 
 describe('channelsFor', () => {
 	it('uses the role defaults from notifications.md', () => {
@@ -46,5 +46,20 @@ describe('quiet hours', () => {
 		expect(canSendNow('email', 4, '02:00')).toBe(true);
 		expect(canSendNow('push', 3, '02:00')).toBe(false);
 		expect(canSendNow('push', 3, '09:00')).toBe(true);
+	});
+});
+
+describe('overDailyLimit', () => {
+	it('allows up to the channel limit in 24 hours', () => {
+		expect(overDailyLimit('push', 3, 49)).toBe(false);
+		expect(overDailyLimit('push', 3, 50)).toBe(true);
+		expect(overDailyLimit('sms', 2, 10)).toBe(true);
+		expect(overDailyLimit('email', 3, 19)).toBe(false);
+		expect(overDailyLimit('email', 3, 20)).toBe(true);
+	});
+	it('lets urgent push and SMS through, but not email', () => {
+		expect(overDailyLimit('push', 1, 500)).toBe(false);
+		expect(overDailyLimit('sms', 1, 500)).toBe(false);
+		expect(overDailyLimit('email', 1, 20)).toBe(true);
 	});
 });

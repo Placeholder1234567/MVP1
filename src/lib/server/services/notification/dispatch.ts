@@ -8,13 +8,19 @@
 // (no phone, opted out, no device, deactivated) fails at once. On the last
 // attempt a failure is final: the row is marked failed and `notification.dead`
 // is logged for alerting (notifications.md §3, §11).
-import { canSendNow, localTime, type Channel } from '../../../domain/index.ts';
+import { canSendNow, localTime, overDailyLimit, type Channel } from '../../../domain/index.ts';
 import { withService } from '../../db';
 import { enqueue } from '../../jobs/queue.ts';
 import { providers } from '../../messaging/index.ts';
 import { render } from '../../messaging/templates.ts';
 import { deleteDeviceTokens, isSuppressed } from './events.queries';
-import { markDelivery, pendingDeliveries, pushTokens, stalePending } from './notification.queries';
+import {
+	markDelivery,
+	pendingDeliveries,
+	pushTokens,
+	sentSince,
+	stalePending
+} from './notification.queries';
 import { queueSmsPushFallback } from './sms-fallback';
 
 /** A delivery that will never succeed, so retrying is pointless. */
@@ -40,8 +46,9 @@ export async function dispatchNotifications(
 	held: number;
 	failed: number;
 	suppressed: number;
+	rateLimited: number;
 }> {
-	const stats = { sent: 0, held: 0, failed: 0, suppressed: 0 };
+	const stats = { sent: 0, held: 0, failed: 0, suppressed: 0, rateLimited: 0 };
 	let retry = 0;
 	const rows = await withService((tx) => pendingDeliveries(tx, payload.ids));
 	const send = providers();
@@ -53,6 +60,20 @@ export async function dispatchNotifications(
 		// Held for quiet hours: stays pending, and the sweeper sends it later.
 		if (!canSendNow(channel, row.priority, `${now.hour}:${now.minute}`, window)) {
 			stats.held++;
+			continue;
+		}
+		// Daily per-person limits (notifications.md §10): over the limit the row
+		// is marked rate_limited and not sent; an SMS falls back to push.
+		const lastDay = await withService((tx) =>
+			sentSince(tx, row.profileId, channel, new Date(Date.now() - 24 * 3_600_000))
+		);
+		if (overDailyLimit(channel, row.priority, lastDay)) {
+			console.log(`notification ${row.id} ${channel} rate limited`);
+			await withService(async (tx) => {
+				await markDelivery(tx, row.id, { status: 'rate_limited' });
+				if (channel === 'sms') await queueSmsPushFallback(tx, row.agencyId, row.id);
+			});
+			stats.rateLimited++;
 			continue;
 		}
 		// Bounced or complained addresses are never mailed again (notifications.md §7).
