@@ -171,14 +171,12 @@ describe('staff.*', () => {
 			a = randomUUID(),
 			b = randomUUID();
 		await withService(async (t) => {
-			await t
-				.insert(s.agencies)
-				.values({
-					id: agency,
-					name: 'Two Admins',
-					slug: `two-${agency}`,
-					subscription_tier: 'complete'
-				});
+			await t.insert(s.agencies).values({
+				id: agency,
+				name: 'Two Admins',
+				slug: `two-${agency}`,
+				subscription_tier: 'complete'
+			});
 			await t.insert(s.profiles).values(
 				[a, b].map((id) => ({
 					id,
