@@ -1473,9 +1473,11 @@ Each section of the note card (`.cv-card.cv-note`) contains:
   - Audit trail: "Drafted with Lomi, reviewed and signed" vs "Written and signed".
 - The label marks the note as AI-assisted, not the caregiver as less responsible. They still attest that the content is accurate, so the note is theirs once signed.
 
-**Ghost text pattern (future enhancement):**
+**Ghost text pattern:**
 
 AI-filled sections appear at opacity 0.85 (slightly faded). When the DSP taps into any field, text transitions to opacity 1.0 (150ms ease), signaling "you own this now." No italic, no sparkle icons -- subtle opacity shift only.
+
+**As built:** `LomiReview.svelte` draws each drafted section at 0.85 opacity until the caregiver focuses it, then 1.0 with a 150ms transition (none with reduced motion). A section stays solid once tapped.
 
 **Original transcript reference (Rebuild target -- not in MVP):**
 
