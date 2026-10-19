@@ -9,6 +9,7 @@
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { initialsOf } from '#lib/domain/people.ts';
+	import { VITAL_LIMIT_PAIRS, VITAL_LIMITS, type VitalLimitKey } from '#lib/domain/vitals.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
 
@@ -35,7 +36,9 @@
 			conditions: '',
 			diet: '',
 			doctor: '',
-			guardian: ''
+			guardian: '',
+			// This person's own vital alert limits; blank keeps the default.
+			limits: {} as Partial<Record<VitalLimitKey, string | number>>
 		};
 	}
 
@@ -76,7 +79,8 @@
 				conditions: h?.conditions ?? '',
 				diet: h?.diet ?? '',
 				doctor: h?.doctor ?? '',
-				guardian: h?.guardian ?? ''
+				guardian: h?.guardian ?? '',
+				limits: { ...((h?.vitalLimits ?? {}) as Partial<Record<VitalLimitKey, number>>) }
 			};
 			editing = person.id;
 		} catch {
@@ -96,8 +100,16 @@
 		conditions: orNull(form.conditions),
 		diet: orNull(form.diet),
 		doctor: orNull(form.doctor),
-		guardian: orNull(form.guardian)
+		guardian: orNull(form.guardian),
+		vitalLimits: vitalLimits()
 	});
+	/** The limits typed in, or null when every box is blank (defaults apply). */
+	function vitalLimits() {
+		const set = Object.entries(form.limits)
+			.filter(([, v]) => v != null && String(v).trim() !== '')
+			.map(([k, v]) => [k, Number(v)]);
+		return set.length ? (Object.fromEntries(set) as Partial<Record<VitalLimitKey, number>>) : null;
+	}
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
@@ -218,6 +230,36 @@
 						bind:value={form.behaviors}
 					/></label
 				>
+				<fieldset class="stack">
+					<legend>Vital alert limits</legend>
+					<p class="muted s13">
+						For a nurse or supervisor to set this person's own normal range. Readings outside it
+						alert supervisors. Leave a box blank to use the default shown.
+					</p>
+					{#each VITAL_LIMIT_PAIRS as p (p.lo)}<div class="grid2">
+							<label
+								>{p.label}, low ({p.unit})<input
+									class="input"
+									type="number"
+									step="any"
+									min={p.min}
+									max={p.max}
+									placeholder={String(VITAL_LIMITS[p.lo])}
+									bind:value={form.limits[p.lo]}
+								/></label
+							><label
+								>{p.label}, high ({p.unit})<input
+									class="input"
+									type="number"
+									step="any"
+									min={p.min}
+									max={p.max}
+									placeholder={String(VITAL_LIMITS[p.hi])}
+									bind:value={form.limits[p.hi]}
+								/></label
+							>
+						</div>{/each}
+				</fieldset>
 				<div class="actions">
 					<button class="btn">Save</button>
 					<button type="button" class="btn sec" onclick={() => (editing = null)}>Cancel</button>

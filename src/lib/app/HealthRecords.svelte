@@ -12,6 +12,7 @@
 		healthSummary,
 		baselineBloodPressure,
 		lastReadings,
+		parseVitalLimits,
 		vitalFieldWarning,
 		type HealthField,
 		type HealthKind
@@ -68,6 +69,10 @@
 		return out;
 	});
 	const recent = $derived(app.health.filter((r) => r.client_id === clientId).slice(0, 3));
+	/** This person's vital alert limits (their own where set, else the defaults). */
+	const limits = $derived(
+		parseVitalLimits(app.healthInfo.find((h) => h.client_id === clientId)?.vital_limits)
+	);
 	/** Each measurement's last saved reading, shown under its field. */
 	const last = $derived(
 		kind === 'vitals'
@@ -91,7 +96,8 @@
 						.map((r) => ({
 							recorded_at: r.recorded_at,
 							data: parseJson<Record<string, unknown>>(r.data, {})
-						}))
+						})),
+					limits
 				)
 			: null
 	);
@@ -121,7 +127,7 @@
 		busy = true;
 		onBusyChange?.(true);
 		try {
-			const flags = healthFlags(kind, payload.data);
+			const flags = healthFlags(kind, payload.data, limits);
 			await insertClinical(app, 'health_entries', clientId, {
 				kind,
 				data: JSON.stringify(payload.data),
@@ -147,7 +153,7 @@
 
 {#snippet input(f: HealthField)}
 	{@const warning =
-		kind === 'vitals' && touched[f.key] ? vitalFieldWarning(f.key, fields[f.key]) : null}
+		kind === 'vitals' && touched[f.key] ? vitalFieldWarning(f.key, fields[f.key], limits) : null}
 	<div class="field">
 		<label class="fieldlabel" for="h-{f.key}">{f.label}</label>
 		{#if f.input === 'textarea'}<textarea

@@ -654,6 +654,39 @@ describe('health.*', () => {
 			(await as(CARA)).health.create({ clientId: PERSON, kind: 'vitals', data: { temp: 'hot' } })
 		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 	});
+	it('uses the person’s own vital limits when a supervisor sets them', async () => {
+		const sam = await as(SAM);
+		const cara = await as(CARA);
+		await expect(
+			cara.client.updateHealth({ clientId: PERSON, vitalLimits: { sysHi: 120 } })
+		).rejects.toMatchObject({ code: 'FORBIDDEN' });
+		await expect(
+			sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 130, sysHi: 120 } })
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		await sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 80, sysHi: 120 } });
+		try {
+			const reading = { temp: 98.6, pulse: 70, systolic: 125, diastolic: 80 };
+			expect(
+				(await cara.health.create({ clientId: PERSON, kind: 'vitals', data: reading })).flags
+			).toEqual(['blood_pressure']);
+			expect((await sam.client.get({ id: PERSON })).healthInfo?.vitalLimits).toEqual({
+				sysLo: 80,
+				sysHi: 120
+			});
+		} finally {
+			await sam.client.updateHealth({ clientId: PERSON, vitalLimits: null });
+		}
+		// Back on the defaults, 125 is normal again.
+		expect(
+			(
+				await cara.health.create({
+					clientId: PERSON,
+					kind: 'vitals',
+					data: { systolic: 125, diastolic: 80 }
+				})
+			).flags
+		).toEqual([]);
+	});
 });
 
 describe('incident.*', () => {

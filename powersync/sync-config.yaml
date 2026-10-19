@@ -31,7 +31,7 @@ streams:
   client_health_info:
     auto_subscribe: true
     query: >-
-      SELECT id, agency_id, client_id, home_id, allergies, conditions, diet, doctor, guardian, dob, created_at, updated_at FROM client_health_info
+      SELECT id, agency_id, client_id, home_id, allergies, conditions, diet, doctor, guardian, dob, vital_limits, created_at, updated_at FROM client_health_info
       WHERE (home_id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin'))) AND agency_id IN (SELECT p.agency_id FROM profiles p, json_each(p.plan_features) AS f WHERE p.auth_uid = auth.user_id() AND p.active = true AND f.value = 'charting')
   goals:
     auto_subscribe: true

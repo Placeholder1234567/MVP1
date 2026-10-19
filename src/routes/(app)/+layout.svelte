@@ -28,6 +28,7 @@
 	import { provideSession } from '#lib/app/session.svelte.ts';
 	import { localTime } from '#lib/domain/time.ts';
 	import { openShiftCount } from '#lib/domain/shifts.ts';
+	import { backlogWarning, storageWarning, type DeviceWarning } from '#lib/domain/sync-backlog.ts';
 	import type { LayoutProps } from './$types';
 	let { data, children }: LayoutProps = $props();
 	const app = provideSession(untrack(() => data.user));
@@ -211,6 +212,20 @@
 		);
 		step = 'set-pin';
 	}
+	// Device warnings (offline-sync.md §6-7): a long sync backlog, and storage
+	// running large or nearly full. Storage is checked every 5 minutes.
+	const backlog = $derived(backlogWarning(app.pending));
+	let storage = $state<DeviceWarning | null>(null);
+	onMount(() => {
+		const check = () =>
+			navigator.storage
+				?.estimate?.()
+				.then((e) => (storage = storageWarning(e.usage, e.quota)))
+				.catch(() => {});
+		check();
+		const timer = setInterval(check, 5 * 60_000);
+		return () => clearInterval(timer);
+	});
 	onMount(() => {
 		let alive = true;
 		void (async () => {
@@ -477,6 +492,13 @@
 					<PushNotice />
 					<EveningSuggestion />
 					{#if app.error}<p class="callout bad" role="alert">{app.error}</p>{/if}
+					{#each [backlog, storage].filter((w) => w !== null) as w (w.text)}<p
+							class="callout {w.level}"
+							role={w.level === 'bad' ? 'alert' : 'status'}
+							data-testid="device-warning"
+						>
+							{w.text}
+						</p>{/each}
 					{#if app.failed.length}<div class="callout bad" role="alert">
 							<b>{app.failed.length} changes need attention</b>
 							<p>
