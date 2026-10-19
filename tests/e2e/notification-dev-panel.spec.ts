@@ -14,7 +14,11 @@ test('production excludes the development notification page and API, including f
 	expect((await page.request.get('/dev/notifications/api/recent')).status()).toBe(404);
 	expect(
 		(
-			await page.request.post('/dev/notifications/api/preview', { data: { type: 'health_alert' } })
+			await page.request.post('/dev/notifications/api/preview', {
+				// Exercise the route guard, not the global missing-Origin CSRF rejection.
+				headers: { origin: new URL(page.url()).origin },
+				data: { type: 'health_alert' }
+			})
 		).status()
 	).toBe(404);
 });
