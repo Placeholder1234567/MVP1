@@ -263,7 +263,7 @@ Update `notifications.sent_at`
 | **Template (SMS)** | `"Guad: Open incident at {homeName} from {dayFormatted} needs review."` |
 | **PHI Safety** | Safe. Home name and date only. |
 | **Deep Link** | `/incidents/{incidentId}` |
-| **Escalation** | Repeats daily until incident status changes from `open`. Stops after 3 days -- marks `escalation_exhausted`. |
+| **Escalation** | Repeats daily until incident status changes from `open`. Stops after 3 days -- marks `escalation_exhausted`. As built: reviewing the incident marks every recipient's in-app copy of its `incident_reported`, `incident_high_severity` and `incident_review_needed` alerts read (`incidentReviewed`, notification/resolve.ts), which is what stops the chain; nobody has to open the alert itself. |
 
 **As built:** the `care-reminder-sweep` (every 15 minutes) flags each incident still `open` 24 to 72 hours after it was reported, once (`reference_id` = incident ID), to the home's supervisors and the agency's admins. The date is the occurrence day (or report day) in the agency's time zone. The escalation chain repeats it at 24 and 48 hours unless someone reads it.
 
@@ -278,7 +278,7 @@ Update `notifications.sent_at`
 | **Template (Push)** | `"Incident at {homeName} from {day}: {contact} not yet marked as told."` |
 | **PHI Safety** | Home, date and contact role only; no person, incident type or detail. |
 | **Deep Link** | `/dashboard` (incident review) |
-| **Escalation** | None. Sent once per incident and contact; marking the contact as told or closing the report stops further reminders. |
+| **Escalation** | None. Sent once per incident and contact; marking the contact as told or closing the report stops further reminders. Reviewing does not (a reviewed incident can still owe a call). Each contact is matched by the end of the title that names it, so renaming the home or changing the time zone doesn't send the reminders again. |
 
 ### 2.13 shift_reminder
 

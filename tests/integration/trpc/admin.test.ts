@@ -195,7 +195,28 @@ describe('client.*', () => {
 		const sup = await as(SUP);
 		const health = await sup.client.updateHealth({ clientId, diet: 'Synthetic diet' });
 		expect(health).toMatchObject({ allergies: 'Synthetic allergy', diet: 'Synthetic diet' });
+		// A recent dose moves with the person; it used to make the move fail.
+		const dose = randomUUID();
+		await withService(async (t) => {
+			const med = randomUUID();
+			await t
+				.insert(s.medications)
+				.values({ id: med, agency_id: AGENCY, client_id: clientId, name: 'Synthetic med' });
+			await t.insert(s.marRecords).values({
+				id: dose,
+				agency_id: AGENCY,
+				client_id: clientId,
+				medication_id: med,
+				day: '2026-10-01',
+				status: 'given',
+				is_prn: true
+			});
+		});
 		await sup.client.update({ id: clientId, homeId: ELM });
+		const [moved] = await withService((t) =>
+			t.select().from(s.marRecords).where(eq(s.marRecords.id, dose))
+		);
+		expect(moved).toMatchObject({ home_id: ELM, status: 'given' });
 		expect((await (await as(ELM_CARER)).client.list()).map((c) => c.id)).toContain(clientId);
 		await expect(sup.client.archive({ id: clientId })).rejects.toMatchObject({ code: 'FORBIDDEN' });
 		expect((await (await as(ADMIN)).client.archive({ id: clientId })).active).toBe(false);

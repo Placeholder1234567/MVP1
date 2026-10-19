@@ -113,3 +113,31 @@ export async function savePreference(tx: Tx, data: typeof notificationPreference
 			}
 		});
 }
+
+/**
+ * Marks every recipient's in-app copy of these events read once the record
+ * they're about is handled, so escalation (which stops at the first read)
+ * doesn't keep texting about it. Runs as app_service: it touches other users' rows.
+ */
+export async function markEventsHandled(
+	tx: Tx,
+	agencyId: string,
+	referenceId: string,
+	types: string[]
+) {
+	return (
+		await tx
+			.update(notifications)
+			.set({ read_at: new Date(), updated_at: new Date() })
+			.where(
+				and(
+					eq(notifications.agency_id, agencyId),
+					eq(notifications.reference_id, referenceId),
+					eq(notifications.channel, 'in_app'),
+					inArray(notifications.type, types),
+					isNull(notifications.read_at)
+				)
+			)
+			.returning({ id: notifications.id })
+	).length;
+}

@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, lte } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, lte, ne } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
 	agencies,
@@ -88,7 +88,7 @@ export function openIncidents(tx: Tx, agencyId: string, from: Date, to: Date) {
 		);
 }
 
-/** Open incidents since `from`, with what decides who must be told. */
+/** Incidents not yet closed since `from`, with what decides who must be told. */
 export function openIncidentContacts(tx: Tx, agencyId: string, from: Date) {
 	return tx
 		.select({
@@ -106,7 +106,8 @@ export function openIncidentContacts(tx: Tx, agencyId: string, from: Date) {
 		.where(
 			and(
 				eq(incidents.agency_id, agencyId),
-				eq(incidents.status, 'open'),
+				// Reviewing doesn't tell anyone: only marking the contact told or closing stops these.
+				ne(incidents.status, 'closed'),
 				gt(incidents.created_at, from)
 			)
 		);
@@ -120,25 +121,17 @@ export async function agencySettingsFor(tx: Tx, agencyId: string) {
 	return row?.settings ?? {};
 }
 
-/** Whether this exact notice (type, record and title) already went out. */
-export async function sentWithTitle(
-	tx: Tx,
-	agencyId: string,
-	type: string,
-	referenceId: string,
-	title: string
-) {
-	const [row] = await tx
-		.select({ id: notifications.id })
+/** Titles of the notices of this type already sent about a record. */
+export async function sentTitles(tx: Tx, agencyId: string, type: string, referenceId: string) {
+	const rows = await tx
+		.selectDistinct({ title: notifications.title })
 		.from(notifications)
 		.where(
 			and(
 				eq(notifications.agency_id, agencyId),
 				eq(notifications.type, type),
-				eq(notifications.reference_id, referenceId),
-				eq(notifications.title, title)
+				eq(notifications.reference_id, referenceId)
 			)
-		)
-		.limit(1);
-	return Boolean(row);
+		);
+	return rows.map((r) => r.title);
 }
