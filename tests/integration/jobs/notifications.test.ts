@@ -108,7 +108,7 @@ it('dispatches email, keeps in-app rows, and does not resend completed deliverie
 			{ ids: rows.map((r) => r.id) },
 			{ attempt: 1, final: true }
 		)
-	).toEqual({ sent: 0, held: 0, failed: 0, suppressed: 0, rateLimited: 0 });
+	).toEqual({ sent: 0, held: 0, failed: 0, suppressed: 0, rateLimited: 0, skipped: 0 });
 	expect(email).toHaveBeenCalledTimes(calls);
 	expect((await rowsFor(reference)).find((r) => r.channel === 'email')?.provider_message_id).toBe(
 		'test-email'
@@ -153,7 +153,8 @@ it('holds normal push during quiet hours but sends urgent push', async () => {
 		held: 1,
 		failed: 0,
 		suppressed: 0,
-		rateLimited: 0
+		rateLimited: 0,
+		skipped: 0
 	});
 });
 
@@ -213,7 +214,7 @@ it('stops at the daily per-person limits; urgent push still goes, email never by
 			{ ids: [normalPush, urgentPush, urgentEmail] },
 			{ attempt: 0, final: true }
 		)
-	).toEqual({ sent: 1, rateLimited: 2, held: 0, failed: 0, suppressed: 0 });
+	).toEqual({ sent: 1, rateLimited: 2, held: 0, failed: 0, suppressed: 0, skipped: 0 });
 	const status = Object.fromEntries(
 		(
 			await withService((tx) =>
@@ -271,26 +272,22 @@ it('agency rules require summary email, suppress optional types, and keep safety
 				}
 			}
 		});
-		await tx
-			.insert(s.profiles)
-			.values({
-				id: staff,
-				agency_id: id,
-				auth_uid: `override-${staff}`,
-				email: 'override@example.test',
-				name: 'Synthetic',
-				role: 'supervisor'
-			});
-		await tx
-			.insert(s.notificationPreferences)
-			.values({
-				agency_id: id,
-				profile_id: staff,
-				notification_type: 'daily_summary',
-				push_enabled: false,
-				email_enabled: false,
-				sms_enabled: false
-			});
+		await tx.insert(s.profiles).values({
+			id: staff,
+			agency_id: id,
+			auth_uid: `override-${staff}`,
+			email: 'override@example.test',
+			name: 'Synthetic',
+			role: 'supervisor'
+		});
+		await tx.insert(s.notificationPreferences).values({
+			agency_id: id,
+			profile_id: staff,
+			notification_type: 'daily_summary',
+			push_enabled: false,
+			email_enabled: false,
+			sms_enabled: false
+		});
 	});
 	const summary = randomUUID();
 	const optional = randomUUID();
@@ -362,27 +359,23 @@ it('rechecks agency disabling and quiet hours for already queued deliveries', as
 				}
 			}
 		});
-		await tx
-			.insert(s.profiles)
-			.values({
-				id: staff,
-				agency_id: id,
-				auth_uid: `dispatch-${staff}`,
-				email: 'dispatch@example.test',
-				name: 'Synthetic',
-				role: 'supervisor'
-			});
+		await tx.insert(s.profiles).values({
+			id: staff,
+			agency_id: id,
+			auth_uid: `dispatch-${staff}`,
+			email: 'dispatch@example.test',
+			name: 'Synthetic',
+			role: 'supervisor'
+		});
 		await tx
 			.insert(s.deviceTokens)
 			.values({ agency_id: id, profile_id: staff, token: `synthetic-${staff}`, platform: 'web' });
-		await tx
-			.insert(s.userSettings)
-			.values({
-				agency_id: id,
-				profile_id: staff,
-				quiet_hours_start: hhmm(5),
-				quiet_hours_end: hhmm(10)
-			});
+		await tx.insert(s.userSettings).values({
+			agency_id: id,
+			profile_id: staff,
+			quiet_hours_start: hhmm(5),
+			quiet_hours_end: hhmm(10)
+		});
 		await tx.insert(s.notifications).values(
 			[
 				{ id: optional, type: 'shift_reminder', priority: 1 },
@@ -403,5 +396,50 @@ it('rechecks agency disabling and quiet hours for already queued deliveries', as
 			{ ids: [optional, normal, urgent] },
 			{ attempt: 0, final: true }
 		)
-	).toEqual({ sent: 1, held: 1, failed: 0, suppressed: 1, rateLimited: 0 });
+	).toEqual({ sent: 1, held: 1, failed: 0, suppressed: 1, rateLimited: 0, skipped: 0 });
+});
+
+it('two dispatches of the same delivery at once send it once', async () => {
+	const person = randomUUID();
+	const id = randomUUID();
+	await withService(async (tx) => {
+		await tx.insert(s.profiles).values({
+			id: person,
+			agency_id: agency,
+			auth_uid: `jobs-${person}`,
+			email: 'synthetic-claim@example.test',
+			name: 'Synthetic Staff',
+			role: 'supervisor'
+		});
+		await tx.insert(s.notifications).values({
+			id,
+			agency_id: agency,
+			profile_id: person,
+			type: 'daily_summary',
+			title: 'Synthetic claim test',
+			channel: 'email',
+			priority: 1
+		});
+	});
+	// A slow provider keeps the first send in flight while the second runs.
+	const slow = vi.fn(async () => {
+		await new Promise((r) => setTimeout(r, 300));
+		return { providerMessageId: 'test-slow' };
+	});
+	setProvidersForTests({ email: slow, push });
+	try {
+		const [a, b] = await Promise.all([
+			runJob('notifications-dispatch', { ids: [id] }, { attempt: 0, final: true }),
+			runJob('notifications-dispatch', { ids: [id] }, { attempt: 0, final: true })
+		]);
+		expect(slow).toHaveBeenCalledOnce();
+		expect([a, b].map((r) => (r as { sent: number }).sent).sort()).toEqual([0, 1]);
+		expect([a, b].map((r) => (r as { skipped: number }).skipped).sort()).toEqual([0, 1]);
+	} finally {
+		setProvidersForTests({ email, push });
+	}
+	const [row] = await withService((tx) =>
+		tx.select().from(s.notifications).where(eq(s.notifications.id, id))
+	);
+	expect(row).toMatchObject({ status: 'sent', provider_message_id: 'test-slow' });
 });

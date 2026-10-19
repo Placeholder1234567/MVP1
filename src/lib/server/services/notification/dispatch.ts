@@ -22,8 +22,10 @@ import { providers } from '../../messaging/index.ts';
 import { render } from '../../messaging/templates.ts';
 import { deleteDeviceTokens, isSuppressed } from './events.queries';
 import {
+	claimDelivery,
 	markDelivery,
 	pendingDeliveries,
+	releaseDelivery,
 	pushTokens,
 	sentSince,
 	stalePending
@@ -37,6 +39,9 @@ class Undeliverable extends Error {
 }
 
 /** Retry later: Cloud Tasks backs off and calls the handler again. */
+/** How long a claimed delivery stays with its dispatch (sends take seconds). */
+const CLAIM_LEASE_MS = 2 * 60_000;
+
 export class RetryLater extends Error {
 	name = 'RetryLater';
 }
@@ -55,8 +60,10 @@ export async function dispatchNotifications(
 	failed: number;
 	suppressed: number;
 	rateLimited: number;
+	/** Being sent by another dispatch at the same time */
+	skipped: number;
 }> {
-	const stats = { sent: 0, held: 0, failed: 0, suppressed: 0, rateLimited: 0 };
+	const stats = { sent: 0, held: 0, failed: 0, suppressed: 0, rateLimited: 0, skipped: 0 };
 	let retry = 0;
 	const rows = await withService((tx) => pendingDeliveries(tx, payload.ids));
 	const send = providers();
@@ -101,6 +108,11 @@ export async function dispatchNotifications(
 			stats.suppressed++;
 			continue;
 		}
+		// Another dispatch is sending this row right now: leave it to that one.
+		if (!(await withService((tx) => claimDelivery(tx, row.id, CLAIM_LEASE_MS)))) {
+			stats.skipped++;
+			continue;
+		}
 		try {
 			if (!row.active) throw new Undeliverable('recipient deactivated');
 			const d = render(channel, row);
@@ -136,6 +148,7 @@ export async function dispatchNotifications(
 			// The reason is logged by name only; addresses and tokens are never logged.
 			if (!(e instanceof Undeliverable) && !ctx.final) {
 				console.warn(`notification ${row.id} ${channel} will retry: ${(e as Error).name}`);
+				await withService((tx) => releaseDelivery(tx, row.id));
 				retry++;
 				continue;
 			}
