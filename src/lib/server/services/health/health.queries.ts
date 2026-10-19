@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, lte, sql, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import { clientHealthInfo, clients, healthEntries, profiles } from '../../db/schema';
 
@@ -10,6 +10,31 @@ export async function storedVitalLimits(tx: Tx, agencyId: string, clientId: stri
 		.where(and(eq(clientHealthInfo.agency_id, agencyId), eq(clientHealthInfo.client_id, clientId)))
 		.limit(1);
 	return row?.limits ?? null;
+}
+
+/**
+ * The person's last weight before `before` (the 5 lb change alert), from
+ * their recent vitals entries. Null when none of those has a weight.
+ */
+export async function previousWeight(tx: Tx, agencyId: string, clientId: string, before: Date) {
+	const rows = await tx
+		.select({ data: healthEntries.data })
+		.from(healthEntries)
+		.where(
+			and(
+				eq(healthEntries.agency_id, agencyId),
+				eq(healthEntries.client_id, clientId),
+				eq(healthEntries.kind, 'vitals'),
+				lt(healthEntries.recorded_at, before)
+			)
+		)
+		.orderBy(desc(healthEntries.recorded_at))
+		.limit(50);
+	for (const { data } of rows) {
+		const w = Number((data as Record<string, unknown> | null)?.weight ?? NaN);
+		if ((data as Record<string, unknown> | null)?.weight !== '' && Number.isFinite(w)) return w;
+	}
+	return null;
 }
 
 export async function insertHealthEntry(tx: Tx, row: typeof healthEntries.$inferInsert) {

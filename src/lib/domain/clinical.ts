@@ -1,7 +1,13 @@
 // Care-record rules shared by the device and the server: health entry fields,
 // incident wizard options and the supervisor attention queue
 // (frontend-spec-2.md §3.4-3.6, frontend-spec-3.md §4.1, charting-ux.md §4.5-4.8).
-import { VITAL_LIMITS, vitalFlags, type VitalFlag, type VitalLimits } from './vitals';
+import {
+	VITAL_LIMITS,
+	vitalFlags,
+	WEIGHT_CHANGE_LB,
+	weightChanged,
+	type VitalLimits
+} from './vitals';
 import {
 	incidentNotifyRules,
 	INCIDENT_TYPES,
@@ -82,8 +88,7 @@ export const HEALTH_FIELDS: Record<HealthKind, readonly HealthField[]> = {
 			label: 'Blood glucose',
 			input: 'number',
 			unit: 'mg/dL',
-			decimal: true,
-			alertConfigured: false
+			decimal: true
 		}
 	],
 	seizure: [
@@ -261,36 +266,47 @@ export function healthPayload(
 export function healthFlags(
 	kind: string,
 	data: Record<string, unknown>,
-	limits: VitalLimits = VITAL_LIMITS
-): VitalFlag[] {
+	limits: VitalLimits = VITAL_LIMITS,
+	/** The person's previous weight, for the 5 lb change alert */
+	previousWeight: number | null = null
+): string[] {
 	if (kind !== 'vitals') return [];
 	const n = (v: unknown) => (v === '' || v == null ? null : Number(v));
-	return vitalFlags(
+	const flags: string[] = vitalFlags(
 		{
 			temp: n(data.temp),
 			pulse: n(data.pulse),
 			sys: n(data.systolic),
-			dia: n(data.diastolic)
+			dia: n(data.diastolic),
+			glucose: n(data.glucose)
 		},
 		limits
 	);
+	if (weightChanged(n(data.weight), previousWeight)) flags.push('weight_change');
+	return flags;
 }
 
 const FIELD_NAME: Record<string, string> = {
 	temp: 'Temperature',
 	pulse: 'Pulse',
 	systolic: 'Blood pressure (top)',
-	diastolic: 'Blood pressure (bottom)'
+	diastolic: 'Blood pressure (bottom)',
+	glucose: 'Blood glucose'
 };
 
 /** Inline warning for one vitals field (charting-ux.md §4.6), or null. */
 export function vitalFieldWarning(
 	key: string,
 	value: string | number | null | undefined,
-	limits: VitalLimits = VITAL_LIMITS
+	limits: VitalLimits = VITAL_LIMITS,
+	previousWeight: number | null = null
 ): string | null {
 	value = value == null ? '' : String(value);
 	if (!value.trim() || !Number.isFinite(Number(value))) return null;
+	if (key === 'weight')
+		return weightChanged(Number(value), previousWeight)
+			? `That is ${WEIGHT_CHANGE_LB} lb or more from the last weight (${previousWeight} lb).`
+			: null;
 	if (!healthFlags('vitals', { [key]: value }, limits).length) return null;
 	return `${FIELD_NAME[key] ?? 'This reading'} is outside the normal range.`;
 }
@@ -298,7 +314,9 @@ export function vitalFieldWarning(
 const FLAG_LABEL: Record<string, string> = {
 	temperature: 'Temperature',
 	pulse: 'Pulse',
-	blood_pressure: 'Blood pressure'
+	blood_pressure: 'Blood pressure',
+	glucose: 'Blood glucose',
+	weight_change: 'Weight change'
 };
 export function flagLabel(flag: string): string {
 	return FLAG_LABEL[flag] ?? flag.replaceAll('_', ' ');

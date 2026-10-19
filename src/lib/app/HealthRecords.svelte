@@ -127,7 +127,7 @@
 		busy = true;
 		onBusyChange?.(true);
 		try {
-			const flags = healthFlags(kind, payload.data, limits);
+			const flags = healthFlags(kind, payload.data, limits, last.weight?.value ?? null);
 			await insertClinical(app, 'health_entries', clientId, {
 				kind,
 				data: JSON.stringify(payload.data),
@@ -153,7 +153,9 @@
 
 {#snippet input(f: HealthField)}
 	{@const warning =
-		kind === 'vitals' && touched[f.key] ? vitalFieldWarning(f.key, fields[f.key], limits) : null}
+		kind === 'vitals' && touched[f.key]
+			? vitalFieldWarning(f.key, fields[f.key], limits, last.weight?.value ?? null)
+			: null}
 	<div class="field">
 		<label class="fieldlabel" for="h-{f.key}">{f.label}</label>
 		{#if f.input === 'textarea'}<textarea
