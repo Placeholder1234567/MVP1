@@ -14,14 +14,34 @@
 	let message = $state('');
 	let failure = $state('');
 	let historyScope = $state<'mine' | 'agency'>('mine');
+	let tasks = $state<Awaited<ReturnType<typeof devNotifications.pendingTasks.query>>>([]);
 	onMount(() => {
 		void refresh();
 	});
 	async function refresh() {
 		try {
 			recent = await devNotifications.recent.query({ scope: historyScope });
+			tasks = await devNotifications.pendingTasks.query();
 		} catch {
 			failure = 'Could not load delivery history.';
+		}
+	}
+	async function fireTask(id: string) {
+		if (
+			busy ||
+			!confirm('Run this synthetic notification escalation now in the local demo agency?')
+		)
+			return;
+		busy = true;
+		failure = '';
+		try {
+			const result = await devNotifications.fireTask.mutate({ id, confirm: true });
+			message = `Task handler: ${result.outcome}. Check delivery history for the result.`;
+			await refresh();
+		} catch {
+			failure = 'Could not run the task. It may have already run or expired.';
+		} finally {
+			busy = false;
 		}
 	}
 	async function sendTest() {
@@ -104,16 +124,28 @@
 		<select id="history-scope" class="input" bind:value={historyScope} onchange={refresh}>
 			<option value="mine">My account</option><option value="agency">Demo agency</option>
 		</select>
-		<p class="muted">
-			Latest 50 notifications for the selected scope. Delayed-job controls are not available here
-			yet.
-		</p>
+		<p class="muted">Latest 50 notifications for the selected scope.</p>
 		{#each recent as item (item.id)}<article class="card pad stack">
 				<b>{item.title}</b><span
 					>{item.profileName} · {item.type} · {item.channel} · {item.status}</span
 				>
 				<p class="copy">{item.body ?? ''}</p>
 			</article>{:else}<p>No delivery history.</p>{/each}
+	</section>
+	<section class="stack" aria-labelledby="tasks-heading">
+		<h2 id="tasks-heading">Pending synthetic escalations</h2>
+		<p class="muted">
+			Only synthetic notification tests for this demo agency appear here (up to 100). Local timers
+			disappear when the server restarts; request a new test then.
+		</p>
+		{#each tasks as task (task.id)}
+			<article class="card pad stack">
+				<p>{task.type} · Step {task.step} · {task.scheduledAt.toLocaleString()}</p>
+				<button class="btn sec" disabled={busy} onclick={() => fireTask(task.id)}
+					>Run synthetic escalation now</button
+				>
+			</article>
+		{:else}<p>No pending synthetic escalations.</p>{/each}
 	</section>
 </main>
 

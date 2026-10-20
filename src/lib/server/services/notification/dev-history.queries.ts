@@ -30,3 +30,24 @@ export function developmentHistory(tx: Tx, agencyId: string, profileId?: string)
 		.orderBy(desc(notifications.created_at), notifications.id)
 		.limit(50);
 }
+
+export async function syntheticNotificationEvent(
+	tx: Tx,
+	agencyId: string,
+	notificationId: string,
+	referenceId: string
+) {
+	const [row] = await tx
+		.select({ id: notifications.id })
+		.from(notifications)
+		.where(
+			and(
+				eq(notifications.agency_id, agencyId),
+				eq(notifications.id, notificationId),
+				eq(notifications.reference_id, referenceId),
+				eq(notifications.reference_type, 'development_test')
+			)
+		)
+		.limit(1);
+	return !!row;
+}

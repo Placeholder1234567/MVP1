@@ -32,6 +32,20 @@ test('a synthetic admin previews notification templates without queuing or sendi
 	await expect(
 		page.getByText('Synthetic development notification', { exact: true }).first()
 	).toBeVisible();
+	await page.getByLabel('Notification type', { exact: true }).selectOption('health_alert');
+	const queueConfirmation = page.waitForEvent('dialog').then((dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Send synthetic test', exact: true }).click();
+	await queueConfirmation;
+	const run = page
+		.getByRole('button', { name: 'Run synthetic escalation now', exact: true })
+		.first();
+	await expect(run).toBeVisible();
+	const fireConfirmation = page.waitForEvent('dialog').then((dialog) => dialog.accept());
+	await run.click();
+	await fireConfirmation;
+	await expect(page.getByRole('status')).toHaveText(
+		'Task handler: completed. Check delivery history for the result.'
+	);
 	expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 	await page.screenshot({ path: info.outputPath('dev-preview.png'), fullPage: true });

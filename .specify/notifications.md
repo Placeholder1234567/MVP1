@@ -1139,7 +1139,15 @@ displayed as text. The separate **Send synthetic test** action requires explicit
 confirmation and queues fixed synthetic content for the caller through normal
 delivery and escalation rules. It accepts no free text, recipient or agency.
 Queued counts never claim delivery success. Agency history is scoped server-side
-to the current admin's agency. Delayed-task inspection/fire remains unfinished.
+to the current admin's agency. Pending local synthetic notification escalations
+can be inspected (up to 100) and explicitly fired after confirmation. Only
+`notifications-escalate` tasks whose event row has the server-set
+`development_test` marker in the caller's agency qualify; arbitrary tasks,
+unmarked clinical events and other agencies are rejected. Raw job payloads are
+never returned. A timer and explicit fire share one in-process claim, preserving
+normal task naming, cancellation and payload behavior. Restart loses timers;
+users must explicitly request a new test. Handler completion is not proof of
+delivery. Report generation and revision-bound cleanup are never exposed.
 The cloud browser gate runs production exclusion checks (including an admin's
 page and API requests), then the unchanged preview/axe/overflow cases against
 a development server using the same isolated synthetic database and emulator.

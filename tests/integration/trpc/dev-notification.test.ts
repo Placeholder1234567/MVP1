@@ -7,6 +7,7 @@ import { getCurrentUser } from '../../../src/lib/server/services/auth';
 import { setProvidersForTests } from '../../../src/lib/server/messaging';
 import { devNotificationRouter } from '../../../src/lib/server/trpc/routers/dev-notification';
 import { createCallerFactory } from '../../../src/lib/server/trpc/middleware';
+import { enqueue, cancel, localNotificationTasks } from '../../../src/lib/server/jobs/queue';
 
 const agency = randomUUID(),
 	other = randomUUID(),
@@ -119,6 +120,44 @@ it('scopes agency history to the caller agency and requires explicit confirmatio
 		)
 	).toBe(true);
 	await vi.waitFor(() => expect(sent).toHaveBeenCalled());
+});
+it('lists and fires only synthetic escalation events from the current agency', async () => {
+	const me = await as(admin);
+	await me.sendTest({ type: 'health_alert', confirm: true });
+	await (await as(stranger)).sendTest({ type: 'health_alert', confirm: true });
+	await enqueue(
+		'notifications-escalate',
+		{
+			agencyId: agency,
+			notificationId: admin,
+			referenceId: randomUUID(),
+			type: 'health_alert',
+			step: 1
+		},
+		{ taskName: 'unmarked-event', delaySeconds: 3600 }
+	);
+	const tasks = await me.pendingTasks();
+	expect(tasks).toHaveLength(1);
+	expect(tasks[0]).toMatchObject({ job: 'notifications-escalate', type: 'health_alert', step: 1 });
+	expect(tasks[0]).not.toHaveProperty('payload');
+	await expect((await as(staff)).pendingTasks()).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	await expect(
+		(await as(stranger)).fireTask({ id: tasks[0].id, confirm: true })
+	).rejects.toMatchObject({ code: 'NOT_FOUND' });
+	const unmarked = localNotificationTasks().find(
+		(task) => (task.payload as { notificationId?: string }).notificationId === admin
+	)!;
+	await expect(me.fireTask({ id: unmarked.id, confirm: true })).rejects.toMatchObject({
+		code: 'NOT_FOUND'
+	});
+	await expect(me.fireTask({ id: tasks[0].id, confirm: false } as never)).rejects.toMatchObject({
+		code: 'BAD_REQUEST'
+	});
+	expect(await me.fireTask({ id: tasks[0].id, confirm: true })).toEqual({ outcome: 'completed' });
+	await expect(me.fireTask({ id: tasks[0].id, confirm: true })).rejects.toMatchObject({
+		code: 'NOT_FOUND'
+	});
+	await cancel('notifications-escalate', 'unmarked-event');
 });
 it('fails closed when real delivery providers or a production runtime are configured', async () => {
 	const me = await as(admin);
