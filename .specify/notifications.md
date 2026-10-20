@@ -1129,14 +1129,17 @@ IDs and do not represent saved notifications. Dispatch-time suppression, quiet
 hours, active-account checks and rate limits can still prevent actual delivery.
 **Development panel increment:** `/dev/notifications` lets an authenticated admin
 preview every known type using fixed synthetic text and their own preferences,
-and inspect their latest 50 accessible delivery statuses. The dedicated tRPC
+and inspect the latest 50 delivery statuses for their account or demo agency. The dedicated tRPC
 endpoint is not mounted on the production app router. Both the page and endpoint
 return 404 outside a development build or when the environment is not a loopback
 demo identity emulator/database with console push/SMS and console-or-loopback-SMTP
 email. Preview input accepts only a known type, never a recipient or agency.
-No notification rows, jobs or provider calls are created. Temporary links are
-displayed as text. Test-send buttons, agency-wide history and delayed-task
-inspection/fire controls remain unfinished.
+Preview creates no notification rows, jobs or provider calls. Temporary links are
+displayed as text. The separate **Send synthetic test** action requires explicit
+confirmation and queues fixed synthetic content for the caller through normal
+delivery and escalation rules. It accepts no free text, recipient or agency.
+Queued counts never claim delivery success. Agency history is scoped server-side
+to the current admin's agency. Delayed-task inspection/fire remains unfinished.
 The cloud browser gate runs production exclusion checks (including an admin's
 page and API requests), then the unchanged preview/axe/overflow cases against
 a development server using the same isolated synthetic database and emulator.

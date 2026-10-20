@@ -309,10 +309,14 @@ Implemented own-account settings procedures (all require the notifications entit
 > **Note:** Notification preferences are read from the local PowerSync database rather than via a dedicated tRPC query. The `notification_preferences` table syncs to the client for the authenticated user's profile, so a `notification.getPreferences` query is not needed.
 
 Development-only `/dev/notifications/api` uses a separate router (not `appRouter`):
-`recent` returns the admin caller's latest 50 notifications; `preview({ type })`
+`recent({ scope?: 'mine' | 'agency' }?)` returns the latest 50 notifications in
+the chosen scope (default own account, current agency only); `preview({ type })`
 accepts only a known notification type and returns synthetic rendered delivery
 previews for that caller without rows, jobs or providers. Both require an active
 admin and the guarded loopback demo environment described in notifications.md.
+`sendTest({ type, confirm: true })` queues fixed synthetic content for the caller
+and returns `{ deliveriesQueued }`, not a delivery confirmation. It runs normal
+delivery/escalation rules and rejects extra recipient, agency or text fields.
 The HTTP endpoint returns 404 outside an actual development build.
 
 ### audit
