@@ -4,6 +4,8 @@ import {
 	PayrollExport,
 	exportClinical,
 	ClinicalExport,
+	CoverageExport,
+	exportCoverage,
 	BackgroundRequest,
 	BackgroundId,
 	BackgroundRecent,
@@ -15,6 +17,9 @@ import {
 import { featureRoleProcedure, router } from '../middleware.ts';
 
 export const reportRouter = router({
+	exportCoverage: featureRoleProcedure('reports', 'supervisor')
+		.input(CoverageExport)
+		.mutation(({ ctx, input }) => exportCoverage(ctx.db, ctx.user, input, ctx.request)),
 	recentBackground: featureRoleProcedure('reports', 'supervisor')
 		.input(BackgroundRecent)
 		.mutation(({ ctx, input }) => recentBackground(ctx.db, ctx.user, input)),

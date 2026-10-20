@@ -5,6 +5,7 @@ import type { CurrentUser } from '../auth/index.ts';
 import { timesheet } from '../clock/index.ts';
 import { recordExport, payrollLabels } from './report.queries';
 export { ClinicalExport, exportClinical } from './clinical';
+export { CoverageExport, exportCoverage } from './coverage';
 export {
 	BackgroundRequest,
 	BackgroundId,

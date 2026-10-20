@@ -5,6 +5,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import { addDays, localTime } from '#lib/domain/index.ts';
 	import { CLINICAL_TYPES, type ClinicalType } from '#lib/domain/clinical-export.ts';
+	import CoverageExport from '#lib/app/CoverageExport.svelte';
 	const app = useSession();
 	const today = localTime(new Date(), app.user.timeZone).day;
 	let fromDay = $state(addDays(today, -6));
@@ -159,4 +160,5 @@
 		>
 	</form>
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
+	{#if app.user.features.includes('coverage')}<CoverageExport />{/if}
 </div>
