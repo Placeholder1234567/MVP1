@@ -13,6 +13,7 @@ process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 const agency = randomUUID(),
 	noDevice = randomUUID(),
 	stopped = randomUUID(),
+	sharedStoppedPhone = randomUUID(),
 	noPhone = randomUUID();
 const sms = vi.fn(async () => ({ providerMessageId: 'synthetic-sms' }));
 const push = vi.fn(async () => ({ providerMessageId: 'synthetic-push' }));
@@ -26,14 +27,14 @@ beforeAll(async () => {
 			timezone: 'UTC'
 		});
 		await tx.insert(s.profiles).values(
-			[noDevice, stopped, noPhone].map((id) => ({
+			[noDevice, stopped, sharedStoppedPhone, noPhone].map((id) => ({
 				id,
 				agency_id: agency,
 				auth_uid: `push-fallback-${id}`,
 				email: `${id}@example.test`,
 				name: 'Synthetic Caregiver',
 				role: 'caregiver' as const,
-				phone: id === noPhone ? null : '+15555550122'
+				phone: id === noPhone ? null : id === noDevice ? '+15555550122' : '+15555550123'
 			}))
 		);
 		// What a STOP reply saves (setSmsOptOut): texts off for every type.
@@ -111,8 +112,8 @@ it('texts a mandatory alert when the person has no push device, once', async () 
 	expect(await texts(reference)).toHaveLength(1);
 });
 
-it('never texts someone who replied STOP, or who has no phone', async () => {
-	for (const profile of [stopped, noPhone]) {
+it('never texts a suppressed number, including a second profile sharing it, or someone with no phone', async () => {
+	for (const profile of [stopped, sharedStoppedPhone, noPhone]) {
 		const { id, reference } = await pushRow(profile);
 		await dispatchNotifications({ ids: [id] });
 		expect(await texts(reference)).toEqual([]);
