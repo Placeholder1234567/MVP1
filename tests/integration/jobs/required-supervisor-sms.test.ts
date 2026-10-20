@@ -146,6 +146,7 @@ it('requires SMS only for a current supervisor with verified START, without prev
 	expect(sms).toHaveBeenCalledOnce();
 });
 it('rechecks removed policy, STOP and changed phone before sending a pending required SMS', async () => {
+	const callsBefore = sms.mock.calls.length;
 	let pending = await queueOne();
 	await policy(false);
 	expect(await dispatchNotifications({ ids: pending.map((row) => row.id) })).toMatchObject({
@@ -189,5 +190,5 @@ it('rechecks removed policy, STOP and changed phone before sending a pending req
 		sent: 0,
 		failed: 1
 	});
-	expect(sms).toHaveBeenCalledOnce();
+	expect(sms).toHaveBeenCalledTimes(callsBefore);
 });
