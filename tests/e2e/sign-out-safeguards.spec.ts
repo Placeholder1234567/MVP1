@@ -35,6 +35,10 @@ test('canceling sign-out preserves a saved unfinished care draft across reload',
 	const leave = (dialog: import('@playwright/test').Dialog) => void dialog.accept();
 	page.on('dialog', leave);
 	await page.getByRole('link', { name: 'Me', exact: true }).first().click();
+	await expect(page).toHaveURL(/\/me$/);
+	await expect(
+		page.getByRole('button', { name: 'Sign out on all devices', exact: true })
+	).toBeVisible();
 	page.off('dialog', leave);
 	const prompt = page.waitForEvent('dialog').then(async (dialog) => {
 		expect(dialog.message()).toContain('unfinished draft');
