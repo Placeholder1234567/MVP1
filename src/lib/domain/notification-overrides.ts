@@ -15,6 +15,7 @@ export const AGENCY_REQUIRED_NOTIFICATIONS = new Set<string>([
 ]);
 
 export interface NotificationOverrides {
+	forceSmsTypes: NotificationType[];
 	disabledTypes: NotificationType[];
 	requireSummaryEmail: boolean;
 	quietHours: { start: string; end: string } | null;
@@ -26,6 +27,15 @@ export function notificationOverrides(settings: unknown): NotificationOverrides 
 	const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 	const quiet = raw.quietHours as { start?: unknown; end?: unknown } | null;
 	return {
+		forceSmsTypes: Array.isArray(raw.forceSmsTypes)
+			? [
+					...new Set(
+						raw.forceSmsTypes.filter(
+							(t): t is NotificationType => typeof t === 'string' && isNotificationType(t)
+						)
+					)
+				]
+			: [],
 		disabledTypes: Array.isArray(raw.disabledTypes)
 			? [
 					...new Set(
@@ -53,6 +63,7 @@ export function notificationDisabled(type: string, rules: NotificationOverrides)
 	return (
 		isNotificationType(type) &&
 		!AGENCY_REQUIRED_NOTIFICATIONS.has(type) &&
+		!rules.forceSmsTypes.includes(type) &&
 		rules.disabledTypes.includes(type) &&
 		!(type === 'daily_summary' && rules.requireSummaryEmail)
 	);

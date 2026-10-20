@@ -12,6 +12,7 @@
 	let { settings, onSaved }: { settings: unknown; onSaved?: () => void } = $props();
 	const initial = notificationOverrides(untrack(() => settings));
 	let disabled = $state<NotificationType[]>([...initial.disabledTypes]);
+	let forceSms = $state<NotificationType[]>([...initial.forceSmsTypes]);
 	let requireEmail = $state(initial.requireSummaryEmail);
 	let agencyQuiet = $state(!!initial.quietHours);
 	let start = $state(initial.quietHours?.start ?? DEFAULT_QUIET_HOURS.start);
@@ -29,6 +30,7 @@
 				settings: {
 					notification_overrides: {
 						disabledTypes: disabled,
+						forceSmsTypes: forceSms,
 						requireSummaryEmail: requireEmail,
 						quietHours: agencyQuiet ? { start, end } : null
 					}
@@ -86,6 +88,21 @@
 			{#each NOTIFICATION_TYPES.filter((t) => !AGENCY_REQUIRED_NOTIFICATIONS.has(t)) as type (type)}
 				<label class="check"
 					><input type="checkbox" value={type} bind:group={disabled} />{NOTIFICATION_LABELS[
+						type
+					]}</label
+				>
+			{/each}
+		</fieldset>
+		<fieldset class="stack">
+			<legend>Require supervisor SMS</legend>
+			<p class="muted">
+				Selected alerts use SMS for supervisors who have verified their number by texting START.
+				Carrier STOP and legacy opt-outs remain protected. Missing consent or a phone number means
+				SMS cannot be required; push and email keep their existing rules.
+			</p>
+			{#each NOTIFICATION_TYPES as type (type)}
+				<label class="check"
+					><input type="checkbox" value={type} bind:group={forceSms} />Require SMS: {NOTIFICATION_LABELS[
 						type
 					]}</label
 				>

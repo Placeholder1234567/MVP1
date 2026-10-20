@@ -14,32 +14,71 @@ test('a refused change can be retried or discarded', async ({ page }, info) => {
 	let refuse = false;
 	let accepted = 0;
 	await page.route(/\/api\/trpc\/sync\.upload(?:\?|$)/, async (route) => {
-		if (!refuse) {
+		const body = route.request().postDataJSON();
+		const ops = (body?.['0']?.json?.ops ?? []) as Array<{ id: string; table: string }>;
+		if (!refuse || !ops.some((op) => op.table === 'messages')) {
 			const response = await route.fetch();
 			await route.fulfill({ response });
 			accepted++;
 			return;
 		}
-		const ops = (route.request().postDataJSON()?.['0']?.json?.ops ?? []) as Array<{
+		// A read receipt may upload after the UI first reports synced. Refuse
+		// only the synthetic board message; unrelated writes still use the API.
+		const remaining = ops
+			.map((op, index) => ({ op, index }))
+			.filter(({ op }) => op.table !== 'messages');
+		let applied: string[] = [];
+		let rejected: Array<{
 			id: string;
 			table: string;
-		}>;
+			index: number;
+			code: string;
+			message: string;
+		}> = [];
+		let notices: Array<{ id: string; table: string; code: string; message: string }> = [];
+		if (remaining.length) {
+			const response = await route.fetch({
+				postData: {
+					...body,
+					'0': { ...body['0'], json: { ...body['0'].json, ops: remaining.map((item) => item.op) } }
+				}
+			});
+			const real = (await response.json())[0]?.result?.data?.json;
+			if (!real) {
+				await route.fulfill({ response });
+				return;
+			}
+			applied = real.applied;
+			rejected = real.rejected.map((row: (typeof rejected)[number]) => ({
+				...row,
+				index: remaining[row.index].index
+			}));
+			notices = real.notices;
+		}
+		const targeted = ops
+			.map((op, index) => ({ op, index }))
+			.filter(({ op }) => op.table === 'messages');
 		await route.fulfill({
 			json: [
 				{
 					result: {
 						data: {
 							json: {
-								applied: [],
-								rejected: ops.map((o) => ({
-									id: o.id,
-									table: o.table,
-									code: 'RULE_VIOLATION',
-									message: 'Synthetic refusal for this test'
-								})),
+								applied,
+								rejected: [
+									...rejected,
+									...targeted.map(({ op, index }) => ({
+										id: op.id,
+										table: op.table,
+										index,
+										code: 'RULE_VIOLATION',
+										message: 'Synthetic refusal for this test'
+									}))
+								],
 								notices: [
+									...notices,
 									{
-										id: ops[0]?.id,
+										id: targeted[0].op.id,
 										table: 'messages',
 										code: 'MAR_CONFLICT',
 										message: 'Synthetic sync notice'
