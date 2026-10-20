@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import {
+	agencies,
 	clients,
 	homes,
 	notes,
@@ -13,6 +14,16 @@ import {
 	noteGoals
 } from '../../db/schema';
 import type { ClinicalType, ClinicalRow } from '../../../domain/clinical-export';
+
+/** Read current display identity under the same tenant/RLS transaction as the report. */
+export async function clinicalAgencyName(tx: Tx, agencyId: string) {
+	const [agency] = await tx
+		.select({ name: agencies.name })
+		.from(agencies)
+		.where(eq(agencies.id, agencyId))
+		.limit(1);
+	return agency?.name;
+}
 
 export async function clinicalScope(tx: Tx, agencyId: string, homeId: string, clientId?: string) {
 	const home = await tx

@@ -559,3 +559,29 @@ it('requires goals plus charting/report entitlements and applies person/home/age
 	);
 	expect(homeReport.rows.every((r: { clientId: string }) => r.clientId === person)).toBe(true);
 });
+
+it('reads the current tenant agency name for PDFs, including glyph refusal after a rename', async () => {
+	const caller = await as(supervisor);
+	const rename = (id: string, name: string) =>
+		withService((tx) => tx.update(s.agencies).set({ name }).where(eq(s.agencies.id, id)));
+	try {
+		// A foreign tenant's unsupported name must not contaminate this tenant's PDF.
+		await rename(otherAgency, 'አበበ');
+		const first = await caller.report.exportClinical({ ...input, type: 'attendance', format: 'pdf' });
+		expect(Buffer.from(first.content, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
+		// Reuse the existing caller to prove the identity is read, not captured in session claims.
+		await rename(agency, 'አበበ');
+		await expect(
+			caller.report.exportClinical({ ...input, type: 'attendance', format: 'pdf' })
+		).rejects.toThrow('characters the PDF can’t show');
+		// The existing Unicode-safe fallback remains available.
+		const fallback = await caller.report.exportClinical({ ...input, type: 'attendance', format: 'html' });
+		expect(fallback.contentType).toBe('text/html;charset=utf-8');
+		await rename(agency, 'Renamed Synthetic Care Agency');
+		const renamed = await caller.report.exportClinical({ ...input, type: 'attendance', format: 'pdf' });
+		expect(renamed.contentType).toBe('application/pdf');
+	} finally {
+		await rename(agency, 'Synthetic report agency');
+		await rename(otherAgency, 'Foreign synthetic agency');
+	}
+});

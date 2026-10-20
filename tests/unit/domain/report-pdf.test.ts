@@ -57,6 +57,17 @@ describe('PDF report layout', () => {
 		]);
 	});
 
+	it('labels the current agency without claiming historical identity or changing source records', () => {
+		const source = report([{ id: 'n1', body: 'Ate lunch' }]);
+		const original = structuredClone(source);
+		const pdf = clinicalPdfReport(source, 'Synthetic Care Agency');
+		expect(pdf.intro[0]).toBe('Current agency name at generation: Synthetic Care Agency');
+		expect(pdfText(pdf)).toContain(pdf.intro[0]);
+		expect(pdf.intro[1]).toBe('2026-10-01 through 2026-10-07 (inclusive), America/Chicago');
+		expect(source).toEqual(original);
+		expect(pdf.sections).toEqual(clinicalPdfReport(source).sections);
+	});
+
 	it('puts the goal summary before the trial history', () => {
 		const pdf = clinicalPdfReport(
 			report([{ id: 't1' }], {
