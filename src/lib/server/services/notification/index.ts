@@ -30,7 +30,7 @@ import {
 } from './notification.queries';
 
 export { NotificationOverridesInput } from './overrides-input';
-export { developmentNotificationHistory } from './dev-history';
+export { developmentNotificationHistory, isSyntheticNotificationEvent } from './dev-history';
 export { dispatchNotifications, sweepNotifications, RetryLater } from './dispatch';
 export {
 	quietHours,

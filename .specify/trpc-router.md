@@ -317,6 +317,12 @@ admin and the guarded loopback demo environment described in notifications.md.
 `sendTest({ type, confirm: true })` queues fixed synthetic content for the caller
 and returns `{ deliveriesQueued }`, not a delivery confirmation. It runs normal
 delivery/escalation rules and rejects extra recipient, agency or text fields.
+`pendingTasks()` lists up to 100 current-agency synthetic notification escalation
+tasks as `{ id, job, type, step, scheduledAt }` without raw payloads.
+`fireTask({ id, confirm: true })` rechecks event ownership and the synthetic marker
+before claiming the local timer. Unknown, unmarked or foreign tasks return
+NOT_FOUND. The adapter rechecks the safe development environment and only accepts
+notification escalation jobs; it never fires report or maintenance jobs.
 The HTTP endpoint returns 404 outside an actual development build.
 
 ### audit
