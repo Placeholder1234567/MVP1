@@ -42,8 +42,9 @@ export function firebaseAuth(): Auth {
 	return auth;
 }
 
-async function postJson(url: string, body?: unknown): Promise<Response> {
+async function postJson(url: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
 	return fetch(url, {
+		signal,
 		method: body === undefined ? 'DELETE' : 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: body === undefined ? undefined : JSON.stringify(body)
@@ -166,7 +167,7 @@ export async function getSyncToken(): Promise<{ token: string; expiresAt: Date }
  * couldn't be reached or didn't end them, so the caller can say so.
  */
 export async function signOutEverywhere(): Promise<boolean> {
-	const ended = await postJson('/auth/session')
+	const ended = await postJson('/auth/session', undefined, AbortSignal.timeout(8000))
 		.then((r) => r.ok)
 		.catch(() => false);
 	await signOut(firebaseAuth()).catch(() => {});

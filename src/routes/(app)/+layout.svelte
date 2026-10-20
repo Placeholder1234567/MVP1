@@ -379,7 +379,13 @@
 				.get<{ failed: number; drafts: number }>(
 					'SELECT (SELECT count(*) FROM failed_writes) AS failed, (SELECT count(*) FROM care_drafts) AS drafts'
 				)
-				.catch(() => ({ failed: 0, drafts: 0 }));
+				.catch(() => null);
+			if (!left) {
+				alert(
+					'Could not check saved work on this device. Nothing was cleared. Try signing out again.'
+				);
+				return;
+			}
 			if (
 				left.failed &&
 				!confirm(
@@ -397,7 +403,13 @@
 			// Voice kept offline lives only on this device (LomiComposer transcribes it later).
 			const kept = await app.db
 				.get<{ n: number }>('SELECT count(*) AS n FROM pending_recordings')
-				.catch(() => ({ n: 0 }));
+				.catch(() => null);
+			if (!kept) {
+				alert(
+					'Could not check recordings on this device. Nothing was cleared. Try signing out again.'
+				);
+				return;
+			}
 			if (
 				kept.n &&
 				!confirm(
@@ -419,7 +431,7 @@
 		await clearShellCaches().catch(() => {});
 		if (!ended)
 			alert(
-				'You’re signed out here, but Guad couldn’t reach the server to end your sessions on other devices. Sign in and out again once you’re back online.'
+				'This device’s saved data was cleared, but server sign-out could not be confirmed. Your server session may still be active. Sign in and out again once you’re back online.'
 			);
 		await goto(resolve('/login'), { refreshAll: true });
 	}
