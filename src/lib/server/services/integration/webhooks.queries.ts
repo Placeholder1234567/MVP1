@@ -1,6 +1,6 @@
-import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { auditLog, webhookDeliveries, webhooks } from '../../db/schema';
+import { apiKeys, auditLog, webhookDeliveries, webhooks } from '../../db/schema';
 
 export const webhookView = {
 	id: webhooks.id,
@@ -104,19 +104,56 @@ export async function countDeliveries(tx: Tx, agencyId: string, webhookId: strin
 
 /** Active webhooks in every agency (the sweep runs as app_service). */
 export function activeWebhooks(tx: Tx) {
-	return tx
-		.select({
-			id: webhooks.id,
-			agencyId: webhooks.agency_id,
-			events: webhooks.events,
-			createdAt: webhooks.created_at
-		})
-		.from(webhooks)
-		.where(eq(webhooks.active, true));
+	return (
+		tx
+			.select({
+				id: webhooks.id,
+				agencyId: webhooks.agency_id,
+				events: webhooks.events,
+				createdAt: webhooks.created_at
+			})
+			.from(webhooks)
+			.leftJoin(apiKeys, eq(apiKeys.id, webhooks.created_by_key_id))
+			// A webhook stops with the key that registered it.
+			.where(and(eq(webhooks.active, true), isNull(apiKeys.revoked_at)))
+	);
 }
 
-/** Audited changes to event tables after `since`, oldest first. */
-export function auditChanges(tx: Tx, agencyId: string, tables: readonly string[], since: Date) {
+/** Pending deliveries whose next attempt is overdue, oldest first (the sweep re-queues them). */
+export function overdueDeliveries(tx: Tx, before: Date) {
+	return tx
+		.select({ id: webhookDeliveries.id, attempts: webhookDeliveries.attempts })
+		.from(webhookDeliveries)
+		.where(
+			and(eq(webhookDeliveries.status, 'pending'), lte(webhookDeliveries.next_retry_at, before))
+		)
+		.orderBy(asc(webhookDeliveries.next_retry_at))
+		.limit(500);
+}
+
+/** Stops the webhooks a revoked key registered. */
+export async function deactivateKeyWebhooks(tx: Tx, agencyId: string, keyId: string) {
+	await tx
+		.update(webhooks)
+		.set({ active: false, updated_at: new Date() })
+		.where(and(eq(webhooks.agency_id, agencyId), eq(webhooks.created_by_key_id, keyId)));
+}
+
+/** One page of the sweep's audit reads. */
+export const AUDIT_PAGE = 2000;
+
+/**
+ * Audited changes to event tables after `since`, oldest first, one page at a
+ * time (`page` from 0). Offsets rather than a (created_at, id) cursor: the
+ * database keeps microseconds that a JavaScript Date would drop.
+ */
+export function auditChanges(
+	tx: Tx,
+	agencyId: string,
+	tables: readonly string[],
+	since: Date,
+	page = 0
+) {
 	return tx
 		.select({
 			id: auditLog.id,
@@ -135,17 +172,25 @@ export function auditChanges(tx: Tx, agencyId: string, tables: readonly string[]
 			)
 		)
 		.orderBy(asc(auditLog.created_at), asc(auditLog.id))
-		.limit(2000);
+		.limit(AUDIT_PAGE)
+		.offset(page * AUDIT_PAGE);
 }
 
-/** New deliveries; ones already made for the same webhook and audit row are skipped. */
-export function insertDeliveries(tx: Tx, rows: (typeof webhookDeliveries.$inferInsert)[]) {
-	if (!rows.length) return Promise.resolve([]);
-	return tx
-		.insert(webhookDeliveries)
-		.values(rows)
-		.onConflictDoNothing({ target: [webhookDeliveries.webhook_id, webhookDeliveries.audit_id] })
-		.returning({ id: webhookDeliveries.id });
+/**
+ * New deliveries; ones already made for the same webhook and audit row are
+ * skipped. Inserted in chunks, under Postgres's limit on query parameters.
+ */
+export async function insertDeliveries(tx: Tx, rows: (typeof webhookDeliveries.$inferInsert)[]) {
+	const ids: { id: string }[] = [];
+	for (let i = 0; i < rows.length; i += 1000)
+		ids.push(
+			...(await tx
+				.insert(webhookDeliveries)
+				.values(rows.slice(i, i + 1000))
+				.onConflictDoNothing({ target: [webhookDeliveries.webhook_id, webhookDeliveries.audit_id] })
+				.returning({ id: webhookDeliveries.id }))
+		);
+	return ids;
 }
 
 export async function deliveryWithWebhook(tx: Tx, id: string) {

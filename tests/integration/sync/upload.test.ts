@@ -161,7 +161,13 @@ describe('sync.upload: notes', () => {
 		]);
 		expect(r.applied).toEqual([id, id, id]);
 		expect(r.rejected).toEqual([
-			{ id, table: 'notes', code: 'RULE_VIOLATION', message: 'This note was already signed' }
+			{
+				id,
+				table: 'notes',
+				index: 3,
+				code: 'RULE_VIOLATION',
+				message: 'This note was already signed'
+			}
 		]);
 		const [row] = await withService((t) => t.select().from(s.notes).where(eq(s.notes.id, id)));
 		expect(row.status).toBe('submitted');
@@ -208,6 +214,18 @@ describe('sync.upload: notes', () => {
 			{ op: 'PATCH', table: 'notes', id: noteId, data: { status: 'submitted' } }
 		]);
 		expect(edit.rejected).toEqual([]);
+		// The same transaction sent again (its response was lost) is already
+		// applied: nothing is refused, so the device doesn't report a failure.
+		const again = await upload(CARA, [
+			{
+				op: 'PATCH',
+				table: 'note_goals',
+				id: row,
+				data: { trials: JSON.stringify(['Independent', 'Refused']), updated_at: 'x' }
+			},
+			{ op: 'PATCH', table: 'notes', id: noteId, data: { status: 'submitted' } }
+		]);
+		expect(again.rejected).toEqual([]);
 		const rows = await withService((t) =>
 			t.select().from(s.noteGoals).where(eq(s.noteGoals.note_id, noteId))
 		);
@@ -299,6 +317,51 @@ describe('sync.upload: MAR', () => {
 			is_prn: false,
 			home_id: OAK
 		});
+	});
+
+	it('a reading from a phone whose clock runs fast is kept, stamped with the server time', async () => {
+		const id = randomUUID();
+		const ahead = new Date(Date.now() + 20 * 60_000).toISOString();
+		const r = await upload(CARA, [
+			{
+				op: 'PUT',
+				table: 'health_entries',
+				id,
+				data: {
+					client_id: OAK_PERSON,
+					kind: 'vitals',
+					data: JSON.stringify({ pulse: 72 }),
+					recorded_at: ahead
+				}
+			}
+		]);
+		expect(r.rejected).toEqual([]);
+		const [row] = await withService((t) =>
+			t.select().from(s.healthEntries).where(eq(s.healthEntries.id, id))
+		);
+		expect(row.recorded_at.getTime()).toBeLessThanOrEqual(Date.now());
+	});
+
+	it('refuses a queue that belongs to someone else, applying nothing', async () => {
+		const id = randomUUID();
+		await expect(
+			(await as(CARA)).sync.upload({
+				transactionId: tx++,
+				profileId: DEV,
+				ops: [{ op: 'PUT', table: 'notes', id, data: note() }]
+			})
+		).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+		const rows = await withService((t) => t.select().from(s.notes).where(eq(s.notes.id, id)));
+		expect(rows).toEqual([]);
+		// Its own queue goes through as before.
+		const own = await (
+			await as(CARA)
+		).sync.upload({
+			transactionId: tx++,
+			profileId: CARA,
+			ops: [{ op: 'PUT', table: 'notes', id, data: note() }]
+		});
+		expect(own.applied).toEqual([id]);
 	});
 
 	it('keeps a second record for the same slot as a conflict and alerts the supervisor', async () => {
@@ -624,6 +687,18 @@ describe('sync.upload: messages and everything else', () => {
 				data: jpeg.toString('base64')
 			});
 			await expect(cara.message.photo({ id: maple })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+			// Reusing that unseen photo's ID can't overwrite it; a retry of your own is a no-op.
+			const before = files.get(`photos/${AGENCY}/${maple}.jpg`);
+			const other = Buffer.concat([jpeg.subarray(0, -2), Buffer.from([0xff, 0xd9])]);
+			other[other.length - 3] = 7;
+			await expect(
+				cara.message.uploadPhoto({ id: maple, homeId: OAK, data: other.toString('base64') })
+			).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+			expect(files.get(`photos/${AGENCY}/${maple}.jpg`)).toBe(before);
+			await expect(
+				cara.message.uploadPhoto({ id: photo, homeId: OAK, data: jpeg.toString('base64') })
+			).resolves.toMatchObject({ id: photo });
 		} finally {
 			setStorageForTests(undefined);
 		}

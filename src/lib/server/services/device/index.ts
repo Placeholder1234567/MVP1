@@ -7,8 +7,14 @@
 // has RLS with no policies, so no user session can read it.
 import { randomBytes } from 'node:crypto';
 import { open, seal } from '../../sealing.ts';
-import { withService } from '../../db';
-import { findDeviceKey, insertDeviceKey, markIssued, revokeKeys } from './device.queries';
+import { asService, withService, type Tx } from '../../db';
+import {
+	deleteKeys,
+	findDeviceKey,
+	insertDeviceKey,
+	markIssued,
+	revokeKeys
+} from './device.queries';
 
 export class DeviceRevokedError extends Error {
 	constructor() {
@@ -16,21 +22,40 @@ export class DeviceRevokedError extends Error {
 	}
 }
 
+export class SignInAgainError extends Error {
+	constructor() {
+		super('Sign in again to unlock this device');
+	}
+}
+
+/**
+ * How soon after a sign-in an existing key is handed out again. The key opens
+ * a database that may hold unsynced work, and after 5 wrong PINs only a new
+ * password (and TOTP) sign-in may reopen it, not a session that was already
+ * open on the device.
+ */
+export const REISSUE_WINDOW_MS = 10 * 60_000;
+
 /**
  * The 256-bit key for this user's database on this device, created on first
- * use. Throws DeviceRevokedError once the device or user has been revoked.
+ * use. Throws DeviceRevokedError once the device or user has been revoked, and
+ * SignInAgainError when an existing key is asked for by a session whose
+ * sign-in (signedInAt, ms) is older than REISSUE_WINDOW_MS.
  */
 export async function issueDeviceKey(
 	agencyId: string,
 	profileId: string,
-	deviceId: string
+	deviceId: string,
+	signedInAt: number | null | undefined,
+	now = Date.now()
 ): Promise<Buffer> {
 	const aad = `${profileId}:${deviceId}`;
 	return withService(async (tx) => {
-		const existing = await findDeviceKey(tx, profileId, deviceId);
+		const existing = await findDeviceKey(tx, agencyId, profileId, deviceId);
 		if (existing) {
 			if (existing.revokedAt) throw new DeviceRevokedError();
-			await markIssued(tx, existing.id);
+			if (!signedInAt || now - signedInAt > REISSUE_WINDOW_MS) throw new SignInAgainError();
+			await markIssued(tx, agencyId, existing.id);
 			return open(existing.ciphertext, aad);
 		}
 		const key = randomBytes(32);
@@ -50,4 +75,14 @@ export function revokeDeviceKeys(
 	deviceId?: string
 ): Promise<number> {
 	return withService((tx) => revokeKeys(tx, agencyId, profileId, deviceId));
+}
+
+/**
+ * Deactivation (offline-sync.md "Account deactivation"): deletes the server
+ * copy of every device key the user has, inside the caller's transaction, so
+ * no device of theirs can reopen its local database. If the user is
+ * reactivated, each device gets a new key and a fresh database on next sign-in.
+ */
+export function forgetDeviceKeys(tx: Tx, agencyId: string, profileId: string): Promise<number> {
+	return asService(tx, (t) => deleteKeys(t, agencyId, profileId));
 }

@@ -3,6 +3,7 @@
 // function its online procedure uses. Every op runs in its own savepoint, so a
 // rejected op is undone without affecting the ones before it; ops that depend
 // on a rejected one then fail on their own (e.g. a foreign key).
+import { TRPCError } from '@trpc/server';
 import { z, ZodError } from 'zod';
 import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
 import type { Tx } from '../../db/index.ts';
@@ -48,6 +49,18 @@ type Op = z.infer<typeof Op>;
 /** Device columns are SQLite: booleans arrive as 0/1, JSON as text. */
 const flag = (v: unknown) => v === true || v === 1 || v === '1';
 const str = (v: unknown) => (v == null ? undefined : String(v));
+/**
+ * When something already happened on the device. A phone whose clock runs
+ * fast stamps it ahead of the server; the dose, reading or report still
+ * happened, so a future time is taken as now instead of rejecting the write
+ * for good (services refuse times more than 5 minutes ahead).
+ */
+const deviceTime = (v: unknown) => {
+	const s = str(v);
+	if (s === undefined) return undefined;
+	const t = Date.parse(s);
+	return Number.isFinite(t) && t > Date.now() ? new Date().toISOString() : s;
+};
 /** Arrays and objects arrive as JSON text from SQLite. */
 const json = <T>(v: unknown, fallback: T): T =>
 	v == null ? fallback : typeof v === 'string' ? (JSON.parse(v) as T) : (v as T);
@@ -72,15 +85,15 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				homeId: str(d!.home_id)!,
 				lat: d!.clock_in_lat == null ? undefined : Number(d!.clock_in_lat),
 				lng: d!.clock_in_lng == null ? undefined : Number(d!.clock_in_lng),
-				recordedAt: str(d!.clock_in_at)
+				recordedAt: deviceTime(d!.clock_in_at)
 			});
 			if (d!.clock_out_at)
-				await clockOut(tx, user, { id, recordedAt: new Date(String(d!.clock_out_at)) });
+				await clockOut(tx, user, { id, recordedAt: new Date(deviceTime(d!.clock_out_at)!) });
 		},
 		PATCH: async (tx, user, { id, data: d = {} }) => {
 			if (!d!.clock_out_at)
 				throw new Reject('NOT_ALLOWED_OFFLINE', 'Only clock-out can update a clock record');
-			await clockOut(tx, user, { id, recordedAt: new Date(String(d!.clock_out_at)) });
+			await clockOut(tx, user, { id, recordedAt: new Date(deviceTime(d!.clock_out_at)!) });
 		}
 	},
 	notes: {
@@ -122,7 +135,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				status: str(d!.status) as 'given',
 				reason: str(d!.reason) ?? null,
 				effect: str(d!.effect) ?? null,
-				recordedAt: str(d!.recorded_at) as unknown as Date | undefined,
+				recordedAt: deviceTime(d!.recorded_at) as unknown as Date | undefined,
 				amendsId: str(d!.amends_id) ?? null
 			});
 			if (r.result === 'conflict') {
@@ -146,7 +159,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				quantity: Number(d!.quantity),
 				reason: str(d!.reason) ?? null,
 				witnessId: str(d!.witness_id) ?? null,
-				recordedAt: str(d!.recorded_at) as unknown as Date | undefined
+				recordedAt: deviceTime(d!.recorded_at) as unknown as Date | undefined
 			});
 		}
 	},
@@ -160,7 +173,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				incidentId: str(d!.incident_id) ?? null,
 				photoId: str(d!.photo_id) ?? null,
 				body: str(d!.body) ?? '',
-				sentAt: str(d!.sent_at) as unknown as Date | undefined
+				sentAt: deviceTime(d!.sent_at) as unknown as Date | undefined
 			});
 		}
 	},
@@ -170,7 +183,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 			await markRead(tx, user.agencyId, user, {
 				id,
 				messageId: str(d!.message_id)!,
-				readAt: str(d!.read_at) as unknown as Date | undefined
+				readAt: deviceTime(d!.read_at) as unknown as Date | undefined
 			});
 		}
 	},
@@ -198,7 +211,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				clientId: str(d!.client_id)!,
 				kind: str(d!.kind) as 'vitals',
 				data: json(d!.data, {}),
-				recordedAt: str(d!.recorded_at) as unknown as Date | undefined
+				recordedAt: deviceTime(d!.recorded_at) as unknown as Date | undefined
 			});
 		}
 	},
@@ -209,7 +222,7 @@ const HANDLERS: Record<string, Partial<Record<Op['op'], Handler>>> = {
 				clientId: str(d!.client_id)!,
 				type: str(d!.type) as 'Other',
 				severity: (str(d!.severity) as 'Low' | undefined) ?? 'Low',
-				occurredAt: str(d!.occurred_at) as unknown as Date,
+				occurredAt: deviceTime(d!.occurred_at) as unknown as Date,
 				location: str(d!.location),
 				description: str(d!.description) ?? '',
 				antecedent: str(d!.antecedent),
@@ -312,13 +325,36 @@ function toReject(e: unknown): Reject {
 
 export const syncRouter = router({
 	upload: userProcedure
-		.input(z.object({ transactionId: z.number().int(), ops: z.array(Op).max(200) }))
+		.input(
+			z.object({
+				transactionId: z.number().int(),
+				/** Whose device database the queue belongs to */
+				profileId: z.uuid().optional(),
+				ops: z.array(Op).max(200)
+			})
+		)
 		.mutation(async ({ ctx, input }) => {
+			// Another person's queue (their tab still open after someone else
+			// signed in on this browser) is refused whole, before anything is
+			// applied: the writes would otherwise be recorded as this person's.
+			// UNAUTHORIZED leaves the queue on the device for its owner.
+			if (input.profileId && input.profileId !== ctx.user.profileId)
+				throw new TRPCError({
+					code: 'UNAUTHORIZED',
+					message: 'These changes belong to someone else signed in on this device.'
+				});
 			const applied: string[] = [];
-			const rejected: { id: string; table: string; code: RejectCode; message: string }[] = [];
+			/** index: the op's position in the batch (a PUT and a PATCH can share an id) */
+			const rejected: {
+				id: string;
+				table: string;
+				index: number;
+				code: RejectCode;
+				message: string;
+			}[] = [];
 			const notices: { id: string; table: string; code: 'MAR_CONFLICT'; message: string }[] = [];
 
-			for (const op of input.ops) {
+			for (const [index, op] of input.ops.entries()) {
 				try {
 					const handler = HANDLERS[op.table]?.[op.op];
 					if (!handler) {
@@ -338,7 +374,7 @@ export const syncRouter = router({
 					if (outcome?.notice) notices.push({ id: op.id, table: op.table, ...outcome.notice });
 				} catch (e) {
 					const r = toReject(e);
-					rejected.push({ id: op.id, table: op.table, code: r.code, message: r.message });
+					rejected.push({ id: op.id, table: op.table, index, code: r.code, message: r.message });
 				}
 			}
 			return { applied, rejected, notices };

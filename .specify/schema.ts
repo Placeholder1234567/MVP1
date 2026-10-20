@@ -1465,6 +1465,11 @@ export const webhooks = pgTable(
     // The signing secret, AES-256-GCM sealed under DEVICE_KEY_KEK with the
     // webhook ID as AAD: HMAC signing needs the secret itself, not its hash.
     secret_sealed: text('secret_sealed'),
+    // The API key that registered it: revoking the key stops its webhooks.
+    // Null for webhooks registered before this was recorded.
+    created_by_key_id: uuid('created_by_key_id').references(() => apiKeys.id, {
+      onDelete: 'set null',
+    }),
     active: boolean('active').notNull().default(true),
     created_at: timestamp('created_at', { withTimezone: true })
       .notNull()

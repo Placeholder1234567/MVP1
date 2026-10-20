@@ -172,7 +172,14 @@ export async function exportClinical(
 			'Report is too large. Choose a shorter period or one person.'
 		);
 	await asService(tx, (t) =>
-		recordExport(t, user.agencyId, user.profileId, p.format, rows.length, request, p.type)
+		recordExport(t, user.agencyId, user.profileId, p.format, rows.length, request, p.type, {
+			homeId: p.homeId,
+			clientId: p.clientId ?? null,
+			fromDay: p.fromDay,
+			toDay: p.toDay,
+			approvedOnly: p.approvedOnly,
+			clientIds: [...new Set(rows.map((r) => String(r.clientId)))]
+		})
 	);
 	return {
 		content,

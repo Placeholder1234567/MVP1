@@ -19,6 +19,7 @@ import {
 	shiftAt,
 	type DoseAlert
 } from '../../../domain/index.ts';
+import { resolveFeatures } from '../../../entitlements/tier-features.ts';
 import { withService, type Tx } from '../../db';
 import { agencyClocks } from './escalation.queries';
 import { notify, notifyHomeSupervisors } from './index';
@@ -56,6 +57,9 @@ export async function sweepMedReminders(
 	let overdue = 0;
 	let followups = 0;
 	for (const a of agencies) {
+		// Without the MAR on its plan an agency can't record doses, so every
+		// dose would read as missed.
+		if (!resolveFeatures(a.tier, a.enabledFeatures).has('mar')) continue;
 		const sent = await withService((tx) => remindAgency(tx, a.id, a.timeZone, now));
 		due += sent.due;
 		overdue += sent.overdue;

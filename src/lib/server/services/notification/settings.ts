@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import type { Tx } from '../../db';
+import { withService, type Tx } from '../../db';
 import { agencies, deviceTokens, profiles, userSettings } from '../../db/schema';
 import type { CurrentUser } from '../auth';
 import { ServiceError } from '../../errors';
@@ -139,4 +139,20 @@ export async function removePushDevice(tx: Tx, user: CurrentUser, id: string) {
 		.where(and(tokenOwner(user), eq(deviceTokens.id, id)))
 		.returning({ id: deviceTokens.id });
 	return { removed: removed.length > 0 };
+}
+
+/**
+ * Signing out ends every session, so every push registration of this person
+ * goes too. The device removes its own on sign-out; this covers a device that
+ * couldn't (offline, or the 4-second cleanup timed out), so a shared phone
+ * stops getting the last person's alerts.
+ */
+export async function forgetPushDevices(agencyId: string, profileId: string): Promise<number> {
+	const removed = await withService((tx) =>
+		tx
+			.delete(deviceTokens)
+			.where(and(eq(deviceTokens.agency_id, agencyId), eq(deviceTokens.profile_id, profileId)))
+			.returning({ id: deviceTokens.id })
+	);
+	return removed.length;
 }

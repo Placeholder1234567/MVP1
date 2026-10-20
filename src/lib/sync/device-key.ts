@@ -100,6 +100,17 @@ export async function offlineAccessUntil(profileId: string): Promise<number> {
 	return ((await readRecord(profileId))?.verifiedAt ?? 0) + OFFLINE_ACCESS_MS;
 }
 
+/**
+ * Signing out: drops the PIN-wrapped key and the offline-access marker, so
+ * neither this lock screen nor /offline can reopen the database. The device ID
+ * stays: unsynced work in the encrypted database is reopened by the next
+ * password sign-in, which fetches the same key from the server.
+ */
+export async function forgetPin(profileId: string): Promise<void> {
+	const record = await readRecord(profileId);
+	if (record) await writeRecord({ deviceId: record.deviceId, failedAttempts: 0 }, profileId);
+}
+
 /** Stores the key wrapped with the PIN. The plain key never touches disk. */
 export async function wrapKey(key: Uint8Array, pin: string, profileId?: string): Promise<void> {
 	const id = await deviceId(profileId);
@@ -139,14 +150,13 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 	const record = await readRecord(profileId);
 	if (!record?.wrapped) throw new WrongPinError(0);
 	const { salt, iv, ciphertext } = record.wrapped;
+	let plain: ArrayBuffer;
 	try {
-		const plain = await crypto.subtle.decrypt(
+		plain = await crypto.subtle.decrypt(
 			{ name: 'AES-GCM', iv: unb64(iv) },
 			await pinKey(pin, unb64(salt)),
 			unb64(ciphertext)
 		);
-		if (record.failedAttempts) await writeRecord({ ...record, failedAttempts: 0 }, profileId);
-		return new Uint8Array(plain);
 	} catch {
 		const failedAttempts = record.failedAttempts + 1;
 		const left = MAX_PIN_ATTEMPTS - failedAttempts;
@@ -156,6 +166,11 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 		);
 		throw new WrongPinError(left);
 	}
+	// Outside the try: a failed write here (another tab writing the file, a
+	// full disk) must not count a correct PIN as a wrong one.
+	if (record.failedAttempts)
+		await writeRecord({ ...record, failedAttempts: 0 }, profileId).catch(() => {});
+	return new Uint8Array(plain);
 }
 
 /** Key bytes as the hex string SQLite3MultipleCiphers takes as its key. */

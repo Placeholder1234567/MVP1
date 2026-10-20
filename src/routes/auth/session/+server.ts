@@ -15,6 +15,7 @@ import {
 	recordSignIn,
 	sessionLengthMs
 } from '#lib/server/services/auth/index.ts';
+import { forgetPushDevices } from '#lib/server/services/notification/index.ts';
 import { signInsByIp } from '#lib/server/rate-limit.ts';
 import type { RequestHandler } from './$types';
 
@@ -77,7 +78,11 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 /** DELETE: sign out here and revoke sessions on every device. */
 export const DELETE: RequestHandler = async ({ cookies }) => {
 	const session = await verifySession(cookies.get(SESSION_COOKIE));
-	if (session) await revokeSessions(session.uid);
+	if (session) {
+		await revokeSessions(session.uid);
+		const user = await getCurrentUser(session.uid);
+		if (user) await forgetPushDevices(user.agencyId, user.profileId);
+	}
 	cookies.delete(SESSION_COOKIE, { path: '/' });
 	return json({ ok: true });
 };

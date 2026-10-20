@@ -333,7 +333,9 @@ API keys for the external API (openapi.yaml). Not in the original router list; a
 |---|---|---|---|---|---|---|
 | `apiKey.list` | query | none | `Array<{ id, name, prefix, scope, lastUsedAt, revokedAt, createdAt }>` | admin | none | The agency's keys, newest first. Never returns the key or its hash. |
 | `apiKey.create` | mutation | `{ name: string (1-80), scope?: 'read' | 'write' }` | `{ id, name, prefix, scope, createdAt, key }` | admin | none | Creates a key. `key` (`guad_` + 43 base64url characters) is returned only here; only its SHA-256 is stored. |
-| `apiKey.revoke` | mutation | `{ id: uuid }` | `{ revoked: true }` | admin | none | Revokes a key at once. Keys are never deleted, so access history stays auditable. |
+| `apiKey.revoke` | mutation | `{ id: uuid }` | `{ revoked: true }` | admin | none | Revokes a key at once. Keys are never deleted, so access history stays auditable. The webhooks the key registered (`webhooks.created_by_key_id`) are stopped too, and the sweep skips any whose key is revoked. |
+| `apiKey.webhooks` | query | none | `Webhook[]` (openapi.yaml view, no secret) | admin | none | The agency's webhooks, on the API keys page, so ones registered through the API can be seen without a key. |
+| `apiKey.deleteWebhook` | mutation | `{ id: uuid }` | `{ deleted: true }` | admin | none | Removes a webhook and its delivery log. |
 
 ---
 

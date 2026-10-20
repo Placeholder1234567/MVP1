@@ -21,6 +21,7 @@
 	import { closeDb, openDb } from '#lib/sync/db.ts';
 	import {
 		deviceId,
+		forgetPin,
 		hasWrappedKey,
 		unwrapKey,
 		wrapKey,
@@ -227,6 +228,9 @@
 	const urgent = (href: string) =>
 		href === '/dashboard' || href === '/shifts' || href === '/dashboard/mar';
 
+	/** The server hands an existing key out only after a fresh password sign-in. */
+	const needsSignIn = (e: unknown) =>
+		(e as { data?: { code?: string } })?.data?.code === 'UNAUTHORIZED';
 	async function fetchKey() {
 		const result = await trpc.device.key.mutate({ deviceId: await deviceId(app.user.profileId) });
 		key = Uint8Array.from(atob(result.key.replace(/-/g, '+').replace(/_/g, '/')), (c) =>
@@ -263,8 +267,9 @@
 				if (await hasWrappedKey(app.user.profileId)) {
 					if (alive) step = 'enter-pin';
 				} else await fetchKey();
-			} catch {
-				if (alive) message = 'Connect to the internet to set up this device, then try again.';
+			} catch (e) {
+				if (needsSignIn(e)) await signInAgain();
+				else if (alive) message = 'Connect to the internet to set up this device, then try again.';
 			}
 		})();
 		return () => {
@@ -325,7 +330,8 @@
 		} catch (e) {
 			message =
 				e instanceof WrongPinError ? e.message : 'Could not unlock this device. Please try again.';
-			if (e instanceof WrongPinError && e.attemptsLeft === 0) await fetchKey().catch(() => {});
+			// The wrapped key is gone; only a new password sign-in may reopen the database.
+			if (e instanceof WrongPinError && e.attemptsLeft === 0) await signInAgain();
 		} finally {
 			pin = '';
 			again = '';
@@ -337,6 +343,16 @@
 		app.dispose();
 		await closeDb();
 		step = 'enter-pin';
+	}
+	/**
+	 * After 5 wrong PINs: end the session (the device's work stays encrypted on
+	 * it) and ask for the password, and TOTP where required, again.
+	 */
+	async function signInAgain() {
+		app.dispose();
+		await closeDb();
+		await signOutEverywhere().catch(() => {});
+		await goto(resolve('/login'), { refreshAll: true });
 	}
 	async function signOut() {
 		if (app.db) {
@@ -359,16 +375,38 @@
 				return;
 			await app.db.disconnectAndClear();
 		}
+		// Also from the lock screen (no database open): the saved PIN goes, so
+		// the device can't be reopened offline after signing out.
+		await forgetPin(app.user.profileId);
 		await stopWebPush(app.user.profileId);
 		await showBadge(0);
 		app.dispose();
 		await closeDb();
 		await signOutEverywhere();
+		signedOutChannel()?.postMessage({ signedOut: app.user.profileId });
 		await clearShellCaches();
 		await goto(resolve('/login'), { refreshAll: true });
 	}
 	app.lock = lock;
 	app.signOut = signOut;
+	// Signing out ends every session, so this person's other tabs close their
+	// database too: left open, a tab would keep uploading its queue under the
+	// cookie of whoever signs in next (the server refuses that as well).
+	function signedOutChannel() {
+		return typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('guad-session');
+	}
+	onMount(() => {
+		const channel = signedOutChannel();
+		if (!channel) return;
+		channel.onmessage = (e: MessageEvent<{ signedOut?: string }>) => {
+			// Already signed out by the other tab: close up here without touching
+			// the session (by now it may be someone else's).
+			if (e.data?.signedOut !== app.user.profileId) return;
+			app.dispose();
+			void closeDb().then(() => goto(resolve('/login'), { refreshAll: true }));
+		};
+		return () => channel.close();
+	});
 </script>
 
 {#if step !== 'open'}
@@ -432,6 +470,7 @@
 		onReady={(lock) => {
 			app.lock = lock;
 		}}
+		onLockedOut={signInAgain}
 		onLock={async () => {
 			app.dispose();
 			await closeDb();

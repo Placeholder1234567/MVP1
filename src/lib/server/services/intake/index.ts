@@ -1,5 +1,6 @@
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
+import { createClient } from '../client/index.ts';
 import { requireOpenHome } from '../home/index.ts';
 import { notifyHomeSupervisors } from '../notification/index.ts';
 import * as q from './intake.queries';
@@ -120,7 +121,12 @@ export async function convertToClient(
 		if (room.occupied_by || room.status !== 'available')
 			throw new ServiceError('RULE_VIOLATION', 'Choose an available room');
 	}
-	const clientId = await q.admit(tx, agencyId, input.homeId, input.name, input.firstName);
+	// Through the Client Service, like any new person (initials, first name, health row).
+	const { id: clientId } = await createClient(tx, agencyId, {
+		homeId: input.homeId,
+		name: input.name,
+		firstName: input.firstName
+	});
 	if (input.roomId)
 		await q.saveRoom(tx, agencyId, input.roomId, { occupied_by: clientId, status: 'occupied' });
 	const row = await q.saveReferral(tx, agencyId, referral.id, {

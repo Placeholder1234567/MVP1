@@ -10,6 +10,7 @@
 		onUnlock,
 		onReady,
 		onPrivacyChange,
+		onLockedOut,
 		children
 	}: {
 		profileId: string;
@@ -19,6 +20,8 @@
 		onUnlock: (key: Uint8Array, onWait: () => void) => Promise<void>;
 		onReady: (lock: () => Promise<void>) => void;
 		onPrivacyChange?: (masked: boolean) => void;
+		/** After the last wrong PIN (the wrapped key is gone) */
+		onLockedOut?: () => Promise<void>;
 		children: Snippet;
 	} = $props();
 	let hidden = $state(false);
@@ -120,6 +123,7 @@
 				e instanceof WrongPinError
 					? e.message
 					: 'Could not unlock. Reconnect or return to sign-in.';
+			if (e instanceof WrongPinError && e.attemptsLeft === 0) await onLockedOut?.();
 		} finally {
 			key?.fill(0);
 			pin = '';

@@ -8,6 +8,7 @@ import {
 	lastWeeks,
 	percent,
 	weekOf,
+	latestDoses,
 	weeklyDoseCompliance,
 	weeklyNoteCompleteness
 } from '../../../domain/index.ts';
@@ -48,18 +49,22 @@ export async function weeklyAnalytics(
 	const coverage = await coverageSince(tx, agencyId, since, homeId);
 	const events = await noteEventsSince(tx, agencyId, since, homeId);
 	const doses = await dosesSince(tx, agencyId, weeks[0], homeId);
+	// Each dose once, as its latest correction (MAR records are never edited).
+	const outcomes = latestDoses(doses);
 	const incidentRows = await incidentsSince(tx, agencyId, since, homeId);
 	const trials = await goalTrialsSince(tx, agencyId, since, homeId);
 	const meds = await scheduledMeds(tx, agencyId, homeId);
 	const slots = await assignedSlotsSince(tx, agencyId, weeks[0], homeId);
 	const shiftNotes = await signedNotesSince(tx, agencyId, weeks[0], homeId);
 
-	const signed = events.filter(
-		(e) => e.action === 'signed' || e.action === 'amended and resubmitted'
-	);
-	// Hours from signing to approval, for notes approved in the week.
+	// First signings: a note signed, sent back and resubmitted counts once.
+	const signed = events.filter((e) => e.action === 'signed');
+	// Hours from the last (re)submission to approval, for notes approved in
+	// the week. Events come oldest first, so the latest one wins.
 	const signedAt = new Map<string, Date>();
-	for (const e of signed) signedAt.set(e.noteId, e.at);
+	for (const e of events)
+		if (e.action === 'signed' || e.action === 'amended and resubmitted')
+			signedAt.set(e.noteId, e.at);
 
 	const coverageByWeek = weeks.map((w) => coverage.filter((c) => inWeek(w)(c.createdAt)));
 	const signedByWeek = weeks.map((w) => signed.filter((e) => inWeek(w)(e.at)));
@@ -138,12 +143,12 @@ export async function weeklyAnalytics(
 		care: {
 			medCompliance: weeklyDoseCompliance(meds, doses, weeks, now, timeZone),
 			dosesGiven: countByWeek(
-				doses.filter((d) => d.status === 'given'),
+				outcomes.filter((d) => d.status === 'given'),
 				weeks,
 				(d) => weekOf(d.day, timeZone)
 			),
 			refusedOrHeld: countByWeek(
-				doses.filter((d) => d.status !== 'given'),
+				outcomes.filter((d) => d.status !== 'given'),
 				weeks,
 				(d) => weekOf(d.day, timeZone)
 			),

@@ -51,6 +51,46 @@ test('sign-in and the public offline gate are accessible with a keyboard', async
 	await accessible(page);
 });
 
+test('five wrong PINs need a password sign-in; signing out on the lock screen forgets the PIN', async ({
+	page
+}) => {
+	const passwordSignIn = async () => {
+		await page.goto('/login');
+		await page.getByLabel('Email', { exact: true }).fill('lena@guad.test');
+		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+		await expect(page.getByRole('heading', { name: 'Make this device yours' })).toBeVisible();
+		await page.getByLabel('Device PIN', { exact: true }).fill(PIN);
+		await page.getByLabel('Confirm PIN', { exact: true }).fill(PIN);
+		await page.getByRole('button', { name: 'Save PIN and open' }).click();
+		await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
+	};
+	await passwordSignIn();
+	await page.reload();
+	await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+	for (const left of ['4 tries', '3 tries', '2 tries', '1 try']) {
+		await page.getByLabel('Device PIN', { exact: true }).fill('000000');
+		await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+		await expect(page.getByRole('alert')).toHaveText(`Wrong PIN. ${left} left.`);
+	}
+	await page.getByLabel('Device PIN', { exact: true }).fill('000000');
+	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+	// The session that was open on the device is not enough to fetch the key again.
+	await page.waitForURL(/\/login/);
+	await page.goto('/today');
+	await page.waitForURL(/\/login/);
+	await passwordSignIn();
+
+	await page.reload();
+	await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+	await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+	await page.waitForURL(/\/login/);
+	await page.goto('/offline');
+	await expect(
+		page.getByText('Connect and sign in to prepare or refresh this device for offline use.')
+	).toBeVisible();
+});
+
 test('caregiver saves, explicitly signs and receives supervisor approval', async ({
 	page,
 	browser

@@ -64,7 +64,7 @@ export async function openDb(
 	if ((db || opening) && dbFile !== file) await closeDb();
 	if (db) return db;
 	if (!opening) {
-		const attempt: Promise<PowerSyncDatabase> = open(key, file, options).finally(() => {
+		const attempt: Promise<PowerSyncDatabase> = open(key, file, options, profileId).finally(() => {
 			if (opening === attempt) opening = undefined;
 		});
 		opening = attempt;
@@ -75,7 +75,8 @@ export async function openDb(
 async function open(
 	key: Uint8Array,
 	dbFilename: string,
-	options: { offline?: boolean; onWait?: () => void }
+	options: { offline?: boolean; onWait?: () => void },
+	profileId?: string
 ): Promise<PowerSyncDatabase> {
 	const mine = ++generation;
 	dbFile = dbFilename;
@@ -106,7 +107,7 @@ async function open(
 	db = instance;
 	try {
 		await instance.init();
-		if (!options.offline) await instance.connect(new GuadConnector());
+		if (!options.offline) await instance.connect(new GuadConnector(profileId));
 		if (mine !== generation)
 			throw new DOMException('The database was closed while opening', 'AbortError');
 	} catch (e) {

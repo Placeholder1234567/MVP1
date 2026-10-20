@@ -587,9 +587,10 @@ describe('mar.* and medication.list', () => {
 		});
 		expect(rejected.applied).toEqual([]);
 		expect(rejected.rejected).toEqual(
-			rejectedIds.map((id) => ({
+			rejectedIds.map((id, index) => ({
 				id,
 				table: 'mar_records',
+				index,
 				code: 'VALIDATION_FAILED',
 				message: 'Explain the correction'
 			}))
@@ -705,6 +706,7 @@ describe('mar.* and medication.list', () => {
 				{
 					id,
 					table: 'mar_records',
+					index: 0,
 					code: code === 'BAD_REQUEST' ? 'VALIDATION_FAILED' : 'NOT_FOUND',
 					message
 				}
@@ -798,6 +800,10 @@ describe('health.*', () => {
 		).rejects.toMatchObject({ code: 'FORBIDDEN' });
 		await expect(
 			sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 130, sysHi: 120 } })
+		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+		// One end alone is checked against the default for the other (systolic high 140).
+		await expect(
+			sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 145 } })
 		).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 		await sam.client.updateHealth({ clientId: PERSON, vitalLimits: { sysLo: 80, sysHi: 120 } });
 		try {

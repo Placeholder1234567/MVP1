@@ -14,24 +14,31 @@ import {
 	createIdentity,
 	deleteIdentity,
 	disableIdentity,
+	activeIdentityByEmail,
 	enableIdentity,
 	passwordSetupLink,
-	resetSecondFactors
+	resetSecondFactors,
+	revokeSessions
 } from '../../identity.ts';
 import { providers } from '../../messaging/index.ts';
+import { forgetDeviceKeys } from '../device/index.ts';
 import { listHomes } from '../home/index.ts';
 import { adminAdded } from '../notification/index.ts';
 import type { CurrentUser } from './auth.types';
 import {
+	activeUidsWithRoles,
 	insertProfile,
+	lockActiveAdmins,
 	recordMfaReset,
 	selectStaff,
+	signInInUse,
 	selectStaffMember,
 	staffByEmail,
 	updateProfileRow
 } from './staff.queries';
 
 const ROLES = ['caregiver', 'supervisor', 'admin'] as const;
+const rank = (role: string) => ROLES.indexOf(role as (typeof ROLES)[number]);
 /** E.164, as SMS matching (two-way replies) expects. */
 const Phone = z
 	.string()
@@ -130,9 +137,15 @@ export async function createStaffAccount(
 	try {
 		uid = await createIdentity({ email, displayName: data.name });
 	} catch (e) {
-		if ((e as { code?: string }).code === 'auth/email-already-exists')
+		if ((e as { code?: string }).code !== 'auth/email-already-exists') throw e;
+		// The sign-in is created before the profile, outside the transaction.
+		// If an earlier invite's transaction rolled back after that, the
+		// sign-in was left with no profile; reuse it rather than block the
+		// email for good. One that any profile uses is refused as before.
+		const existing = await activeIdentityByEmail(email);
+		if (!existing || (await asService(tx, (t) => signInInUse(t, existing.uid))))
 			throw new ServiceError('RULE_VIOLATION', 'This email already has a Guad sign-in');
-		throw e;
+		uid = existing.uid;
 	}
 	let created;
 	try {
@@ -177,6 +190,15 @@ export async function updateStaff(
 		((data.role !== undefined && data.role !== 'admin') || data.active === false)
 	)
 		throw new ServiceError('RULE_VIOLATION', "You can't remove your own admin access");
+	const losesAdmin =
+		before.role === 'admin' &&
+		before.active &&
+		((data.role !== undefined && data.role !== 'admin') || data.active === false);
+	if (losesAdmin) {
+		const admins = await asService(tx, (t) => lockActiveAdmins(t, admin.agencyId));
+		if (admins.filter((a) => a.id !== data.id).length === 0)
+			throw new ServiceError('RULE_VIOLATION', 'Keep at least one other active admin');
+	}
 	if (data.homeIds) await checkHomes(tx, admin.agencyId, data.homeIds, before.homeIds ?? []);
 	const row = await updateProfileRow(tx, admin.agencyId, data.id, {
 		role: data.role,
@@ -189,9 +211,32 @@ export async function updateStaff(
 		await adminAdded(tx, admin.agencyId, data.id);
 	if (data.active !== undefined && data.active !== before.active) {
 		const uid = before.authUid;
+		if (!data.active) await forgetDeviceKeys(tx, admin.agencyId, data.id);
 		afterCommit(() => (data.active ? enableIdentity(uid) : disableIdentity(uid)));
 	}
+	// The MFA rule is checked when a session starts (/auth/session). A session
+	// started under a lower role may have skipped it, so it ends now and the
+	// next sign-in applies the new role's rule.
+	else if (data.role !== undefined && rank(data.role) > rank(before.role)) {
+		const uid = before.authUid;
+		afterCommit(() => revokeSessions(uid));
+	}
 	return present(row);
+}
+
+/**
+ * Ends the sessions of everyone in these roles after commit, for when the
+ * agency starts requiring MFA for them: the rule is checked when a session
+ * starts, so sessions begun without a second factor would otherwise last.
+ */
+export async function endSessionsForRoles(tx: Tx, agencyId: string, roles: string[]) {
+	if (!roles.length) return;
+	const uids = (await asService(tx, (t) => activeUidsWithRoles(t, agencyId, roles))).map(
+		(r) => r.uid
+	);
+	afterCommit(async () => {
+		for (const uid of uids) await revokeSessions(uid);
+	});
 }
 
 /**

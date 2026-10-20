@@ -516,6 +516,19 @@ it('exports authentic signed goal history, stopped goals and weighted progress w
 				a.performed_by === supervisor
 		)
 	).toBe(true);
+	// The audit row names what the file covered and whose records were in it.
+	// The full export's row (the empty and approved-only ones are audited too; no order).
+	const goalsAudit = audits.find(
+		(a) =>
+			(a.new_values as { type?: string }).type === 'goals' &&
+			(a.new_values as { rows?: number }).rows === 3
+	)!;
+	expect(goalsAudit.new_values).toMatchObject({
+		homeId: expect.any(String),
+		fromDay: expect.any(String),
+		toDay: expect.any(String),
+		clientIds: expect.arrayContaining([expect.any(String)])
+	});
 });
 
 it('requires goals plus charting/report entitlements and applies person/home/agency boundaries', async () => {
