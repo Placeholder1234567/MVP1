@@ -5,6 +5,8 @@
 //
 // Payloads carry record IDs only, never PHI: handlers load data themselves.
 import { CloudTasksClient } from '@google-cloud/tasks';
+import { randomUUID } from 'node:crypto';
+import { notificationSandboxAllowed } from '../notification-sandbox.ts';
 
 export interface EnqueueOptions {
 	/** Run no sooner than this many seconds from now (Cloud Tasks allows up to 30 days). */
@@ -23,31 +25,77 @@ interface Driver {
 
 // ─── Local driver ────────────────────────────────────────────────────────────
 
-const timers = new Map<string, ReturnType<typeof setTimeout>>();
+interface LocalTask {
+	id: string;
+	key?: string;
+	job: string;
+	payload: unknown;
+	scheduledAt: number;
+	timer: ReturnType<typeof setTimeout>;
+}
+const timers = new Map<string, LocalTask>();
+const localTasks = new Map<string, LocalTask>();
+
+function takeTask(task: LocalTask) {
+	if (!localTasks.delete(task.id)) return false;
+	clearTimeout(task.timer);
+	if (task.key) timers.delete(task.key);
+	return true;
+}
+async function executeLocal(task: LocalTask): Promise<'completed' | 'failed' | 'gone'> {
+	// Timer and explicit fire race for the same claim; only one can run.
+	if (!takeTask(task)) return 'gone';
+	try {
+		const { runJob } = await import('./registry.ts');
+		await runJob(task.job, task.payload, { attempt: 0, final: true });
+		return 'completed';
+	} catch (e) {
+		console.error(`local job ${task.job} failed: ${(e as Error).name}`);
+		return 'failed';
+	}
+}
+
+/** Internal development inspection only. The router must additionally authorize each task. */
+export function localNotificationTasks() {
+	if (!notificationSandboxAllowed(process.env.NODE_ENV !== 'production', process.env)) return [];
+	return [...localTasks.values()]
+		.filter((task) => task.job === 'notifications-escalate')
+		.map((task) => ({
+			id: task.id,
+			job: task.job,
+			scheduledAt: task.scheduledAt,
+			payload: task.payload
+		}));
+}
+export async function fireLocalNotificationTask(id: string) {
+	if (!notificationSandboxAllowed(process.env.NODE_ENV !== 'production', process.env))
+		return 'gone' as const;
+	const task = localTasks.get(id);
+	if (!task || task.job !== 'notifications-escalate') return 'gone' as const;
+	return executeLocal(task);
+}
 
 const local: Driver = {
 	async enqueue(job, queue, payload, opts) {
 		const key = opts.taskName ? `${queue}/${opts.taskName}` : undefined;
 		if (key && timers.has(key)) return; // like Cloud Tasks: a named task runs once
-		const timer = setTimeout(
-			async () => {
-				if (key) timers.delete(key);
-				try {
-					const { runJob } = await import('./registry.ts');
-					await runJob(job, payload, { attempt: 0, final: true });
-				} catch (e) {
-					console.error(`local job ${job} failed: ${(e as Error).name}`);
-				}
-			},
-			(opts.delaySeconds ?? 0) * 1000
-		);
-		timer.unref?.();
-		if (key) timers.set(key, timer);
+		const delay = (opts.delaySeconds ?? 0) * 1000;
+		const task: LocalTask = {
+			id: randomUUID(),
+			key,
+			job,
+			payload,
+			scheduledAt: Date.now() + delay,
+			timer: setTimeout(() => void executeLocal(task), delay)
+		};
+		task.timer.unref?.();
+		localTasks.set(task.id, task);
+		if (key) timers.set(key, task);
 	},
 	async cancel(queue, taskName) {
 		const key = `${queue}/${taskName}`;
-		clearTimeout(timers.get(key));
-		timers.delete(key);
+		const task = timers.get(key);
+		if (task) takeTask(task);
 	}
 };
 

@@ -33,6 +33,8 @@ deploy/app.env.yaml
 # Synthetic browser-test artifacts
 /playwright-report/
 /test-results/
+/playwright-report-dev/
+/test-results-dev/
 
 # Lighthouse CI reports (lighthouserc.json)
 .lighthouseci/

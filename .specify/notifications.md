@@ -1145,7 +1145,31 @@ selection as a normal request. It does not insert notification/inbox rows,
 schedule delivery/escalation, or invoke a provider. Preview links use temporary
 IDs and do not represent saved notifications. Dispatch-time suppression, quiet
 hours, active-account checks and rate limits can still prevent actual delivery.
-The dev-panel UI and delayed-task controls are a separate remaining increment.
+**Development panel increment:** `/dev/notifications` lets an authenticated admin
+preview every known type using fixed synthetic text and their own preferences,
+and inspect the latest 50 delivery statuses for their account or demo agency. The dedicated tRPC
+endpoint is not mounted on the production app router. Both the page and endpoint
+return 404 outside a development build or when the environment is not a loopback
+demo identity emulator/database with console push/SMS and console-or-loopback-SMTP
+email. Preview input accepts only a known type, never a recipient or agency.
+Preview creates no notification rows, jobs or provider calls. Temporary links are
+displayed as text. The separate **Send synthetic test** action requires explicit
+confirmation and queues fixed synthetic content for the caller through normal
+delivery and escalation rules. It accepts no free text, recipient or agency.
+Queued counts never claim delivery success. Agency history is scoped server-side
+to the current admin's agency. Pending local synthetic notification escalations
+can be inspected (up to 100) and explicitly fired after confirmation. Only
+`notifications-escalate` tasks whose event row has the server-set
+`development_test` marker in the caller's agency qualify; arbitrary tasks,
+unmarked clinical events and other agencies are rejected. Raw job payloads are
+never returned. A timer and explicit fire share one in-process claim, preserving
+normal task naming, cancellation and payload behavior. Restart loses timers;
+users must explicitly request a new test. Handler completion is not proof of
+delivery. Report generation and revision-bound cleanup are never exposed.
+The cloud browser gate runs production exclusion checks (including an admin's
+page and API requests), then the unchanged preview/axe/overflow cases against
+a development server using the same isolated synthetic database and emulator.
+Production and development traces/reports are saved separately.
 - Used by the admin notification settings UI to show "This is what the notification would look like" previews.
 
 ### Automated Tests

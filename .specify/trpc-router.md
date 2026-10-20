@@ -308,6 +308,23 @@ Implemented own-account settings procedures (all require the notifications entit
 
 > **Note:** Notification preferences are read from the local PowerSync database rather than via a dedicated tRPC query. The `notification_preferences` table syncs to the client for the authenticated user's profile, so a `notification.getPreferences` query is not needed.
 
+Development-only `/dev/notifications/api` uses a separate router (not `appRouter`):
+`recent({ scope?: 'mine' | 'agency' }?)` returns the latest 50 notifications in
+the chosen scope (default own account, current agency only); `preview({ type })`
+accepts only a known notification type and returns synthetic rendered delivery
+previews for that caller without rows, jobs or providers. Both require an active
+admin and the guarded loopback demo environment described in notifications.md.
+`sendTest({ type, confirm: true })` queues fixed synthetic content for the caller
+and returns `{ deliveriesQueued }`, not a delivery confirmation. It runs normal
+delivery/escalation rules and rejects extra recipient, agency or text fields.
+`pendingTasks()` lists up to 100 current-agency synthetic notification escalation
+tasks as `{ id, job, type, step, scheduledAt }` without raw payloads.
+`fireTask({ id, confirm: true })` rechecks event ownership and the synthetic marker
+before claiming the local timer. Unknown, unmarked or foreign tasks return
+NOT_FOUND. The adapter rechecks the safe development environment and only accepts
+notification escalation jobs; it never fires report or maintenance jobs.
+The HTTP endpoint returns 404 outside an actual development build.
+
 ### audit
 
 **As built:** `audit.list` returns metadata only (who, what, when; no `oldValues`, `newValues`, IP or user agent), so the old and new values, which can hold client data, are shown one entry at a time through `audit.get`, and each `audit.get` is recorded as an `audit_views` entry. Admins only, as this table says; security.md "Access" also mentions supervisors, and RLS allows them, but the procedures follow this table. The screen is `/dashboard/audit`.
