@@ -161,7 +161,13 @@ describe('sync.upload: notes', () => {
 		]);
 		expect(r.applied).toEqual([id, id, id]);
 		expect(r.rejected).toEqual([
-			{ id, table: 'notes', code: 'RULE_VIOLATION', message: 'This note was already signed' }
+			{
+				id,
+				table: 'notes',
+				index: 3,
+				code: 'RULE_VIOLATION',
+				message: 'This note was already signed'
+			}
 		]);
 		const [row] = await withService((t) => t.select().from(s.notes).where(eq(s.notes.id, id)));
 		expect(row.status).toBe('submitted');
@@ -208,6 +214,18 @@ describe('sync.upload: notes', () => {
 			{ op: 'PATCH', table: 'notes', id: noteId, data: { status: 'submitted' } }
 		]);
 		expect(edit.rejected).toEqual([]);
+		// The same transaction sent again (its response was lost) is already
+		// applied: nothing is refused, so the device doesn't report a failure.
+		const again = await upload(CARA, [
+			{
+				op: 'PATCH',
+				table: 'note_goals',
+				id: row,
+				data: { trials: JSON.stringify(['Independent', 'Refused']), updated_at: 'x' }
+			},
+			{ op: 'PATCH', table: 'notes', id: noteId, data: { status: 'submitted' } }
+		]);
+		expect(again.rejected).toEqual([]);
 		const rows = await withService((t) =>
 			t.select().from(s.noteGoals).where(eq(s.noteGoals.note_id, noteId))
 		);

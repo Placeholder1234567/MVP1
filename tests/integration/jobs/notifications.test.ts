@@ -418,7 +418,11 @@ it('two dispatches of the same delivery at once send it once', async () => {
 			type: 'daily_summary',
 			title: 'Synthetic claim test',
 			channel: 'email',
-			priority: 1
+			priority: 1,
+			// Deliberately ahead of the application clock: the first claim must still
+			// advance beyond creation and exclude the second worker.
+			created_at: new Date(Date.now() + 1_000),
+			updated_at: new Date(Date.now() - 1_000)
 		});
 	});
 	// A slow provider keeps the first send in flight while the second runs.

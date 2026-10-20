@@ -344,10 +344,17 @@ export const syncRouter = router({
 					message: 'These changes belong to someone else signed in on this device.'
 				});
 			const applied: string[] = [];
-			const rejected: { id: string; table: string; code: RejectCode; message: string }[] = [];
+			/** index: the op's position in the batch (a PUT and a PATCH can share an id) */
+			const rejected: {
+				id: string;
+				table: string;
+				index: number;
+				code: RejectCode;
+				message: string;
+			}[] = [];
 			const notices: { id: string; table: string; code: 'MAR_CONFLICT'; message: string }[] = [];
 
-			for (const op of input.ops) {
+			for (const [index, op] of input.ops.entries()) {
 				try {
 					const handler = HANDLERS[op.table]?.[op.op];
 					if (!handler) {
@@ -367,7 +374,7 @@ export const syncRouter = router({
 					if (outcome?.notice) notices.push({ id: op.id, table: op.table, ...outcome.notice });
 				} catch (e) {
 					const r = toReject(e);
-					rejected.push({ id: op.id, table: op.table, code: r.code, message: r.message });
+					rejected.push({ id: op.id, table: op.table, index, code: r.code, message: r.message });
 				}
 			}
 			return { applied, rejected, notices };
