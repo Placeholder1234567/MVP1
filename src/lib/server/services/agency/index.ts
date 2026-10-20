@@ -40,6 +40,8 @@ export async function getAgency(tx: Tx, agencyId: string) {
  */
 export const AgencySettings = z
 	.object({
+		/** Reserved for the operator's offboarding workflow, never agency self-service. */
+		offboarding: z.never().optional(),
 		notification_overrides: NotificationOverridesInput.optional(),
 		mfa_required_roles: z.array(z.enum(['caregiver', 'supervisor'])).optional(),
 		/** Sign-in length in minutes (domain/session-length.ts); applies to new sign-ins. */
@@ -168,3 +170,4 @@ export async function provisionAgency(tx: Tx, input: z.input<typeof NewAgency>) 
 }
 
 export { PlanChange, setAgencyPlan } from './plan';
+export { OffboardingInput, offboardAgency } from './offboarding';

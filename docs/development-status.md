@@ -20,7 +20,7 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 2. Finish carrier-state and required supervisor SMS validation; preserve STOP, conservative legacy suppression, current policy/role/number checks and read-only preview behavior.
 4. Persist original Lomi observations and the edit ledger in encrypted device storage for reconnect recovery after reload. Keep account/home/person binding, human review and signatures; never use browser key/value storage for PHI.
 5. Implement the intake spec's explicit needs/certifications placement matching. The current comparison shows room availability and requires human review; it does not infer clinical eligibility from referral narrative.
-6. Implement agency offboarding with access shutdown and retention holds, without deleting immutable audit or clinical history. Actual account/data operations need an authorized operator workflow.
+6. Validate the operator offboarding increment: preview by default, exact-ID execution confirmation, database access block, identity-disable retries and application retention hold, without deleting immutable audit/clinical history. Infrastructure retention verification and actual account operations remain operator responsibilities; no production action has been performed.
 
 ## Release evidence still required
 
