@@ -11,6 +11,8 @@
 	} from '#lib/domain/index.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import LomiComposer from './LomiComposer.svelte';
+	import { clearLomiRecovery } from './lomi-recovery';
+	import type { LomiBinding } from './lomi-recovery-data';
 	let {
 		clientId,
 		type = 'shift',
@@ -42,6 +44,27 @@
 	);
 	const person = $derived(app.people.find((p) => p.id === (note?.client_id ?? clientId)));
 	const kind = $derived(note?.type ?? type);
+	const lomiBinding = $derived<LomiBinding | null>(
+		person?.home_id
+			? {
+					agencyId: app.user.agencyId,
+					profileId: app.user.profileId,
+					homeId: person.home_id,
+					clientId: person.id,
+					type: kind as 'shift' | 'behavior',
+					day: note?.day ?? current.day,
+					shift: (note?.shift ?? current.shift) as 'am' | 'pm' | 'on'
+				}
+			: null
+	);
+	$effect(() => {
+		if (
+			note?.author_id === app.user.profileId &&
+			!isEditableByAuthor(note.status as NoteStatus) &&
+			lomiBinding
+		)
+			void clearLomiRecovery(app.db, lomiBinding);
+	});
 	const fields = $derived(
 		kind === 'behavior'
 			? [
@@ -78,6 +101,7 @@
 	);
 	let loaded = $state('');
 	let savedId = $state('');
+	let composerCreatedNoteId = $state('');
 	let busy = $state(false);
 	let signed = $state(false);
 	let message = $state('');
@@ -106,6 +130,7 @@
 		if (scope !== identity) {
 			scope = identity;
 			savedId = '';
+			composerCreatedNoteId = '';
 			loaded = '';
 			dirty = false;
 			signature = false;
@@ -225,6 +250,7 @@
 		busy = true;
 		const id = note?.id ?? savedId ?? '';
 		const target = id || crypto.randomUUID();
+		if (!id) composerCreatedNoteId = target;
 		savedId = target;
 		const goalEntries = Object.entries(scores).map(([goalId, g]) => ({ goalId, ...g }));
 		try {
@@ -308,6 +334,7 @@
 						]);
 				});
 			}
+			if (submit && lomiBinding) await clearLomiRecovery(app.db, lomiBinding);
 			dirty = false;
 			signed = submit;
 			signature = false;
@@ -374,10 +401,14 @@
 					>{/if}
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
-		{#if editable && !signed && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
+		{#if editable && !signed && !offlineOnly && lomiBinding && app.homeId === person.home_id}{#key `${app.user.profileId}:${person.id}:${person.home_id}:${kind}:${lomiBinding.day}:${lomiBinding.shift}:${noteId ?? (note?.id === composerCreatedNoteId ? '' : (note?.id ?? ''))}`}<LomiComposer
 					clientId={person.id}
 					type={kind as 'shift' | 'behavior'}
 					shift={(note?.shift ?? current.shift) as 'am' | 'pm' | 'on'}
+					binding={lomiBinding}
+					noteId={note?.id ?? (savedId || null)}
+					createdNoteId={composerCreatedNoteId}
+					currentContent={content}
 					onDirty={() => {
 						dirty = true;
 						signature = false;
