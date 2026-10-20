@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { channelsFor, NOTIFICATION_TYPES, type Preference } from '../../../domain/index.ts';
-import type { Tx } from '../../db';
+import { asService, type Tx } from '../../db';
 import type { CurrentUser } from '../auth/index.ts';
 import { ServiceError } from '../../errors';
+import { carrierPhone, ensureCarrierState, recordCarrierConsent } from './carrier-consent.queries';
 import {
 	inboxItem,
 	listInbox,
@@ -62,6 +63,10 @@ export async function updatePreferences(
 ) {
 	const rows = PreferencesInput.parse(input);
 	const saved = await lockPreferences(tx, agencyId, user.profileId);
+	await asService(tx, async (service) => {
+		const phone = await carrierPhone(service, agencyId, user.profileId);
+		if (phone) await ensureCarrierState(service, agencyId, phone);
+	});
 	for (const row of rows) {
 		const previous = saved.find((r) => r.notification_type === row.notificationType);
 		const defaults = channelsFor(row.notificationType, user.role);
@@ -95,9 +100,14 @@ export async function setSmsOptOut(
 	tx: Tx,
 	agencyId: string,
 	profile: { id: string; role: CurrentUser['role'] },
-	optedOut: boolean
+	optedOut: boolean,
+	expectedPhone?: string
 ) {
 	const saved = await lockPreferences(tx, agencyId, profile.id);
+	const phone = await carrierPhone(tx, agencyId, profile.id);
+	if (expectedPhone !== undefined && phone !== expectedPhone)
+		throw new ServiceError('RULE_VIOLATION', 'SMS recipient changed');
+	if (phone) await recordCarrierConsent(tx, agencyId, phone, optedOut);
 	for (const type of NOTIFICATION_TYPES) {
 		const previous = saved.find((r) => r.notification_type === type);
 		const defaults = channelsFor(type, profile.role);

@@ -22,6 +22,7 @@ import type { Delivery } from '../../messaging/index.ts';
 import { afterCommit, asService, type Tx } from '../../db';
 import { queueDeliveries } from './dispatch';
 import { queueEscalation } from './escalation';
+import { smsCarrierOverrideAllowed } from './carrier-consent';
 import {
 	activeStaffByRole,
 	insertNotifications,
@@ -30,6 +31,7 @@ import {
 } from './notification.queries';
 
 export { NotificationOverridesInput } from './overrides-input';
+export { smsCarrierSuppressed } from './carrier-consent';
 export { developmentNotificationHistory, isSyntheticNotificationEvent } from './dev-history';
 export { dispatchNotifications, sweepNotifications, RetryLater } from './dispatch';
 export {
@@ -138,6 +140,13 @@ export function notify(
 			reference_id: n.referenceId,
 			reference_type: n.referenceType
 		};
+		const requiredSms = new Set<string>();
+		if (overrides.forceSmsTypes.some((type) => type === n.type)) {
+			for (const recipient of recipients) {
+				if (await smsCarrierOverrideAllowed(tx, agencyId, recipient.id))
+					requiredSms.add(recipient.id);
+			}
+		}
 		const rows = recipients.flatMap((r) => [
 			{
 				...base,
@@ -149,6 +158,7 @@ export function notify(
 			...[
 				...new Set([
 					...channelsFor(n.type, r.role, prefs.get(r.id)),
+					...(requiredSms.has(r.id) ? ['sms' as const] : []),
 					...(n.type === 'daily_summary' && overrides.requireSummaryEmail ? ['email' as const] : [])
 				])
 			].map((channel) => ({

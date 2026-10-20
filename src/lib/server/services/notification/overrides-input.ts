@@ -6,6 +6,11 @@ import { validQuietHours } from '../../../domain/quiet-hours';
 /** Agency admins cannot disable mandatory safety notifications. */
 export const NotificationOverridesInput = z
 	.object({
+		forceSmsTypes: z
+			.array(z.enum(NOTIFICATION_TYPES))
+			.max(NOTIFICATION_TYPES.length)
+			.refine((types) => new Set(types).size === types.length, 'Choose each type once.')
+			.default([]),
 		disabledTypes: z
 			.array(z.enum(NOTIFICATION_TYPES))
 			.max(NOTIFICATION_TYPES.length)
@@ -25,6 +30,10 @@ export const NotificationOverridesInput = z
 			.nullable()
 	})
 	.strict()
+	.refine(
+		(r) => !r.forceSmsTypes.some((type) => r.disabledTypes.includes(type)),
+		'A required SMS type cannot also be disabled.'
+	)
 	.refine(
 		(r) => !(r.requireSummaryEmail && r.disabledTypes.includes('daily_summary')),
 		'Daily summaries cannot be disabled while their email is required.'

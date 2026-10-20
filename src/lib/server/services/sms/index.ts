@@ -12,7 +12,7 @@ import { withService, withUser } from '../../db';
 import { ServiceError } from '../../errors';
 import { providers } from '../../messaging/index.ts';
 import { getCurrentUser, type CurrentUser } from '../auth/index.ts';
-import { setSmsOptOut } from '../notification/index.ts';
+import { setSmsOptOut, smsCarrierSuppressed } from '../notification/index.ts';
 import { coverageOffers, coverageStatus, respondCoverage } from '../schedule/index.ts';
 import { activeProfilesByPhone, claimInbound, releaseInbound } from './sms.queries';
 
@@ -65,13 +65,15 @@ async function respond(
 ): Promise<InboundOutcome> {
 	const parsed = parseSmsReply(body);
 	const replyId = `sms-reply-${messageId ?? Date.now()}`;
-	const reply = (body: string) =>
-		providers().sms(phone, { notificationId: replyId, title: 'Guad', body, link: '/' });
+	const reply = async (body: string) => {
+		if (await withService((tx) => smsCarrierSuppressed(tx, staff[0].agencyId, phone))) return;
+		return providers().sms(phone, { notificationId: replyId, title: 'Guad', body, link: '/' });
+	};
 
 	if (parsed.kind === 'stop' || parsed.kind === 'start') {
 		const optedOut = parsed.kind === 'stop';
 		for (const p of staff) {
-			await withService((tx) => setSmsOptOut(tx, p.agencyId, p, optedOut));
+			await withService((tx) => setSmsOptOut(tx, p.agencyId, p, optedOut, phone));
 		}
 		// AWS answers STOP itself; after START, say texts are back on.
 		if (!optedOut) await reply(SMS_REPLY_TEXT.started);

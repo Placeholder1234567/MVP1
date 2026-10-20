@@ -953,6 +953,10 @@ npm run test:e2e -- --grep @offline
 
 ## Appendix B: Error Codes for Failed Writes
 
+`sms_carrier_consents` is server-only and never synced. It stores agency-scoped
+phone digests and verified STOP/START state separately from channel preferences;
+application-user RLS grants no read or write policy for it.
+
 | Error Code | Meaning | User Message | Recovery |
 |------------|---------|-------------|----------|
 | `CONSTRAINT_VIOLATION` | Unique constraint failed (other than a duplicate MAR dose slot, which is kept as a conflict record) | "This record was already saved by another user." | Discard local duplicate; details kept in `_failed_writes` |
