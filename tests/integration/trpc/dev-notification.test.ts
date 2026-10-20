@@ -1,0 +1,98 @@
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { closeDb, withService } from '../../../src/lib/server/db';
+import * as s from '../../../src/lib/server/db/schema';
+import { getCurrentUser } from '../../../src/lib/server/services/auth';
+import { setProvidersForTests } from '../../../src/lib/server/messaging';
+import { devNotificationRouter } from '../../../src/lib/server/trpc/routers/dev-notification';
+import { createCallerFactory } from '../../../src/lib/server/trpc/middleware';
+
+const agency = randomUUID(),
+	other = randomUUID(),
+	admin = randomUUID(),
+	peer = randomUUID(),
+	staff = randomUUID(),
+	stranger = randomUUID();
+const uid = (id: string) => `dev-panel-${id}`;
+const caller = createCallerFactory(devNotificationRouter);
+const as = async (id: string) => caller({ user: await getCurrentUser(uid(id)), request: {} });
+const sent = vi.fn(async () => ({ providerMessageId: 'must-not-send' }));
+beforeAll(async () => {
+	vi.stubEnv('GOOGLE_CLOUD_PROJECT', 'demo-guad');
+	vi.stubEnv('FIREBASE_AUTH_EMULATOR_HOST', '127.0.0.1:9099');
+	vi.stubEnv('JOBS_DRIVER', 'local');
+	vi.stubEnv('PUSH_DRIVER', 'console');
+	vi.stubEnv('SMS_DRIVER', 'console');
+	vi.stubEnv('EMAIL_DRIVER', 'smtp');
+	vi.stubEnv('SMTP_URL', '');
+	vi.stubEnv('CLOUD_SQL_INSTANCE', '');
+	setProvidersForTests({ push: sent, sms: sent, email: sent });
+	await withService(async (tx) => {
+		await tx.insert(s.agencies).values(
+			[agency, other].map((id) => ({
+				id,
+				name: 'Synthetic panel',
+				slug: uid(id),
+				subscription_tier: 'complete' as const
+			}))
+		);
+		await tx.insert(s.profiles).values(
+			[
+				{ id: admin, agency_id: agency, role: 'admin' as const },
+				{ id: peer, agency_id: agency, role: 'admin' as const },
+				{ id: staff, agency_id: agency, role: 'caregiver' as const },
+				{ id: stranger, agency_id: other, role: 'admin' as const }
+			].map((p) => ({
+				...p,
+				auth_uid: uid(p.id),
+				name: 'Synthetic Staff',
+				email: `${p.id}@example.test`
+			}))
+		);
+		await tx.insert(s.notifications).values(
+			[admin, peer, stranger].map((profile_id) => ({
+				id: profile_id,
+				agency_id: profile_id === stranger ? other : agency,
+				profile_id,
+				type: 'health_alert',
+				channel: 'in_app',
+				status: 'sent' as const,
+				title: 'Synthetic history'
+			}))
+		);
+	});
+});
+afterAll(async () => {
+	setProvidersForTests(undefined);
+	vi.unstubAllEnvs();
+	await closeDb();
+});
+it('requires an admin and limits history and preview recipients to the caller', async () => {
+	await expect((await as(staff)).recent()).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	await expect(caller({ user: null, request: {} }).recent()).rejects.toMatchObject({
+		code: 'UNAUTHORIZED'
+	});
+	const me = await as(admin);
+	expect((await me.recent()).map((row) => row.id)).toEqual([admin]);
+	const previews = await me.preview({ type: 'health_alert' });
+	expect(previews.length).toBeGreaterThan(0);
+	expect(previews.every((item) => item.profileId === admin)).toBe(true);
+	expect(sent).not.toHaveBeenCalled();
+	expect(
+		await withService((tx) =>
+			tx.select().from(s.notifications).where(eq(s.notifications.agency_id, agency))
+		)
+	).toHaveLength(2);
+	await expect(
+		me.preview({ type: 'health_alert', profileId: stranger } as never)
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+});
+it('fails closed when real delivery providers or a production runtime are configured', async () => {
+	const me = await as(admin);
+	vi.stubEnv('SMS_DRIVER', 'aws');
+	await expect(me.preview({ type: 'health_alert' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+	vi.stubEnv('SMS_DRIVER', 'console');
+	vi.stubEnv('NODE_ENV', 'production');
+	await expect(me.recent()).rejects.toMatchObject({ code: 'NOT_FOUND' });
+});

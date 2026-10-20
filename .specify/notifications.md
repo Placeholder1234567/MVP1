@@ -1127,7 +1127,20 @@ selection as a normal request. It does not insert notification/inbox rows,
 schedule delivery/escalation, or invoke a provider. Preview links use temporary
 IDs and do not represent saved notifications. Dispatch-time suppression, quiet
 hours, active-account checks and rate limits can still prevent actual delivery.
-The dev-panel UI and delayed-task controls are a separate remaining increment.
+**Development panel increment:** `/dev/notifications` lets an authenticated admin
+preview every known type using fixed synthetic text and their own preferences,
+and inspect their latest 50 accessible delivery statuses. The dedicated tRPC
+endpoint is not mounted on the production app router. Both the page and endpoint
+return 404 outside a development build or when the environment is not a loopback
+demo identity emulator/database with console push/SMS and console-or-loopback-SMTP
+email. Preview input accepts only a known type, never a recipient or agency.
+No notification rows, jobs or provider calls are created. Temporary links are
+displayed as text. Test-send buttons, agency-wide history and delayed-task
+inspection/fire controls remain unfinished.
+The cloud browser gate runs production exclusion checks (including an admin's
+page and API requests), then the unchanged preview/axe/overflow cases against
+a development server using the same isolated synthetic database and emulator.
+Production and development traces/reports are saved separately.
 - Used by the admin notification settings UI to show "This is what the notification would look like" previews.
 
 ### Automated Tests

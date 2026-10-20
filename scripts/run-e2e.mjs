@@ -56,5 +56,5 @@ run('node_modules/firebase-tools/lib/bin/firebase.js', [
 	'auth',
 	'--project',
 	project,
-	'npm run db:seed && npx playwright test'
+	'npm run db:seed && npx playwright test && npx playwright test --config=playwright.dev.config.ts'
 ]);
