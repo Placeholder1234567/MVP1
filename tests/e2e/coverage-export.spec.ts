@@ -57,8 +57,13 @@ test('coverage exports real recorded shifts explicitly and discards responses fr
 		page.getByText('Schedule saved. Updates will appear after sync.', { exact: true })
 	).toBeVisible();
 	await expect(assignment).toHaveValue(original);
-	await page.getByRole('link', { name: 'Timesheets', exact: true }).first().click();
-	await page.getByRole('link', { name: 'Care record reports →', exact: true }).click();
+	// Schedule's phone dock intentionally has no Timesheets destination.
+	await page.getByRole('button', { name: 'Search', exact: true }).click();
+	await page.getByRole('combobox', { name: /^Search people/ }).fill('reports');
+	await page
+		.getByRole('option', { name: /^Reports/ })
+		.first()
+		.click();
 	const form = page.getByRole('region', { name: 'Coverage log export', exact: true });
 	await expect(form.getByRole('heading', { name: 'Coverage log', exact: true })).toBeVisible();
 	await form.getByLabel('Coverage from', { exact: true }).fill(day);
