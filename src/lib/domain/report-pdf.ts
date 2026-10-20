@@ -56,7 +56,7 @@ const record = (heading: string, row: Record<string, unknown>, columns: string[]
 export const CONFIDENTIAL =
 	'Contains confidential care information; keep in approved agency storage.';
 
-export function clinicalPdfReport(report: ClinicalReport): PdfReport {
+export function clinicalPdfReport(report: ClinicalReport, agencyName?: string): PdfReport {
 	const columns = clinicalColumns(report.rows);
 	const sections: PdfSection[] = [];
 	if (report.goalSummary) {
@@ -73,6 +73,7 @@ export function clinicalPdfReport(report: ClinicalReport): PdfReport {
 	return {
 		title: `Care records: ${report.type}`,
 		intro: [
+			...(agencyName === undefined ? [] : [`Current agency name at generation: ${agencyName}`]),
 			`${report.fromDay} through ${report.toDay} (inclusive), ${report.timeZone}`,
 			`${report.dateBasis}. Generated ${report.generatedAt}. ${report.rows.length} records.`,
 			'Authoritative records; no draft notes. This report is not a new signature or an approval.',

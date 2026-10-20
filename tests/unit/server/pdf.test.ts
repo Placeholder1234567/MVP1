@@ -41,6 +41,17 @@ describe('PDF rendering', () => {
 		expect(pages(pdf)).toBe(1);
 	});
 
+	it('checks agency identification text with the same fail-closed glyph validation', async () => {
+		await expect(
+			renderPdf({ ...doc('Short.'), intro: ['Current agency name at generation: አበበ'] })
+		).rejects.toBeInstanceOf(PdfUnsupportedText);
+		const pdf = await renderPdf({
+			...doc('Short.'),
+			intro: ['Current agency name at generation: Synthetic Care Agency']
+		});
+		expect(pages(pdf)).toBe(1);
+	});
+
 	it('refuses text the font cannot show instead of drawing blank boxes', async () => {
 		for (const text of ['Анна', 'አበበ', '李', 'Nguyễn'])
 			await expect(renderPdf(doc(text))).rejects.toBeInstanceOf(PdfUnsupportedText);

@@ -19,7 +19,7 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Remaining engineering work
 
-1. Validate the bounded CSV/JSON coverage-log increment: account-bound POST, current-home/profile/plan checks, existing RLS, source caps, explicit download and scope/lock response guards. It exports requests, candidates, activity and visible notification records. Supervisor notification visibility remains own-recipient-only; this is not a complete cross-recipient delivery ledger. See coverage-export.md.
+1. The bounded CSV/JSON coverage-log increment is merged in PR239 after all four exact-head gates passed (526 units, 321 integration tests plus SQL RLS, 137 production and 2 development browser passes, performance). It provides account-bound POST, current-home/profile/plan checks, existing RLS, source caps, explicit download and scope/lock response guards. It exports requests, candidates, activity and visible notification records. Supervisor notification visibility remains own-recipient-only; this is not a complete cross-recipient delivery ledger. See coverage-export.md.
 2. A complete supervisor offer/delivery ledger needs a safe source design rather than privilege elevation or broader notification RLS. Candidate eligibility is not proof of an offer or delivery; unavailable historical evidence remains unknown. Audit metadata CSV and timesheet clock exports already exist; do not duplicate them.
 3. Reconcile progressive feature-reveal thresholds with the MVP before gating tools currently available from the start. PDF branding and broader font/history targets require current data and asset review; never invent unavailable historical evidence.
 
@@ -32,3 +32,7 @@ Safari/Firefox encrypted-storage behavior, physical-device push delivery, extern
 ## Encrypted Lomi recovery increment
 
 PR234 implements encrypted local-only original-observation and review-ledger recovery, with explicit resume, binding to account/home/person/note period and ID, protected caregiver edits after Use, and signature clearing that invalidates delayed writers. The composer waits for the resolved existing note context and appears only in the person's current home. No AI call or clinical note change happens merely by loading recovery. All four final-head cloud gates passed before merge; synthetic browser failures are repaired without removing reload/PIN/edit-preservation assertions. This increment does not add PHI to browser key/value storage.
+
+## Current Care PDF identification increment
+
+Care PDFs read and display the current tenant agency name at generation, using the same caller transaction/RLS and existing glyph refusal, output limits and clinical source rules. This covers immediate and account-owned queued Care PDFs through their shared export service, not external API PDFs. It is not historical branding, logo support or expanded font coverage. Added domain, renderer and real-database rename/tenant-isolation tests require all four exact-final-head CI gates before merge. The editing runtime was unavailable for this API-published increment; no local checks, browser rendering, migrations or provider execution are claimed.

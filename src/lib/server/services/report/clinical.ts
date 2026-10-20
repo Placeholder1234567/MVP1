@@ -12,7 +12,12 @@ import { asService, type RequestInfo, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { PdfUnsupportedText, renderPdf } from '../../pdf';
 import type { CurrentUser } from '../auth/index.ts';
-import { clinicalScope, clinicalRows, clinicalNoteHistory } from './clinical.queries';
+import {
+	clinicalScope,
+	clinicalRows,
+	clinicalNoteHistory,
+	clinicalAgencyName
+} from './clinical.queries';
 import { recordExport } from './report.queries';
 import { goalProgress } from '../../../domain/goal-progress';
 
@@ -147,9 +152,12 @@ export async function exportClinical(
 	let content: string;
 	let bytes: number;
 	if (p.format === 'pdf') {
+		const agencyName = await clinicalAgencyName(tx, user.agencyId);
+		if (agencyName === undefined)
+			throw new ServiceError('NOT_FOUND', 'Report scope is unavailable');
 		let pdf: Buffer;
 		try {
-			pdf = await renderPdf(clinicalPdfReport(report));
+			pdf = await renderPdf(clinicalPdfReport(report, agencyName));
 		} catch (e) {
 			if (e instanceof PdfUnsupportedText)
 				throw new ServiceError(
