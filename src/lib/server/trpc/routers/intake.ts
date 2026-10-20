@@ -7,7 +7,11 @@ const details = z.object({
 	contactName: z.string().trim().max(200).optional(),
 	contactPhone: z.string().trim().max(50).optional(),
 	contactEmail: z.union([z.email(), z.literal('')]).optional(),
-	notes: z.string().max(8000).optional()
+	notes: z.string().max(8000).optional(),
+	placementNeeds: z
+		.object({ medicationCertifiedStaff: z.enum(['unknown', 'required', 'not_required']) })
+		.strict()
+		.optional()
 });
 const supervisor = featureRoleProcedure('intake', 'supervisor');
 export const intakeRouter = router({

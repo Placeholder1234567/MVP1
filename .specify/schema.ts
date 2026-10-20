@@ -1274,6 +1274,10 @@ export const referrals = pgTable(
     contact_email: text('contact_email'),
     client_name: text('client_name'),
     source: text('source'),
+    placement_needs: jsonb('placement_needs')
+      .$type<{ medicationCertifiedStaff: 'unknown' | 'required' | 'not_required' }>()
+      .notNull()
+      .default({ medicationCertifiedStaff: 'unknown' }),
     status: referralStatusEnum('status').notNull().default('inquiry'),
     assigned_home_id: uuid('assigned_home_id').references(() => homes.id, {
       onDelete: 'restrict',

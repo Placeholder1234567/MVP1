@@ -4,14 +4,26 @@ import { createClient } from '../client/index.ts';
 import { requireOpenHome } from '../home/index.ts';
 import { notifyHomeSupervisors } from '../notification/index.ts';
 import * as q from './intake.queries';
+import { matchPlacement, placementNeeds, type PlacementNeeds } from '#lib/domain/placement.ts';
 export { listReferrals, listRooms } from './intake.queries';
 
-export async function getReferral(tx: Tx, agencyId: string, id: string) {
+async function requireReferral(tx: Tx, agencyId: string, id: string) {
 	const row = await q.referral(tx, agencyId, id);
 	if (!row) throw new ServiceError('NOT_FOUND', 'Referral not found');
 	return row;
 }
-async function changed(tx: Tx, agencyId: string, row: Awaited<ReturnType<typeof getReferral>>) {
+async function matchToHome(tx: Tx, agencyId: string, needs: PlacementNeeds) {
+	const { facts, complete } = await q.placementFacts(tx, agencyId);
+	return { complete, homes: matchPlacement(needs, facts, complete) };
+}
+export async function getReferral(tx: Tx, agencyId: string, id: string) {
+	const row = await requireReferral(tx, agencyId, id);
+	return {
+		...row,
+		placement: await matchToHome(tx, agencyId, placementNeeds(row.placement_needs))
+	};
+}
+async function changed(tx: Tx, agencyId: string, row: Awaited<ReturnType<typeof requireReferral>>) {
 	await notifyHomeSupervisors(tx, agencyId, row.assigned_home_id, {
 		type: 'referral_status_change',
 		priority: 3,
@@ -31,6 +43,7 @@ export function createReferral(
 		clientName?: string;
 		source?: string;
 		notes?: string;
+		placementNeeds?: PlacementNeeds;
 	}
 ) {
 	return q.insertReferral(tx, {
@@ -41,7 +54,8 @@ export function createReferral(
 		contact_email: input.contactEmail,
 		client_name: input.clientName,
 		source: input.source,
-		notes: input.notes
+		notes: input.notes,
+		placement_needs: input.placementNeeds
 	});
 }
 type Author = { profileId: string; name: string };
@@ -56,7 +70,7 @@ export async function addReferralNote(
 	author: Author,
 	input: { referralId: string; body: string }
 ) {
-	const row = await getReferral(tx, agencyId, input.referralId);
+	const row = await requireReferral(tx, agencyId, input.referralId);
 	return q.insertReferralNote(tx, {
 		agency_id: agencyId,
 		referral_id: row.id,
@@ -70,7 +84,7 @@ export async function addReferralNote(
 
 /** A referral's notes at each stage, oldest first. */
 export async function listReferralNotes(tx: Tx, agencyId: string, referralId: string) {
-	await getReferral(tx, agencyId, referralId);
+	await requireReferral(tx, agencyId, referralId);
 	return q.referralNoteRows(tx, agencyId, referralId);
 }
 
@@ -85,9 +99,10 @@ export async function updateReferral(
 		contactPhone?: string;
 		contactEmail?: string;
 		notes?: string;
+		placementNeeds?: PlacementNeeds;
 	}
 ) {
-	const before = await getReferral(tx, agencyId, input.id);
+	const before = await requireReferral(tx, agencyId, input.id);
 	if (before.status === 'placed' || input.status === 'placed')
 		throw new ServiceError(
 			'RULE_VIOLATION',
@@ -100,17 +115,18 @@ export async function updateReferral(
 		contact_name: input.contactName,
 		contact_phone: input.contactPhone,
 		contact_email: input.contactEmail,
-		notes: input.notes
+		notes: input.notes,
+		placement_needs: input.placementNeeds
 	});
 	if (before.status !== row.status) await changed(tx, agencyId, row);
-	return row;
+	return getReferral(tx, agencyId, row.id);
 }
 export async function convertToClient(
 	tx: Tx,
 	agencyId: string,
 	input: { referralId: string; homeId: string; name: string; firstName?: string; roomId?: string }
 ) {
-	const referral = await getReferral(tx, agencyId, input.referralId);
+	const referral = await requireReferral(tx, agencyId, input.referralId);
 	if (referral.status !== 'accepted')
 		throw new ServiceError('RULE_VIOLATION', 'Only accepted referrals can be admitted');
 	requireOpenHome(await q.home(tx, agencyId, input.homeId));
@@ -121,6 +137,8 @@ export async function convertToClient(
 		if (room.occupied_by || room.status !== 'available')
 			throw new ServiceError('RULE_VIOLATION', 'Choose an available room');
 	}
+	// Re-read current facts after home/room validation. Guidance never selects or admits automatically.
+	const placement = await matchToHome(tx, agencyId, placementNeeds(referral.placement_needs));
 	// Through the Client Service, like any new person (initials, first name, health row).
 	const { id: clientId } = await createClient(tx, agencyId, {
 		homeId: input.homeId,
@@ -134,7 +152,7 @@ export async function convertToClient(
 		assigned_home_id: input.homeId
 	});
 	await changed(tx, agencyId, row);
-	return { clientId, referralId: referral.id };
+	return { clientId, referralId: referral.id, placement };
 }
 export async function updateRoom(
 	tx: Tx,

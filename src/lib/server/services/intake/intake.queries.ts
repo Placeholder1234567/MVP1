@@ -1,6 +1,55 @@
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, ne, isNull, inArray } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { clients, homes, referralNotes, referrals, rooms } from '../../db/schema';
+import { clients, homes, profiles, referralNotes, referrals, rooms } from '../../db/schema';
+
+/** Bounded, caller-RLS-scoped facts. No staffing schedule or clinical suitability inferred. */
+export async function placementFacts(tx: Tx, agencyId: string) {
+	const visibleHomes = await tx
+		.select({ homeId: homes.id, homeName: homes.name })
+		.from(homes)
+		.where(and(eq(homes.agency_id, agencyId), isNull(homes.archived_at)))
+		.orderBy(homes.name, homes.id)
+		.limit(201);
+	const selected = visibleHomes.slice(0, 200);
+	if (!selected.length) return { facts: [], complete: true };
+	const inventory = await tx
+		.select({ homeId: rooms.home_id })
+		.from(rooms)
+		.where(
+			and(
+				eq(rooms.agency_id, agencyId),
+				inArray(
+					rooms.home_id,
+					selected.map((h) => h.homeId)
+				),
+				eq(rooms.status, 'available'),
+				isNull(rooms.occupied_by)
+			)
+		)
+		.orderBy(rooms.id)
+		.limit(10001);
+	const staff = await tx
+		.select({ homeIds: profiles.home_ids })
+		.from(profiles)
+		.where(
+			and(
+				eq(profiles.agency_id, agencyId),
+				eq(profiles.role, 'caregiver'),
+				eq(profiles.active, true),
+				eq(profiles.med_certified, true)
+			)
+		)
+		.orderBy(profiles.id)
+		.limit(10001);
+	return {
+		complete: visibleHomes.length <= 200 && inventory.length <= 10000 && staff.length <= 10000,
+		facts: selected.map((h) => ({
+			...h,
+			availableRooms: inventory.slice(0, 10000).filter((r) => r.homeId === h.homeId).length,
+			certifiedCaregivers: staff.slice(0, 10000).filter((p) => p.homeIds?.includes(h.homeId)).length
+		}))
+	};
+}
 
 export type Referral = typeof referrals.$inferInsert;
 export type Room = typeof rooms.$inferInsert;

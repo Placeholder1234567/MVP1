@@ -4,6 +4,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
+	import { PLACEMENT_GUIDANCE, type PlacementNeeds } from '#lib/domain/placement.ts';
 	const app = useSession();
 	const stages = ['inquiry', 'touring', 'accepted', 'waitlist', 'declined', 'placed'] as const;
 	type Stage = (typeof stages)[number];
@@ -24,6 +25,7 @@
 	let phone = $state('');
 	let email = $state('');
 	let notes = $state('');
+	let medicationNeed = $state<PlacementNeeds['medicationCertifiedStaff']>('unknown');
 	let stage = $state<Stage>('inquiry');
 	let homeId = $state('');
 	let admissionName = $state('');
@@ -82,6 +84,7 @@
 			phone = row.contact_phone ?? '';
 			email = row.contact_email ?? '';
 			notes = row.notes ?? '';
+			medicationNeed = row.placement_needs.medicationCertifiedStaff;
 			stage = row.status;
 			homeId = row.assigned_home_id ?? '';
 			admissionName = row.client_name ?? '';
@@ -104,6 +107,7 @@
 		phone = '';
 		email = '';
 		notes = '';
+		medicationNeed = 'unknown';
 		stage = 'inquiry';
 		homeId = '';
 		dirty = false;
@@ -113,7 +117,13 @@
 		busy = true;
 		message = '';
 		try {
-			const details = { contactName, contactPhone: phone, contactEmail: email, notes };
+			const details = {
+				contactName,
+				contactPhone: phone,
+				contactEmail: email,
+				notes,
+				placementNeeds: { medicationCertifiedStaff: medicationNeed }
+			};
 			if (creating) {
 				const row = await trpc.intake.createReferral.mutate({ ...details, clientName, source });
 				dirty = false;
@@ -131,6 +141,22 @@
 			message = 'Referral saved.';
 		} catch {
 			message = 'Could not save. Connect and check the form. Placed referrals cannot be changed.';
+		} finally {
+			busy = false;
+		}
+	}
+	async function refreshPlacement() {
+		if (!selected || dirty) return;
+		busy = true;
+		try {
+			const [row, inventory] = await Promise.all([
+				trpc.intake.getReferral.query({ id: selected.id }),
+				trpc.intake.listRooms.query({})
+			]);
+			selected = row;
+			rooms = inventory;
+		} catch {
+			message = 'Could not refresh placement facts. Connect and try again.';
 		} finally {
 			busy = false;
 		}
@@ -355,6 +381,16 @@
 							>Intake notes<textarea class="input" rows="5" maxlength="8000" bind:value={notes}
 							></textarea></label
 						>
+						<label for="medication-staff-need">Medication-certified staff need</label>
+						<select id="medication-staff-need" class="input" bind:value={medicationNeed}>
+							<option value="unknown">Not yet reviewed</option>
+							<option value="required">Required</option>
+							<option value="not_required">Not required</option>
+						</select>
+						<p class="muted">
+							Record the reviewed need explicitly. Intake notes are never used to infer it. Other
+							support needs still require human review.
+						</p>
 						{#if selected?.status !== 'placed'}<button class="btn"
 								>{creating ? 'Create referral' : 'Save referral'}</button
 							>{/if}
@@ -399,19 +435,35 @@
 						<div class="stack" role="group" aria-label="Placement availability guidance">
 							<h3>Compare homes</h3>
 							<p class="muted">
-								Availability guidance only. Review needs, accessibility, caregiver skills and
-								staffing before choosing a home. Referral notes are not used to infer clinical
-								eligibility.
+								Human review is required. Certification counts include active caregivers assigned to
+								each home, not scheduled coverage, credential expiry verification or clinical
+								suitability. Review all needs, accessibility and staffing before choosing. Nothing
+								is assigned automatically.
 							</p>
+							<button
+								type="button"
+								class="btn sec"
+								disabled={busy || dirty}
+								onclick={refreshPlacement}>Refresh placement facts</button
+							>
+							{#if !selected.placement.complete}<p class="callout">
+									Comparison is incomplete. Counts shown are lower bounds; review the full inventory
+									and staffing before placement.
+								</p>{/if}
 							{#each app.openHomes as home (home.id)}
 								{@const inventory = rooms.filter((r) => r.homeId === home.id)}
 								{@const openRooms = inventory.filter(
 									(r) => r.status === 'available' && !r.occupiedBy
 								)}
+								{@const facts = selected.placement.homes.find((h) => h.homeId === home.id)}
 								<div class="card pad stack">
 									<h4>
 										{home.name}{selected.assigned_home_id === home.id ? ' · Proposed home' : ''}
 									</h4>
+									{#if facts}<p>
+											{PLACEMENT_GUIDANCE[facts.guidance]} · {facts.certifiedCaregivers} active assigned
+											medication-certified caregivers
+										</p>{:else}<p>Needs review · comparison unavailable for this home.</p>{/if}
 									<p>
 										{openRooms.length} available {openRooms.length === 1 ? 'room' : 'rooms'} · {inventory.filter(
 											(r) => r.status === 'reserved'

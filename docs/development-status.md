@@ -10,17 +10,19 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 - Refused upload operation matching, correct-PIN failure handling and deterministic report-audit assertions are merged (PR225, PR226, PR228).
 - The guarded development notification panel and controls are merged (PR206, PR229, PR230). Core, database/RLS, production/development browser and performance checks passed on each final commit. Local timers remain volatile across restart.
-- Sign-out work preservation (PR227) includes explicit draft/refused-write warnings, fail-closed inventory reads, bounded server cleanup and accurate warnings when the server session cannot be confirmed ended. Its latest browser cases require CI validation.
+- Sign-out work preservation is merged (PR227), including cancel/reload/PIN recovery and failed server-session cleanup browser cases. All four final-commit gates passed.
 - The duplicate delivery claim precision fix is merged (PR231), with a concurrent single-send integration assertion and all four gates passing.
-- Carrier-state separation and required supervisor SMS are implemented in follow-up branches awaiting final validation. Legacy suppression and verified START semantics are explicit; no real account migration or provider execution has occurred.
+- Carrier-state separation and required supervisor SMS are merged (PR232/233) after all four gates passed. Legacy suppression and verified START/current-policy/current-role/current-phone semantics are explicit; no real account migration or provider execution has occurred.
+- Encrypted Lomi reload recovery (PR234) is implemented in a follow-up branch awaiting final validation, preserving explicit resume, separate Use/signature and scoped encrypted storage.
+- Guarded operator offboarding is merged (PR235), with all four final-commit gates passing. Default preview, exact confirmation, access block, retryable identity revocation and an application retention hold preserve clinical/audit records; no actual agency was offboarded.
+- Intake matching is implemented in a follow-up branch awaiting validation. Reviewed medication-certified-staff needs are separate from narrative. Bounded caller-visible room and active assigned certified-caregiver facts inform human review, never automatic clinical eligibility or placement.
 
 ## Remaining engineering work
 
 1. Complete pending PR validation and merges; all four gates must pass on each final commit.
-2. Finish carrier-state and required supervisor SMS validation; preserve STOP, conservative legacy suppression, current policy/role/number checks and read-only preview behavior.
-4. Persist original Lomi observations and the edit ledger in encrypted device storage for reconnect recovery after reload. Keep account/home/person binding, human review and signatures; never use browser key/value storage for PHI.
-5. Implement the intake spec's explicit needs/certifications placement matching. The current comparison shows room availability and requires human review; it does not infer clinical eligibility from referral narrative.
-6. Implement agency offboarding with access shutdown and retention holds, without deleting immutable audit or clinical history. Actual account/data operations need an authorized operator workflow.
+2. Validate encrypted Lomi original-observation/edit-ledger recovery through reload/PIN and home isolation; never use browser key/value storage for PHI.
+3. Validate intake explicit needs/certification facts and fresh human admission guidance, including migration on a fresh isolated CI database.
+4. Preserve offboarding access/retention safeguards. Actual operations require an authorized operator and exact agency confirmation; infrastructure retention/disposal evidence remains separate.
 
 ## Release evidence still required
 
