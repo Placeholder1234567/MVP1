@@ -11,6 +11,8 @@
 	} from '#lib/domain/index.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import LomiComposer from './LomiComposer.svelte';
+	import { clearLomiRecovery } from './lomi-recovery';
+	import type { LomiBinding } from './lomi-recovery-data';
 	let {
 		clientId,
 		type = 'shift',
@@ -42,6 +44,27 @@
 	);
 	const person = $derived(app.people.find((p) => p.id === (note?.client_id ?? clientId)));
 	const kind = $derived(note?.type ?? type);
+	const lomiBinding = $derived<LomiBinding | null>(
+		person?.home_id
+			? {
+					agencyId: app.user.agencyId,
+					profileId: app.user.profileId,
+					homeId: person.home_id,
+					clientId: person.id,
+					type: kind as 'shift' | 'behavior',
+					day: note?.day ?? current.day,
+					shift: (note?.shift ?? current.shift) as 'am' | 'pm' | 'on'
+				}
+			: null
+	);
+	$effect(() => {
+		if (
+			note?.author_id === app.user.profileId &&
+			!isEditableByAuthor(note.status as NoteStatus) &&
+			lomiBinding
+		)
+			void clearLomiRecovery(app.db, lomiBinding);
+	});
 	const fields = $derived(
 		kind === 'behavior'
 			? [
@@ -308,6 +331,7 @@
 						]);
 				});
 			}
+			if (submit && lomiBinding) await clearLomiRecovery(app.db, lomiBinding);
 			dirty = false;
 			signed = submit;
 			signature = false;
@@ -374,10 +398,14 @@
 					>{/if}
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
-		{#if editable && !signed && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
+		{#if editable && !signed && !offlineOnly && lomiBinding}{#key `${app.user.profileId}:${person.id}:${person.home_id}:${kind}:${lomiBinding.day}:${lomiBinding.shift}:${noteId ?? ''}`}<LomiComposer
 					clientId={person.id}
 					type={kind as 'shift' | 'behavior'}
 					shift={(note?.shift ?? current.shift) as 'am' | 'pm' | 'on'}
+					binding={lomiBinding}
+					noteId={note?.id ?? (savedId || null)}
+					createdNoteId={savedId}
+					currentContent={content}
 					onDirty={() => {
 						dirty = true;
 						signature = false;

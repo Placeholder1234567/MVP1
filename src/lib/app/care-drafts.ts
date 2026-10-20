@@ -5,8 +5,9 @@ import {
 	WITNESS_NAME_MAX,
 	WITNESSES_MAX
 } from '#lib/domain/index.ts';
+import { lomiRecoveryData } from './lomi-recovery-data';
 
-export type DraftSection = 'health' | 'incident' | 'attendance';
+export type DraftSection = 'health' | 'incident' | 'attendance' | 'lomi';
 export type DraftData = Record<string, unknown>;
 export interface DraftDatabase {
 	execute(sql: string, parameters?: unknown[]): Promise<unknown>;
@@ -25,6 +26,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
 export function draftData(section: DraftSection, value: unknown): DraftData | null {
 	if (!object(value) || typeof value.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.day))
 		return null;
+	if (section === 'lomi') return lomiRecoveryData(value);
 	if (section === 'attendance') {
 		if (
 			!Array.isArray(value.services) ||
@@ -131,10 +133,11 @@ export class CareDraftStore {
 		readonly profileId: string,
 		readonly clientId: string,
 		readonly section: DraftSection,
-		private status: (error: boolean) => void
+		private status: (error: boolean) => void,
+		keySuffix?: string
 	) {
 		this.database = db();
-		this.id = `${profileId}:${clientId}:${section}`;
+		this.id = `${profileId}:${clientId}:${section}${keySuffix ? ':' + keySuffix : ''}`;
 		flushers.add(this.flushRegistered);
 	}
 	async load(): Promise<DraftData | null> {

@@ -13,12 +13,16 @@
 	import { lomiQuestions } from '#lib/domain/lomi-questions.ts';
 	import LomiVoice from './LomiVoice.svelte';
 	import { useSession } from './session.svelte';
+	import type { LomiLedger } from './lomi-recovery-data';
 	let {
 		result,
 		clientId,
 		type,
 		onUse,
 		onDirty,
+		savedLedger,
+		onSnapshot,
+		retryOnResume = false,
 		voice = false,
 		said = ''
 	}: {
@@ -28,9 +32,13 @@
 		clientId: string;
 		type: NoteKind;
 		voice?: boolean;
-		onUse: (draft: DraftResult) => void;
+		onUse: (draft: DraftResult, ledger: LomiLedger) => void;
 		onDirty?: () => void;
+		savedLedger?: LomiLedger;
+		onSnapshot?: (ledger: LomiLedger) => void;
+		retryOnResume?: boolean;
 	} = $props();
+	const restored = untrack(() => savedLedger);
 	const app = useSession();
 	const original = untrack(() => ({
 		result,
@@ -66,10 +74,11 @@
 		}
 		wasMasked = masked;
 	});
-	let manuallyEdited = $state(new Set<string>());
-	let currentResult = $state<DraftResult>(untrack(() => result));
+	let manuallyEdited = $state(new Set<string>(restored?.manuallyEdited));
+	let currentResult = $state<DraftResult>(untrack(() => restored?.currentResult ?? result));
 	onMount(() => {
 		alive = true;
+		if (retryOnResume && navigator.onLine && currentResult.fallback) reconnectPending = true;
 		const connected = () => {
 			reconnectPending = true;
 		};
@@ -79,31 +88,55 @@
 			window.removeEventListener('online', connected);
 		};
 	});
-	let content = $state<Record<string, string>>(untrack(() => ({ ...result.content })));
-	let additions = $state<Record<string, string>>({});
-	let followup = $state('');
+	let content = $state<Record<string, string>>(
+		untrack(() => ({ ...(restored?.content ?? result.content) }))
+	);
+	let additions = $state<Record<string, string>>({ ...restored?.additions });
+	let followup = $state(restored?.followup ?? '');
 	let busy = $state(false);
 	let pending = $state<{
 		updates: Array<{ section: string; text: string }>;
 		fallback: boolean;
-	} | null>(null);
+	} | null>(restored?.pending ?? null);
 	let message = $state('');
-	let pendingSource = $state('');
-	let usedAi = $state(!untrack(() => result.fallback));
+	let pendingSource = $state(restored?.pendingSource ?? '');
+	let usedAi = $state(untrack(() => restored?.usedAi ?? !result.fallback));
 	// Section text before the last accepted proposal, so it can be undone.
-	let undo = $state<Record<string, string> | null>(null);
+	let undo = $state<Record<string, string> | null>(restored?.undo ?? null);
 	// Vague phrases the caregiver chose to keep ("Keep as is"), per section.
-	let kept = $state(new Set<string>());
+	let kept = $state(new Set<string>(restored?.kept));
 	let voiceBusy = $state(false);
 	// Sections the caregiver has tapped into: Lomi's text there is now theirs
 	// (frontend-spec-2 §6 ghost text). Untouched ones stay slightly faded.
-	let owned = $state<string[]>([]);
+	let owned = $state<string[]>([...(restored?.owned ?? [])]);
 	let voiceMessage = $state('');
 	const fields: Record<string, HTMLTextAreaElement | undefined> = {};
 	const openFlags = $derived(openSectionFlags(content, kept));
 	// Lomi's follow-up questions for empty or thin sections (ai-pipeline.md
 	// "Proactive Questions"): at most three, from the draft itself.
-	let skipped = $state(new Set<string>());
+	let skipped = $state(new Set<string>(restored?.skipped));
+	function snapshot(): LomiLedger {
+		return {
+			content: { ...content },
+			currentResult: { ...currentResult, content: { ...currentResult.content } },
+			manuallyEdited: [...manuallyEdited],
+			owned: [...owned],
+			kept: [...kept],
+			skipped: [...skipped],
+			additions: { ...additions },
+			followup,
+			undo: undo ? { ...undo } : null,
+			usedAi,
+			pending: pending
+				? { fallback: pending.fallback, updates: pending.updates.map((update) => ({ ...update })) }
+				: null,
+			pendingSource
+		};
+	}
+	$effect(() => {
+		const state = snapshot();
+		untrack(() => onSnapshot?.(state));
+	});
 	const person = $derived(app.people.find((p) => p.id === clientId));
 	const questions = $derived(
 		lomiQuestions(content, person?.first_name || person?.name?.split(/\s+/)[0] || '', skipped)
@@ -317,7 +350,7 @@
 		{usedAi
 			? 'AI-generated draft. Check every section against what actually happened.'
 			: 'Simple sorting draft. These are your original words; check their placement.'} Nothing is signed
-		or saved until you choose to do so.
+		or submitted. Use transfers reviewed text into your note; save and sign separately.
 	</p>
 	{#if questions.length}<section class="card pad stack" aria-labelledby="lomi-asks">
 			<h3 id="lomi-asks">Lomi asks</h3>
@@ -550,13 +583,16 @@
 				)
 			)
 				return;
-			onUse({
-				...currentResult,
-				content: { ...content },
-				flags: warnings.flags,
-				incident: warnings.incident,
-				fallback: !usedAi
-			});
+			onUse(
+				{
+					...currentResult,
+					content: { ...content },
+					flags: warnings.flags,
+					incident: warnings.incident,
+					fallback: !usedAi
+				},
+				snapshot()
+			);
 		}}>Use this reviewed draft in my note</button
 	>
 	<p class="muted">
