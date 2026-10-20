@@ -442,6 +442,12 @@ Each assessment covers: application code, infrastructure configuration, third-pa
   4. Certificate of destruction issued after retention period and disposal.
 - **Audit log entries are never deleted**, even during agency offboarding, to maintain the compliance trail.
 
+**Operator workflow increment:** `npm run agency:offboard -- --agency-id <uuid> --operator <operator>` defaults to a read-only preview. Execution additionally requires `--execute --confirm-agency-id <same uuid>`. There is no app/API endpoint. The transaction records an application retention hold and blocks agency claims, deactivates all profiles, revokes API/device keys, disables webhooks and removes push tokens. Clinical records and existing audit rows are retained. Reserved offboarding settings cannot be changed by an agency admin; database guards prevent new active profiles/keys/webhooks/devices under the hold, including stale in-flight requests. Existing PowerSync rules require an active profile, so no new agency data is synced after deactivation propagates.
+
+Identity Platform disabling and refresh-token revocation run after the database access block commits. Failures leave `identity_pending`, never a false success; retry is idempotent and rechecks all identities. The same operation ID survives retry. A renewable 15-minute claim and expected run-token checks prevent concurrent completion updates; an interrupted run may resume after claim expiry. An identity that does not exist is already unable to sign in. Completion confirms the access/identity steps at that time, not future manual provider changes.
+
+The application hold is not proof of infrastructure retention enforcement. Operators must verify storage/backups, legal holds and eventual disposal separately. This workflow does not provision infrastructure, erase a device that is already offline, delete clinical/audit history, calculate a legal retention deadline, perform cryptographic destruction or issue a destruction certificate. No production offboarding or provider operation has been performed by the implementation tests, which use synthetic isolated databases and a recording identity adapter.
+
 ---
 
 ## Contingency Plan
