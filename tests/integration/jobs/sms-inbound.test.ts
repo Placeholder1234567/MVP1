@@ -1,10 +1,14 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { closeDb, withService } from '../../../src/lib/server/db';
+import { closeDb, withService, withUser } from '../../../src/lib/server/db';
 import * as s from '../../../src/lib/server/db/schema';
 import { getCurrentUser } from '../../../src/lib/server/services/auth';
-import { dispatchNotifications } from '../../../src/lib/server/services/notification';
+import {
+	dispatchNotifications,
+	setSmsOptOut,
+	smsCarrierSuppressed
+} from '../../../src/lib/server/services/notification';
 import { handleInboundSms } from '../../../src/lib/server/services/sms';
 import { appRouter } from '../../../src/lib/server/trpc/router';
 import { createCallerFactory } from '../../../src/lib/server/trpc/middleware';
@@ -138,6 +142,19 @@ it('STOP turns SMS off, even for mandatory alerts; START turns it back on', asyn
 				.where(eq(s.notificationPreferences.profile_id, cara))
 		);
 	expect((await prefs()).every((p) => p.sms_enabled === false)).toBe(true);
+	// An ordinary preference save must never clear the verified carrier STOP.
+	await (
+		await as(cara)
+	).notification.updatePreferences({
+		preferences: [{ notificationType: 'coverage_offer', smsEnabled: true }]
+	});
+	expect((await prefs()).find((p) => p.notification_type === 'coverage_offer')?.sms_enabled).toBe(
+		true
+	);
+	const user = (await getCurrentUser(uid(cara)))!;
+	expect(await withUser(user.claims, {}, (tx) => tx.select().from(s.smsCarrierConsents))).toEqual(
+		[]
+	);
 
 	const id = randomUUID();
 	await withService((tx) =>
@@ -158,6 +175,8 @@ it('STOP turns SMS off, even for mandatory alerts; START turns it back on', asyn
 	expect(await dispatchNotifications({ ids: [id] })).toMatchObject({ sent: 0, failed: 1 });
 	expect(stoppedRecipientCalls()).toHaveLength(before);
 	expect(sms.mock.calls.some(([, delivery]) => delivery.notificationId === id)).toBe(false);
+	expect(await text(phones[cara], 'unknown reply')).toBe('unknown');
+	expect(stoppedRecipientCalls()).toHaveLength(before);
 
 	expect(await text(phones[cara], 'start')).toBe('opted_in');
 	expect(lastReplyTo(phones[cara])?.body).toBe(SMS_REPLY_TEXT.started);
@@ -170,6 +189,25 @@ it('STOP turns SMS off, even for mandatory alerts; START turns it back on', asyn
 			.where(and(eq(s.notifications.id, id), eq(s.notifications.agency_id, agency)))
 	);
 	expect(row.status).toBe('failed');
+	const next = randomUUID();
+	await withService((tx) =>
+		tx.insert(s.notifications).values({
+			id: next,
+			agency_id: agency,
+			profile_id: cara,
+			type: 'coverage_offer',
+			title: 'Synthetic consent resumed',
+			channel: 'sms',
+			priority: 1
+		})
+	);
+	expect(await dispatchNotifications({ ids: [next] })).toMatchObject({ sent: 1 });
+	expect(sms.mock.calls.some(([, delivery]) => delivery.notificationId === next)).toBe(true);
+	await expect(
+		withService((tx) =>
+			setSmsOptOut(tx, agency, { id: cara, role: 'caregiver' }, true, '+15550000000')
+		)
+	).rejects.toMatchObject({ code: 'RULE_VIOLATION' });
 });
 
 it('answers a re-delivered text only once', async () => {
@@ -184,4 +222,106 @@ it('answers a re-delivered text only once', async () => {
 	expect(await send()).toBe('unknown');
 	expect(await send()).toBe('duplicate');
 	expect(sms.mock.calls.length).toBe(before + 1);
+});
+
+it('keeps ambiguous legacy opt-outs suppressed after a preference save until verified START', async () => {
+	const id = randomUUID(),
+		number = phone();
+	await withService(async (tx) => {
+		await tx.insert(s.profiles).values({
+			id,
+			agency_id: agency,
+			auth_uid: uid(id),
+			email: `${id}@example.test`,
+			name: 'Synthetic legacy recipient',
+			phone: number,
+			role: 'caregiver',
+			home_ids: [oak]
+		});
+		await tx.insert(s.notificationPreferences).values({
+			agency_id: agency,
+			profile_id: id,
+			notification_type: 'coverage_offer',
+			sms_enabled: false
+		});
+	});
+	await (
+		await as(id)
+	).notification.updatePreferences({
+		preferences: [{ notificationType: 'coverage_offer', smsEnabled: true }]
+	});
+	expect(await withService((tx) => smsCarrierSuppressed(tx, agency, number))).toBe(true);
+	expect(await text(number, 'START')).toBe('opted_in');
+	expect(await withService((tx) => smsCarrierSuppressed(tx, agency, number))).toBe(false);
+});
+
+it('does not convert a new ordinary SMS opt-out into carrier STOP or verified consent', async () => {
+	const id = randomUUID(),
+		number = phone();
+	await withService((tx) =>
+		tx.insert(s.profiles).values({
+			id,
+			agency_id: agency,
+			auth_uid: uid(id),
+			email: `${id}@example.test`,
+			name: 'Synthetic new recipient',
+			phone: number,
+			role: 'caregiver',
+			home_ids: [oak]
+		})
+	);
+	await (
+		await as(id)
+	).notification.updatePreferences({
+		preferences: [{ notificationType: 'coverage_offer', smsEnabled: false }]
+	});
+	expect(await withService((tx) => smsCarrierSuppressed(tx, agency, number))).toBe(false);
+	const rows = await withService((tx) =>
+		tx.select().from(s.smsCarrierConsents).where(eq(s.smsCarrierConsents.agency_id, agency))
+	);
+	expect(
+		rows.find((row) => row.phone_hash === createHash('sha256').update(number).digest('hex'))?.state
+	).toBe('unknown');
+	const user = (await getCurrentUser(uid(id)))!;
+	await expect(
+		withUser(user.claims, {}, (tx) =>
+			tx
+				.insert(s.smsCarrierConsents)
+				.values({ agency_id: agency, phone_hash: 'synthetic-forged', state: 'started' })
+		)
+	).rejects.toBeDefined();
+});
+
+it('shares carrier suppression by number within an agency and isolates agencies', async () => {
+	const number = phone(),
+		ids = [randomUUID(), randomUUID()],
+		otherAgency = randomUUID();
+	await withService(async (tx) => {
+		await tx.insert(s.agencies).values({
+			id: otherAgency,
+			name: 'Synthetic other agency',
+			slug: `sms-${otherAgency}`,
+			subscription_tier: 'complete'
+		});
+		await tx.insert(s.profiles).values(
+			ids.map((id) => ({
+				id,
+				agency_id: agency,
+				auth_uid: uid(id),
+				email: `${id}@example.test`,
+				name: 'Synthetic shared number',
+				phone: number,
+				role: 'caregiver' as const,
+				home_ids: [oak]
+			}))
+		);
+		await setSmsOptOut(tx, agency, { id: ids[0], role: 'caregiver' }, true, number);
+	});
+	await (
+		await as(ids[1])
+	).notification.updatePreferences({
+		preferences: [{ notificationType: 'coverage_offer', smsEnabled: true }]
+	});
+	expect(await withService((tx) => smsCarrierSuppressed(tx, agency, number))).toBe(true);
+	expect(await withService((tx) => smsCarrierSuppressed(tx, otherAgency, number))).toBe(false);
 });

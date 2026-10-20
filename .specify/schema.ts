@@ -1860,3 +1860,22 @@ export const referralNotes = pgTable(
     index('referral_notes_referral_id_idx').on(t.referral_id),
   ],
 );
+
+// Carrier STOP/START state is separate from ordinary notification preferences.
+// Server-only, never synced; keyed by a phone digest within each agency so staff
+// sharing a number share its suppression. Only verified inbound replies grant or
+// revoke consent; initialization conservatively captures legacy/unknown state.
+export const smsCarrierConsents = pgTable(
+  'sms_carrier_consents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id').notNull().references(() => agencies.id, { onDelete: 'cascade' }),
+    phone_hash: text('phone_hash').notNull(),
+    state: text('state').$type<'unknown' | 'stopped' | 'started' | 'legacy_suppressed'>().notNull(),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('sms_carrier_consents_agency_phone_idx').on(t.agency_id, t.phone_hash),
+  ],
+);

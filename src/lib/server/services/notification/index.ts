@@ -30,6 +30,7 @@ import {
 } from './notification.queries';
 
 export { NotificationOverridesInput } from './overrides-input';
+export { smsCarrierSuppressed } from './carrier-consent';
 export { dispatchNotifications, sweepNotifications, RetryLater } from './dispatch';
 export {
 	quietHours,
