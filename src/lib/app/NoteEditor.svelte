@@ -101,6 +101,7 @@
 	);
 	let loaded = $state('');
 	let savedId = $state('');
+	let composerCreatedNoteId = $state('');
 	let busy = $state(false);
 	let signed = $state(false);
 	let message = $state('');
@@ -129,6 +130,7 @@
 		if (scope !== identity) {
 			scope = identity;
 			savedId = '';
+			composerCreatedNoteId = '';
 			loaded = '';
 			dirty = false;
 			signature = false;
@@ -248,6 +250,7 @@
 		busy = true;
 		const id = note?.id ?? savedId ?? '';
 		const target = id || crypto.randomUUID();
+		if (!id) composerCreatedNoteId = target;
 		savedId = target;
 		const goalEntries = Object.entries(scores).map(([goalId, g]) => ({ goalId, ...g }));
 		try {
@@ -398,13 +401,13 @@
 					>{/if}
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
-		{#if editable && !signed && !offlineOnly && lomiBinding}{#key `${app.user.profileId}:${person.id}:${person.home_id}:${kind}:${lomiBinding.day}:${lomiBinding.shift}:${noteId ?? ''}`}<LomiComposer
+		{#if editable && !signed && !offlineOnly && lomiBinding && app.homeId === person.home_id}{#key `${app.user.profileId}:${person.id}:${person.home_id}:${kind}:${lomiBinding.day}:${lomiBinding.shift}:${noteId ?? (note?.id === composerCreatedNoteId ? '' : (note?.id ?? ''))}`}<LomiComposer
 					clientId={person.id}
 					type={kind as 'shift' | 'behavior'}
 					shift={(note?.shift ?? current.shift) as 'am' | 'pm' | 'on'}
 					binding={lomiBinding}
 					noteId={note?.id ?? (savedId || null)}
-					createdNoteId={savedId}
+					createdNoteId={composerCreatedNoteId}
 					currentContent={content}
 					onDirty={() => {
 						dirty = true;

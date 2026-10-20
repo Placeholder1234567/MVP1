@@ -2,10 +2,13 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { draftLocally } from '../../src/lib/domain/lomi';
 
-async function unlock(page: Page) {
+async function unlock(page: Page, phone: boolean) {
 	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
 	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
 	await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
+	await page
+		.getByLabel('Current home', { exact: true })
+		.selectOption({ label: phone ? 'Maple House' : 'Oak House' });
 }
 async function open(page: Page, phone: boolean) {
 	await page.goto('/login');
@@ -32,7 +35,8 @@ test('encrypted reload recovery keeps original observations, review edits and ed
 	page
 }, info) => {
 	test.setTimeout(180000);
-	await open(page, info.project.name === 'phone');
+	const phone = info.project.name === 'phone';
+	await open(page, phone);
 	const observation = 'Synthetic garden walk. Ate dinner. Read a book.';
 	let fallback = true,
 		requests = 0;
@@ -69,7 +73,7 @@ test('encrypted reload recovery keeps original observations, review edits and ed
 	await saved(page);
 	page.once('dialog', (dialog) => void dialog.accept());
 	await page.reload();
-	await unlock(page);
+	await unlock(page, phone);
 	await expect(review).toHaveCount(0);
 	await expect(
 		page.getByRole('button', { name: 'Resume saved Lomi review', exact: true })
@@ -95,7 +99,7 @@ test('encrypted reload recovery keeps original observations, review edits and ed
 	await expect(page.getByText('Draft saved on this device.', { exact: true })).toBeVisible();
 	await saved(page);
 	await page.reload();
-	await unlock(page);
+	await unlock(page, phone);
 	await expect(
 		page.getByRole('button', { name: 'Resume saved Lomi review', exact: true })
 	).toBeVisible();
@@ -138,7 +142,7 @@ test('saved Lomi recovery stays in its home and explicit discard survives reload
 	const url = page.url();
 	page.once('dialog', (dialog) => void dialog.accept());
 	await page.reload();
-	await unlock(page);
+	await unlock(page, phone);
 	await expect(
 		page.getByRole('button', { name: 'Resume saved Lomi review', exact: true })
 	).toBeVisible();
@@ -152,7 +156,7 @@ test('saved Lomi recovery stays in its home and explicit discard survives reload
 		.getByLabel('Current home', { exact: true })
 		.selectOption({ label: phone ? 'Maple House' : 'Oak House' });
 	await page.goto(url);
-	await unlock(page);
+	await unlock(page, phone);
 	await expect(
 		page.getByRole('button', { name: 'Resume saved Lomi review', exact: true })
 	).toBeVisible();
@@ -162,7 +166,7 @@ test('saved Lomi recovery stays in its home and explicit discard survives reload
 		page.getByRole('button', { name: 'Resume saved Lomi review', exact: true })
 	).toHaveCount(0);
 	await page.reload();
-	await unlock(page);
+	await unlock(page, phone);
 	await expect(
 		page.getByRole('button', { name: 'Resume saved Lomi review', exact: true })
 	).toHaveCount(0);
