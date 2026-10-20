@@ -273,6 +273,8 @@ The legacy `report.generate`/`status`/`download` procedure names in the target t
 
 ### intake
 
+Implemented placement extension: create/update accept optional strict `placementNeeds: { medicationCertifiedStaff: 'unknown' | 'required' | 'not_required' }`. Omission on create defaults unknown; omission on update preserves the recorded value. Full referral responses include `placement_needs` plus `placement: { complete, homes: [{ homeId, homeName, availableRooms, certifiedCaregivers, guidance }] }`. Guidance is `review_candidate`, `needs_review`, `certification_gap` or `no_available_room`, never clinical eligibility. `getReferral`/`updateReferral` load current caller-visible facts, and admission returns a freshly computed `placement` alongside its IDs. There is no separate matching procedure or automatic assignment. The comparison is bounded and marks truncation incomplete; refresh is explicit in the UI. See services.md for fact limits and human review requirements.
+
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
 | `intake.createReferral` | mutation | `{ contactName?: string, contactPhone?: string, contactEmail?: string, clientName?: string, source?: string, notes?: string }` | `{ id, status: 'inquiry', createdAt }` | supervisor | Creates a new referral/inquiry record. `source` tracks where the referral came from (e.g., 'case manager', 'family', 'state agency'). |

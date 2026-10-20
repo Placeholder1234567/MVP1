@@ -14,6 +14,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 - The duplicate delivery claim precision fix is merged (PR231), with a concurrent single-send integration assertion and all four gates passing.
 - Carrier-state separation and required supervisor SMS are merged after all four final-head checks passed. Legacy suppression and verified START semantics are explicit; no real account migration or provider execution has occurred.
 
+- Intake matching is implemented in PR236 awaiting all four final-head gates. Explicit medication-certified-staff needs remain separate from narrative; bounded room and active assigned certified-caregiver facts inform human review, never automatic eligibility or placement.
+
 ## Remaining engineering work
 
 1. Complete PR236 intake placement validation. The new desktop/phone intake cases pass; a returned-note resubmission browser failure exposed stale queue feedback. A separate fix refreshes the upload count after draft saves and before signing, blocks returned-note signing while sync is unsettled, and holds a real upload in the version-history regression. All four final-head gates remain required before either increment merges.

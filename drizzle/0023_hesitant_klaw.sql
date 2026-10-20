@@ -1,0 +1,1 @@
+ALTER TABLE "referrals" ADD COLUMN "placement_needs" jsonb DEFAULT '{"medicationCertifiedStaff":"unknown"}'::jsonb NOT NULL;

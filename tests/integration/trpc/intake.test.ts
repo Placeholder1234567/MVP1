@@ -59,6 +59,170 @@ beforeAll(async () => {
 	});
 });
 afterAll(closeDb);
+it('marks bounded comparisons incomplete instead of inventing definite matching facts', async () => {
+	const large = randomUUID(),
+		admin = randomUUID();
+	await withService(async (tx) => {
+		await tx.insert(s.agencies).values({
+			id: large,
+			name: 'Synthetic bounded placement',
+			slug: `intake-${large}`,
+			subscription_tier: 'complete'
+		});
+		await tx.insert(s.profiles).values({
+			id: admin,
+			agency_id: large,
+			auth_uid: `intake-${admin}`,
+			email: `${admin}@example.test`,
+			name: 'Synthetic placement admin',
+			role: 'admin'
+		});
+		await tx.insert(s.homes).values(
+			Array.from({ length: 201 }, (_, i) => ({
+				agency_id: large,
+				name: `Synthetic bounded ${i}`
+			}))
+		);
+	});
+	const api = (await as(admin)).intake;
+	const referral = await api.createReferral({
+		placementNeeds: { medicationCertifiedStaff: 'not_required' }
+	});
+	const row = await api.getReferral({ id: referral.id });
+	expect(row.placement.complete).toBe(false);
+	expect(row.placement.homes).toHaveLength(200);
+	expect(row.placement.homes.every((h) => h.guidance === 'needs_review')).toBe(true);
+});
+it('matches only explicit reviewed needs with current accessible room and caregiver facts', async () => {
+	const certified = randomUUID(),
+		gap = randomUUID(),
+		archived = randomUUID(),
+		staff = randomUUID(),
+		vacant = randomUUID();
+	await withService(async (tx) => {
+		await tx.insert(s.homes).values([
+			{ id: certified, agency_id: agency, name: 'Certified placement' },
+			{ id: gap, agency_id: agency, name: 'Certification gap' },
+			{ id: archived, agency_id: agency, name: 'Archived placement', archived_at: new Date() }
+		]);
+		await tx
+			.update(s.profiles)
+			.set({ home_ids: [home, certified, gap, archived] })
+			.where(eq(s.profiles.id, supervisor));
+		await tx.insert(s.profiles).values([
+			{
+				id: staff,
+				agency_id: agency,
+				auth_uid: `placement-${staff}`,
+				email: `${staff}@example.test`,
+				name: 'Synthetic Certified',
+				role: 'caregiver',
+				home_ids: [certified],
+				med_certified: true
+			},
+			{
+				agency_id: agency,
+				auth_uid: `placement-${randomUUID()}`,
+				email: `${randomUUID()}@example.test`,
+				name: 'Inactive Synthetic',
+				role: 'caregiver',
+				home_ids: [gap],
+				med_certified: true,
+				active: false
+			},
+			{
+				agency_id: agency,
+				auth_uid: `placement-${randomUUID()}`,
+				email: `${randomUUID()}@example.test`,
+				name: 'Supervisor Synthetic',
+				role: 'supervisor',
+				home_ids: [gap],
+				med_certified: true
+			}
+		]);
+		await tx.insert(s.rooms).values([
+			{ id: vacant, agency_id: agency, home_id: certified, name: 'Available' },
+			{ agency_id: agency, home_id: certified, name: 'Reserved', status: 'reserved' },
+			{ agency_id: agency, home_id: gap, name: 'Gap available' },
+			{ agency_id: agency, home_id: archived, name: 'Archived available' }
+		]);
+	});
+	const api = (await as(supervisor)).intake;
+	const referral = await api.createReferral({
+		notes: 'Synthetic narrative mentions medication support.'
+	});
+	let row = await api.getReferral({ id: referral.id });
+	expect(row.placement_needs).toEqual({ medicationCertifiedStaff: 'unknown' });
+	expect(row.placement.complete).toBe(true);
+	expect(row.placement.homes.find((h) => h.homeId === certified)).toMatchObject({
+		availableRooms: 1,
+		certifiedCaregivers: 1,
+		guidance: 'needs_review'
+	});
+	expect(
+		row.placement.homes.some(
+			(h) => h.homeId === archived || h.homeId === foreignHome || h.homeId === secondHome
+		)
+	).toBe(false);
+	row = await api.updateReferral({
+		id: referral.id,
+		status: 'accepted',
+		placementNeeds: { medicationCertifiedStaff: 'required' }
+	});
+	expect(row.placement.homes.find((h) => h.homeId === certified)?.guidance).toBe(
+		'review_candidate'
+	);
+	expect(row.placement.homes.find((h) => h.homeId === gap)).toMatchObject({
+		certifiedCaregivers: 0,
+		guidance: 'certification_gap'
+	});
+	await api.updateReferral({ id: referral.id, notes: 'Ordinary update preserves reviewed needs.' });
+	expect(
+		(await api.getReferral({ id: referral.id })).placement_needs.medicationCertifiedStaff
+	).toBe('required');
+	await expect(
+		api.updateReferral({
+			id: referral.id,
+			placementNeeds: { medicationCertifiedStaff: 'required', inferred: true }
+		} as never)
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	await withService(async (tx) => {
+		await tx.update(s.profiles).set({ med_certified: false }).where(eq(s.profiles.id, staff));
+		await tx.update(s.rooms).set({ status: 'reserved' }).where(eq(s.rooms.id, vacant));
+	});
+	row = await api.getReferral({ id: referral.id });
+	expect(row.placement.homes.find((h) => h.homeId === certified)).toMatchObject({
+		availableRooms: 0,
+		certifiedCaregivers: 0,
+		guidance: 'no_available_room'
+	});
+	await withService(async (tx) => {
+		await tx
+			.update(s.profiles)
+			.set({ home_ids: [home, certified] })
+			.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, supervisor)));
+	});
+	// Reuse the caller with its older claim: current profile ownership still wins.
+	expect(
+		(await api.getReferral({ id: referral.id })).placement.homes.some((h) => h.homeId === gap)
+	).toBe(false);
+	await withService(async (tx) => {
+		await tx
+			.update(s.profiles)
+			.set({ home_ids: [home, certified, gap] })
+			.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, supervisor)));
+	});
+	// Explicit human admission remains authoritative; current guidance is returned, never an auto-placement.
+	const admitted = await api.convertToClient({
+		referralId: referral.id,
+		homeId: gap,
+		name: 'Synthetic reviewed admission'
+	});
+	expect(admitted.placement.homes.find((h) => h.homeId === gap)?.guidance).toBe(
+		'certification_gap'
+	);
+	expect((await api.getReferral({ id: referral.id })).assigned_home_id).toBe(gap);
+});
 const accepted = async () => {
 	const api = (await as(supervisor)).intake;
 	const row = await api.createReferral({
