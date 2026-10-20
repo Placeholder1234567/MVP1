@@ -13,6 +13,7 @@
 	let busy = $state(false);
 	let message = $state('');
 	let failure = $state('');
+	let historyScope = $state<'mine' | 'agency'>('mine');
 	let ready = $state(false);
 	onMount(() => {
 		ready = true;
@@ -20,9 +21,30 @@
 	});
 	async function refresh() {
 		try {
-			recent = await devNotifications.recent.query();
+			recent = await devNotifications.recent.query({ scope: historyScope });
 		} catch {
 			failure = 'Could not load delivery history.';
+		}
+	}
+	async function sendTest() {
+		if (
+			busy ||
+			!confirm(
+				'Queue a synthetic test for your account? Normal delivery and escalation rules will run in this local demo agency.'
+			)
+		)
+			return;
+		busy = true;
+		failure = '';
+		message = '';
+		try {
+			const result = await devNotifications.sendTest.mutate({ type: selected, confirm: true });
+			message = `Synthetic test requested: ${result.deliveriesQueued} deliveries queued. Delivery is not yet confirmed.`;
+			await refresh();
+		} catch {
+			failure = 'Could not request the synthetic test.';
+		} finally {
+			busy = false;
 		}
 	}
 	async function preview(event: SubmitEvent) {
@@ -61,6 +83,9 @@
 				>{/each}</select
 		>
 		<button class="btn" disabled={!ready || busy}>Preview notification</button>
+		<button type="button" class="btn sec" disabled={!ready || busy} onclick={sendTest}
+			>Send synthetic test</button
+		>
 		{#if message}<p role="status">{message}</p>{/if}
 		{#if failure}<p role="alert">{failure}</p>{/if}
 	</form>
@@ -74,15 +99,27 @@
 	{/each}
 	<section class="stack" aria-labelledby="recent-heading">
 		<div class="spread">
-			<h2 id="recent-heading">Your recent deliveries</h2>
+			<h2 id="recent-heading">Recent deliveries</h2>
 			<button class="btn sec" disabled={!ready || busy} onclick={refresh}>Refresh history</button>
 		</div>
+		<label for="history-scope">Delivery history scope</label>
+		<select
+			id="history-scope"
+			class="input"
+			disabled={!ready || busy}
+			bind:value={historyScope}
+			onchange={refresh}
+		>
+			<option value="mine">My account</option><option value="agency">Demo agency</option>
+		</select>
 		<p class="muted">
-			Latest 50 accessible notifications for this account and agency. Test sends and delayed-job
-			controls are not available here yet.
+			Latest 50 notifications for the selected scope. Delayed-job controls are not available here
+			yet.
 		</p>
 		{#each recent as item (item.id)}<article class="card pad stack">
-				<b>{item.title}</b><span>{item.type} · {item.channel} · {item.status}</span>
+				<b>{item.title}</b><span
+					>{item.profileName} · {item.type} · {item.channel} · {item.status}</span
+				>
 				<p class="copy">{item.body ?? ''}</p>
 			</article>{:else}<p>No delivery history.</p>{/each}
 	</section>

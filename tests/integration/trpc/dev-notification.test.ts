@@ -88,10 +88,45 @@ it('requires an admin and limits history and preview recipients to the caller', 
 		me.preview({ type: 'health_alert', profileId: stranger } as never)
 	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
 });
+it('scopes agency history to the caller agency and requires explicit confirmation for fixed test content', async () => {
+	const me = await as(admin);
+	expect((await me.recent({ scope: 'agency' })).map((row) => row.id).sort()).toEqual(
+		[admin, peer].sort()
+	);
+	expect((await me.recent({ scope: 'mine' })).map((row) => row.id)).toEqual([admin]);
+	await expect(
+		(await as(staff)).sendTest({ type: 'daily_summary', confirm: true })
+	).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	await expect(
+		me.sendTest({ type: 'daily_summary', confirm: false } as never)
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	await expect(
+		me.sendTest({ type: 'daily_summary', confirm: true, profileId: stranger } as never)
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	await expect(me.recent({ scope: 'agency', agencyId: other } as never)).rejects.toMatchObject({
+		code: 'BAD_REQUEST'
+	});
+	await me.sendTest({ type: 'daily_summary', confirm: true });
+	const history = await me.recent();
+	const tests = history.filter((row) => row.title === 'Synthetic development notification');
+	expect(tests.length).toBeGreaterThan(0);
+	expect(
+		tests.every(
+			(row) =>
+				row.profileId === admin &&
+				row.type === 'daily_summary' &&
+				row.body === 'Synthetic test delivery. No care record is referenced.'
+		)
+	).toBe(true);
+	await vi.waitFor(() => expect(sent).toHaveBeenCalled());
+});
 it('fails closed when real delivery providers or a production runtime are configured', async () => {
 	const me = await as(admin);
 	vi.stubEnv('SMS_DRIVER', 'aws');
 	await expect(me.preview({ type: 'health_alert' })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+	await expect(me.sendTest({ type: 'health_alert', confirm: true })).rejects.toMatchObject({
+		code: 'NOT_FOUND'
+	});
 	vi.stubEnv('SMS_DRIVER', 'console');
 	vi.stubEnv('NODE_ENV', 'production');
 	await expect(me.recent()).rejects.toMatchObject({ code: 'NOT_FOUND' });
