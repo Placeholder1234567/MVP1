@@ -13,7 +13,9 @@
 	let busy = $state(false);
 	let message = $state('');
 	let failure = $state('');
+	let ready = $state(false);
 	onMount(() => {
+		ready = true;
 		void refresh();
 	});
 	async function refresh() {
@@ -53,12 +55,12 @@
 	</p>
 	<form class="card pad stack" aria-label="Synthetic notification preview" onsubmit={preview}>
 		<label for="notification-type">Notification type</label>
-		<select id="notification-type" class="input" bind:value={selected} disabled={busy}
+		<select id="notification-type" class="input" bind:value={selected} disabled={!ready || busy}
 			>{#each NOTIFICATION_TYPES as type (type)}<option value={type}
 					>{NOTIFICATION_LABELS[type]}</option
 				>{/each}</select
 		>
-		<button class="btn" disabled={busy}>Preview notification</button>
+		<button class="btn" disabled={!ready || busy}>Preview notification</button>
 		{#if message}<p role="status">{message}</p>{/if}
 		{#if failure}<p role="alert">{failure}</p>{/if}
 	</form>
@@ -73,7 +75,7 @@
 	<section class="stack" aria-labelledby="recent-heading">
 		<div class="spread">
 			<h2 id="recent-heading">Your recent deliveries</h2>
-			<button class="btn sec" onclick={refresh}>Refresh history</button>
+			<button class="btn sec" disabled={!ready || busy} onclick={refresh}>Refresh history</button>
 		</div>
 		<p class="muted">
 			Latest 50 accessible notifications for this account and agency. Test sends and delayed-job
