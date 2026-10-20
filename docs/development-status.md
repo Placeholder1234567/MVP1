@@ -10,17 +10,17 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 - Refused upload operation matching, correct-PIN failure handling and deterministic report-audit assertions are merged (PR225, PR226, PR228).
 - The guarded development notification panel and controls are merged (PR206, PR229, PR230). Core, database/RLS, production/development browser and performance checks passed on each final commit. Local timers remain volatile across restart.
-- Sign-out work preservation (PR227) includes explicit draft/refused-write warnings, fail-closed inventory reads, bounded server cleanup and accurate warnings when the server session cannot be confirmed ended. Its latest browser cases require CI validation.
+- Sign-out work preservation (PR227) includes explicit draft/refused-write warnings, fail-closed inventory reads, bounded server cleanup and accurate warnings when the server session cannot be confirmed ended. Its final-head core, database/RLS, browser and performance checks passed before merge.
 - The duplicate delivery claim precision fix is merged (PR231), with a concurrent single-send integration assertion and all four gates passing.
-- Carrier-state separation and required supervisor SMS are implemented in follow-up branches awaiting final validation. Legacy suppression and verified START semantics are explicit; no real account migration or provider execution has occurred.
+- Carrier-state separation and required supervisor SMS are merged after all four final-head checks passed. Legacy suppression and verified START semantics are explicit; no real account migration or provider execution has occurred.
 
 ## Remaining engineering work
 
-1. Complete pending PR validation and merges; all four gates must pass on each final commit.
-2. Finish carrier-state and required supervisor SMS validation; preserve STOP, conservative legacy suppression, current policy/role/number checks and read-only preview behavior.
-4. Persist original Lomi observations and the edit ledger in encrypted device storage for reconnect recovery after reload. Keep account/home/person binding, human review and signatures; never use browser key/value storage for PHI.
-5. Implement the intake spec's explicit needs/certifications placement matching. The current comparison shows room availability and requires human review; it does not infer clinical eligibility from referral narrative.
-6. Validate the operator offboarding increment: preview by default, exact-ID execution confirmation, database access block, identity-disable retries and application retention hold, without deleting immutable audit/clinical history. Infrastructure retention verification and actual account operations remain operator responsibilities; no production action has been performed.
+1. Complete PR236 intake placement validation. The new desktop/phone intake cases pass; a returned-note resubmission browser failure exposed stale queue feedback. A separate fix refreshes the upload count after draft saves and before signing, blocks returned-note signing while sync is unsettled, and holds a real upload in the version-history regression. All four final-head gates remain required before either increment merges.
+2. Add the confirmed coverage-log export target (frontend-spec-3 §4.5) after reconciling current source, tenant/home visibility, bounded output and phone privacy. Candidate eligibility is not proof of an offer or delivery. Audit metadata CSV and timesheet clock exports already exist; do not duplicate them.
+3. Reconcile progressive feature-reveal thresholds with the MVP before gating tools currently available from the start. PDF branding and broader font/history targets require current data and asset review; never invent unavailable historical evidence.
+
+Encrypted original Lomi observations and edit-ledger recovery (PR234), operator offboarding/application retention hold (PR235), and report-interface technical documentation (PR237) are merged with all four final-head gates passing. Offboarding does not establish infrastructure retention/disposal or offline-device erasure. No real account or provider action has occurred.
 
 ## Release evidence still required
 
@@ -28,4 +28,4 @@ Safari/Firefox encrypted-storage behavior, physical-device push delivery, extern
 
 ## Encrypted Lomi recovery increment
 
-PR234 implements encrypted local-only original-observation and review-ledger recovery, with explicit resume, binding to account/home/person/note period and ID, protected caregiver edits after Use, and signature clearing that invalidates delayed writers. The composer waits for the resolved existing note context and appears only in the person's current home. No AI call or clinical note change happens merely by loading recovery. Final-head cloud validation is required before merge; synthetic browser failures are repaired without removing reload/PIN/edit-preservation assertions. This increment does not add PHI to browser key/value storage.
+PR234 implements encrypted local-only original-observation and review-ledger recovery, with explicit resume, binding to account/home/person/note period and ID, protected caregiver edits after Use, and signature clearing that invalidates delayed writers. The composer waits for the resolved existing note context and appears only in the person's current home. No AI call or clinical note change happens merely by loading recovery. All four final-head cloud gates passed before merge; synthetic browser failures are repaired without removing reload/PIN/edit-preservation assertions. This increment does not add PHI to browser key/value storage.

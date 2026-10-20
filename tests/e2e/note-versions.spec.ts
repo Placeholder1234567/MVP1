@@ -17,10 +17,11 @@ async function signIn(page: Page, email: string) {
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 }
 
-async function sign(page: Page, text: string) {
+async function sign(page: Page, text: string, afterDraftSaved?: () => Promise<void>) {
 	await page.getByLabel('Activities', { exact: true }).fill(text);
 	await page.getByRole('button', { name: 'Save draft', exact: true }).click();
 	await expect(page.getByText('Draft saved on this device.', { exact: true })).toBeVisible();
+	await afterDraftSaved?.();
 	// A returned note signs online, after the draft has synced (the screen says so).
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await page.getByRole('checkbox', { name: /I reviewed this note/ }).check();
@@ -76,7 +77,36 @@ test('a supervisor compares a resubmitted note with the version they sent back',
 		await expect(
 			page.getByRole('link', { name: 'Notes, needs attention', exact: true }).first()
 		).toBeVisible();
-		await sign(page, 'Theo ate a full lunch of soup at noon.');
+		// A local returned-note draft must finish uploading before online signing.
+		// Hold the real request so the stale-zero-queue race cannot pass by timing.
+		const upload = /\/api\/trpc\/[^?]*sync\.upload(?:[,?]|$)/;
+		let held = false;
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		await page.route(upload, async (route) => {
+			if (!held) {
+				held = true;
+				await gate;
+			}
+			await route.continue();
+		});
+		try {
+			await sign(page, 'Theo ate a full lunch of soup at noon.', async () => {
+				await expect.poll(() => held).toBe(true);
+				await page.getByRole('checkbox', { name: /I reviewed this note/ }).check();
+				await expect(
+					page.getByRole('button', { name: 'Sign and submit', exact: true })
+				).toBeDisabled();
+				await expect(page.getByTestId('sync-status')).not.toHaveText('All changes synced');
+				await expect(page.getByLabel('Activities', { exact: true })).toHaveValue(
+					'Theo ate a full lunch of soup at noon.'
+				);
+				release();
+			});
+		} finally {
+			release();
+			await page.unroute(upload);
+		}
 
 		// Without reloading, the re-signed note can be reviewed again once it syncs.
 		await expect(async () => {

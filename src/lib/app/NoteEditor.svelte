@@ -44,6 +44,10 @@
 	);
 	const person = $derived(app.people.find((p) => p.id === (note?.client_id ?? clientId)));
 	const kind = $derived(note?.type ?? type);
+	const waitingToResign = $derived(
+		note?.status === 'returned' &&
+			(app.checkingSync || app.pending > 0 || app.status !== 'All changes synced')
+	);
 	const lomiBinding = $derived<LomiBinding | null>(
 		person?.home_id
 			? {
@@ -255,7 +259,13 @@
 		const goalEntries = Object.entries(scores).map(([goalId, g]) => ({ goalId, ...g }));
 		try {
 			if (submit && note?.status === 'returned') {
-				if (!app.db.currentStatus.connected || app.pending) {
+				await app.refreshUploadStatus();
+				if (
+					!app.db.currentStatus.connected ||
+					app.checkingSync ||
+					app.pending ||
+					app.status !== 'All changes synced'
+				) {
 					message =
 						'Save your draft, then reconnect and wait for sync before signing a returned note.';
 					return;
@@ -334,6 +344,8 @@
 						]);
 				});
 			}
+			// Settle queue feedback before reporting a local save as complete.
+			await app.refreshUploadStatus();
 			if (submit && lomiBinding) await clearLomiRecovery(app.db, lomiBinding);
 			dirty = false;
 			signed = submit;
@@ -513,11 +525,14 @@
 					><input type="checkbox" bind:checked={signature} disabled={busy} />I reviewed this note
 					and confirm it accurately describes the care I provided.</label
 				>
+				{#if waitingToResign}<p class="muted" role="status">
+						Save your draft, then reconnect and wait for sync before signing a returned note.
+					</p>{/if}
 				<div class="actions">
 					<button class="btn sec" disabled={busy}>Save draft</button><button
 						type="button"
 						class="btn"
-						disabled={busy || !signature}
+						disabled={busy || !signature || waitingToResign}
 						onclick={() => save(true)}>{busy ? 'Saving…' : 'Sign and submit'}</button
 					>
 				</div>
