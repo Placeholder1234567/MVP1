@@ -38,7 +38,9 @@ export const intakeRouter = router({
 		.query(({ ctx, input }) => intake.listReferrals(ctx.db, ctx.user.agencyId, input)),
 	getReferral: supervisor
 		.input(z.object({ id: z.uuid() }))
-		.query(({ ctx, input }) => intake.getReferral(ctx.db, ctx.user.agencyId, input.id)),
+		.query(({ ctx, input }) =>
+			intake.getReferral(ctx.db, ctx.user.agencyId, input.id, ctx.user.profileId)
+		),
 	updateReferral: supervisor
 		.input(
 			details.extend({
@@ -47,7 +49,9 @@ export const intakeRouter = router({
 				assignedHomeId: z.uuid().optional()
 			})
 		)
-		.mutation(({ ctx, input }) => intake.updateReferral(ctx.db, ctx.user.agencyId, input)),
+		.mutation(({ ctx, input }) =>
+			intake.updateReferral(ctx.db, ctx.user.agencyId, input, ctx.user.profileId)
+		),
 	addReferralNote: supervisor
 		.input(z.object({ referralId: z.uuid(), body: z.string().trim().min(1).max(4000) }))
 		.mutation(({ ctx, input }) =>
@@ -73,7 +77,9 @@ export const intakeRouter = router({
 				roomId: z.uuid().optional()
 			})
 		)
-		.mutation(({ ctx, input }) => intake.convertToClient(ctx.db, ctx.user.agencyId, input)),
+		.mutation(({ ctx, input }) =>
+			intake.convertToClient(ctx.db, ctx.user.agencyId, input, ctx.user.profileId)
+		),
 	listRooms: supervisor
 		.input(z.object({ homeId: z.uuid().optional(), status: roomStatus.optional() }).default({}))
 		.query(({ ctx, input }) => intake.listRooms(ctx.db, ctx.user.agencyId, input)),

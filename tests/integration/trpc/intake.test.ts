@@ -63,32 +63,26 @@ it('marks bounded comparisons incomplete instead of inventing definite matching 
 	const large = randomUUID(),
 		admin = randomUUID();
 	await withService(async (tx) => {
-		await tx
-			.insert(s.agencies)
-			.values({
-				id: large,
-				name: 'Synthetic bounded placement',
-				slug: `intake-${large}`,
-				subscription_tier: 'complete'
-			});
-		await tx
-			.insert(s.profiles)
-			.values({
-				id: admin,
+		await tx.insert(s.agencies).values({
+			id: large,
+			name: 'Synthetic bounded placement',
+			slug: `intake-${large}`,
+			subscription_tier: 'complete'
+		});
+		await tx.insert(s.profiles).values({
+			id: admin,
+			agency_id: large,
+			auth_uid: `intake-${admin}`,
+			email: `${admin}@example.test`,
+			name: 'Synthetic placement admin',
+			role: 'admin'
+		});
+		await tx.insert(s.homes).values(
+			Array.from({ length: 201 }, (_, i) => ({
 				agency_id: large,
-				auth_uid: `intake-${admin}`,
-				email: `${admin}@example.test`,
-				name: 'Synthetic placement admin',
-				role: 'admin'
-			});
-		await tx
-			.insert(s.homes)
-			.values(
-				Array.from({ length: 201 }, (_, i) => ({
-					agency_id: large,
-					name: `Synthetic bounded ${i}`
-				}))
-			);
+				name: `Synthetic bounded ${i}`
+			}))
+		);
 	});
 	const api = (await as(admin)).intake;
 	const referral = await api.createReferral({
@@ -201,6 +195,22 @@ it('matches only explicit reviewed needs with current accessible room and caregi
 		availableRooms: 0,
 		certifiedCaregivers: 0,
 		guidance: 'no_available_room'
+	});
+	await withService(async (tx) => {
+		await tx
+			.update(s.profiles)
+			.set({ home_ids: [home, certified] })
+			.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, supervisor)));
+	});
+	// Reuse the caller with its older claim: current profile ownership still wins.
+	expect(
+		(await api.getReferral({ id: referral.id })).placement.homes.some((h) => h.homeId === gap)
+	).toBe(false);
+	await withService(async (tx) => {
+		await tx
+			.update(s.profiles)
+			.set({ home_ids: [home, certified, gap] })
+			.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, supervisor)));
 	});
 	// Explicit human admission remains authoritative; current guidance is returned, never an auto-placement.
 	const admitted = await api.convertToClient({
