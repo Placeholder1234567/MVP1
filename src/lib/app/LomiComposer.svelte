@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import LomiReview from './LomiReview.svelte';
 	import LomiVoice from './LomiVoice.svelte';
 	import { RECORDING_MAX_SECONDS } from './voice-capture';
@@ -11,11 +11,24 @@
 		type NoteKind
 	} from '#lib/domain/lomi.ts';
 	import { useSession } from './session.svelte';
+	import { LomiRecoveryStore } from './lomi-recovery';
+	import {
+		lomiRecoveryData,
+		retainParentEdits,
+		sameLomiBinding,
+		type LomiBinding,
+		type LomiLedger,
+		type LomiRecovery
+	} from './lomi-recovery-data';
 	const app = useSession();
 	let {
 		clientId,
 		type,
 		shift,
+		binding,
+		noteId = null,
+		createdNoteId = '',
+		currentContent,
 		onDraft,
 		onDirty
 	}: {
@@ -23,6 +36,10 @@
 		type: NoteKind;
 		/** The shift the note covers, for the topic reminders */
 		shift?: 'am' | 'pm' | 'on' | null;
+		binding: LomiBinding;
+		noteId?: string | null;
+		createdNoteId?: string;
+		currentContent: Record<string, string>;
 		onDraft: (result: DraftResult) => void;
 		onDirty?: () => void;
 	} = $props();
@@ -36,6 +53,150 @@
 	let message = $state('');
 	let preview = $state<DraftResult | null>(null);
 	let voiceMessage = $state('');
+	const originalBinding = untrack(() => ({ ...binding }));
+	let recovery = $state<LomiRecovery | null>(null);
+	let activeRecovery = false;
+	let boundNoteId = untrack(() => noteId);
+	let invalidated = false;
+	$effect(() => {
+		if (noteId === boundNoteId) return;
+		if (boundNoteId === null && noteId === createdNoteId) boundNoteId = noteId;
+		else {
+			invalidated = true;
+			preview = null;
+			recovery = null;
+		}
+	});
+	let reviewSeed = $state<LomiLedger | undefined>();
+	let retryOnResume = $state(false);
+	let storageReady = $state(false);
+	let storageError = $state(false);
+	let storagePending = $state(false);
+	let loadingRecovery = false;
+	let store: LomiRecoveryStore | undefined;
+	let alive = false;
+	function validContext() {
+		return (
+			!invalidated &&
+			noteId === boundNoteId &&
+			alive &&
+			!app.privacyLocked &&
+			sameLomiBinding(binding, originalBinding) &&
+			app.user.agencyId === originalBinding.agencyId &&
+			app.user.profileId === originalBinding.profileId &&
+			app.homeId === originalBinding.homeId &&
+			app.people.some(
+				(person) => person.id === clientId && person.home_id === originalBinding.homeId
+			)
+		);
+	}
+	async function loadRecovery() {
+		if (loadingRecovery) return;
+		loadingRecovery = true;
+		storageReady = false;
+		try {
+			const saved = await store?.load();
+			if (!validContext()) return;
+			if (saved && saved.noteId === noteId)
+				recovery = saved.phase === 'used' ? retainParentEdits(saved, currentContent) : saved;
+			storageError = false;
+			storageReady = true;
+		} catch {
+			storageError = true;
+		} finally {
+			loadingRecovery = false;
+		}
+	}
+	$effect(() => {
+		if (!app.privacyLocked)
+			untrack(() => {
+				if (alive && !invalidated && !storageReady && !storageError && store) void loadRecovery();
+			});
+	});
+	onMount(() => {
+		alive = true;
+		store = new LomiRecoveryStore(
+			() => app.db,
+			originalBinding,
+			(error) => {
+				storageError = error;
+				storagePending = error;
+			}
+		);
+		void loadRecovery();
+		return () => {
+			alive = false;
+			store?.dispose();
+		};
+	});
+	function persist(record: LomiRecovery) {
+		if (!storageReady || !validContext()) return;
+		const parsed = lomiRecoveryData(record);
+		if (!parsed) {
+			storageError = true;
+			return;
+		}
+		recovery = parsed;
+		storagePending = true;
+		store?.queue(parsed);
+	}
+	function rememberReview(ledger: LomiLedger) {
+		if (!preview) return;
+		activeRecovery = true;
+		persist({
+			day: binding.day,
+			binding: { ...binding },
+			noteId,
+			said,
+			original: preview,
+			ledger,
+			phase: 'review'
+		});
+	}
+	$effect(() => {
+		const content = { ...currentContent },
+			id = noteId,
+			phase = recovery?.phase;
+		if (phase !== 'used') return;
+		untrack(() => {
+			if (!activeRecovery || !recovery || !validContext()) return;
+			const next = { ...retainParentEdits(recovery, content), noteId: id };
+			if (JSON.stringify(next) !== JSON.stringify(recovery)) persist(next);
+		});
+	});
+	function resumeReview() {
+		if (!recovery || recovery.noteId !== noteId || !validContext() || busy || !storageReady) return;
+		activeRecovery = true;
+		if (
+			text.trim() &&
+			!confirm(
+				'Replace the observations currently in this assistant with your saved Lomi review? The note below will stay unchanged.'
+			)
+		)
+			return;
+		const saved =
+			recovery.phase === 'used' ? retainParentEdits(recovery, currentContent) : recovery;
+		said = saved.said;
+		text = saved.said;
+		reviewSeed = saved.ledger;
+		retryOnResume = true;
+		preview = saved.original;
+		onDirty?.();
+	}
+	async function discardRecovery() {
+		if (
+			!validContext() ||
+			!confirm(
+				'Discard the saved Lomi observations and review on this device? Your saved note stays unchanged.'
+			)
+		)
+			return;
+		preview = null;
+		recovery = null;
+		reviewSeed = undefined;
+		await store?.clear();
+		storageReady = !storageError;
+	}
 	// Seconds recorded so far, for the status line.
 	let elapsed = $state(0);
 	$effect(() => {
@@ -117,15 +278,28 @@
 		void resume();
 	});
 	async function draft() {
-		if (!text.trim() || busy) return;
+		if (!text.trim() || busy || !storageReady || !validContext()) return;
+		if (
+			recovery &&
+			!confirm(
+				'Replace your saved Lomi review with a new draft from these observations? Your note below will stay unchanged.'
+			)
+		)
+			return;
 		busy = true;
+		reviewSeed = undefined;
+		retryOnResume = false;
 		said = text;
+		const source = text;
 		message = '';
 		try {
-			preview = await trpc.lomi.draft.mutate({ clientId, type, prompt: text });
-			onDirty?.();
+			const next = await trpc.lomi.draft.mutate({ clientId, type, prompt: source });
+			if (validContext() && text === source) {
+				preview = next;
+				onDirty?.();
+			}
 		} catch {
-			preview = draftLocally(text, type);
+			if (validContext() && text === source) preview = draftLocally(source, type);
 		} finally {
 			busy = false;
 		}
@@ -142,6 +316,49 @@
 		<span class="lemon-orb" aria-hidden="true">◒</span>
 	</div>
 	<p class="muted">Use your own words. Lomi helps organize them, and you review every section.</p>
+	{#if recovery && recovery.noteId === noteId && !preview}<div class="callout stack">
+			<p>
+				A Lomi review is saved in this device’s encrypted database for this person and note period.
+				Resume explicitly to review it and retry an unfinished local draft online. The note below
+				will not change until you choose Use.
+			</p>
+			<div class="actions">
+				<button
+					class="btn sec"
+					type="button"
+					disabled={busy || !storageReady}
+					onclick={resumeReview}>Resume saved Lomi review</button
+				><button
+					class="btn sec"
+					type="button"
+					disabled={busy}
+					onclick={() => void discardRecovery()}>Discard saved Lomi review</button
+				>
+			</div>
+		</div>{/if}
+	{#if storageError}<p role="alert" class="callout bad">
+			The Lomi review could not be saved or checked on this device. Keep this screen open to
+			preserve your work.
+		</p>
+		<button
+			class="btn sec"
+			type="button"
+			onclick={() => {
+				if (storageReady) void store?.flush();
+				else void loadRecovery();
+			}}>Retry Lomi review storage</button
+		>
+		{#if !storageReady}<button
+				class="btn sec"
+				type="button"
+				disabled={busy}
+				onclick={() => void discardRecovery()}>Discard unavailable Lomi recovery</button
+			>{/if}
+	{:else if recovery}<p class="muted" role="status" data-testid="lomi-recovery-status">
+			{storagePending
+				? 'Saving Lomi review on this encrypted device…'
+				: 'Saved Lomi review on this encrypted device.'} This does not save or sign the note.
+		</p>{/if}
 	<div class="try" role="group" aria-label="Try covering">
 		<span class="muted">Try covering:</span>
 		{#each topicSuggestions(type, shift) as topic (topic)}<span class="tag">{topic}</span>{/each}
@@ -180,7 +397,7 @@
 			/>{/if}<button
 			class="btn"
 			type="button"
-			disabled={busy || recording || transcribing || !text.trim()}
+			disabled={busy || recording || transcribing || !text.trim() || !storageReady}
 			onclick={draft}>{busy ? 'Working…' : 'Prepare a draft'}</button
 		>
 	</div>
@@ -203,8 +420,21 @@
 				{clientId}
 				{type}
 				{onDirty}
-				onUse={(result) => {
+				savedLedger={reviewSeed}
+				{retryOnResume}
+				onSnapshot={rememberReview}
+				onUse={(result, ledger) => {
 					onDraft(result);
+					if (preview)
+						persist({
+							day: binding.day,
+							binding: { ...binding },
+							noteId,
+							said,
+							original: preview,
+							ledger: { ...ledger, content: { ...result.content }, currentResult: result },
+							phase: 'used'
+						});
 					preview = null;
 					text = '';
 				}}

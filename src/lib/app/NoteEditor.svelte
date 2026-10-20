@@ -11,6 +11,8 @@
 	} from '#lib/domain/index.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import LomiComposer from './LomiComposer.svelte';
+	import { clearLomiRecovery } from './lomi-recovery';
+	import type { LomiBinding } from './lomi-recovery-data';
 	let {
 		clientId,
 		type = 'shift',
@@ -42,6 +44,31 @@
 	);
 	const person = $derived(app.people.find((p) => p.id === (note?.client_id ?? clientId)));
 	const kind = $derived(note?.type ?? type);
+	const waitingToResign = $derived(
+		note?.status === 'returned' &&
+			(app.checkingSync || app.pending > 0 || app.status !== 'All changes synced')
+	);
+	const lomiBinding = $derived<LomiBinding | null>(
+		person?.home_id
+			? {
+					agencyId: app.user.agencyId,
+					profileId: app.user.profileId,
+					homeId: person.home_id,
+					clientId: person.id,
+					type: kind as 'shift' | 'behavior',
+					day: note?.day ?? current.day,
+					shift: (note?.shift ?? current.shift) as 'am' | 'pm' | 'on'
+				}
+			: null
+	);
+	$effect(() => {
+		if (
+			note?.author_id === app.user.profileId &&
+			!isEditableByAuthor(note.status as NoteStatus) &&
+			lomiBinding
+		)
+			void clearLomiRecovery(app.db, lomiBinding);
+	});
 	const fields = $derived(
 		kind === 'behavior'
 			? [
@@ -78,6 +105,7 @@
 	);
 	let loaded = $state('');
 	let savedId = $state('');
+	let composerCreatedNoteId = $state('');
 	let busy = $state(false);
 	let signed = $state(false);
 	let message = $state('');
@@ -106,6 +134,7 @@
 		if (scope !== identity) {
 			scope = identity;
 			savedId = '';
+			composerCreatedNoteId = '';
 			loaded = '';
 			dirty = false;
 			signature = false;
@@ -225,11 +254,18 @@
 		busy = true;
 		const id = note?.id ?? savedId ?? '';
 		const target = id || crypto.randomUUID();
+		if (!id) composerCreatedNoteId = target;
 		savedId = target;
 		const goalEntries = Object.entries(scores).map(([goalId, g]) => ({ goalId, ...g }));
 		try {
 			if (submit && note?.status === 'returned') {
-				if (!app.db.currentStatus.connected || app.pending) {
+				await app.refreshUploadStatus();
+				if (
+					!app.db.currentStatus.connected ||
+					app.checkingSync ||
+					app.pending ||
+					app.status !== 'All changes synced'
+				) {
 					message =
 						'Save your draft, then reconnect and wait for sync before signing a returned note.';
 					return;
@@ -308,6 +344,9 @@
 						]);
 				});
 			}
+			// Settle queue feedback before reporting a local save as complete.
+			await app.refreshUploadStatus();
+			if (submit && lomiBinding) await clearLomiRecovery(app.db, lomiBinding);
 			dirty = false;
 			signed = submit;
 			signature = false;
@@ -374,10 +413,14 @@
 					>{/if}
 			</div>{/if}
 		{#if assisted}<span class="pill">Lomi-assisted draft · review every section</span>{/if}
-		{#if editable && !signed && !offlineOnly}{#key `${person.id}:${kind}`}<LomiComposer
+		{#if editable && !signed && !offlineOnly && lomiBinding && app.homeId === person.home_id}{#key `${app.user.profileId}:${person.id}:${person.home_id}:${kind}:${lomiBinding.day}:${lomiBinding.shift}:${noteId ?? (note?.id === composerCreatedNoteId ? '' : (note?.id ?? ''))}`}<LomiComposer
 					clientId={person.id}
 					type={kind as 'shift' | 'behavior'}
 					shift={(note?.shift ?? current.shift) as 'am' | 'pm' | 'on'}
+					binding={lomiBinding}
+					noteId={note?.id ?? (savedId || null)}
+					createdNoteId={composerCreatedNoteId}
+					currentContent={content}
 					onDirty={() => {
 						dirty = true;
 						signature = false;
@@ -482,11 +525,14 @@
 					><input type="checkbox" bind:checked={signature} disabled={busy} />I reviewed this note
 					and confirm it accurately describes the care I provided.</label
 				>
+				{#if waitingToResign}<p class="muted" role="status">
+						Save your draft, then reconnect and wait for sync before signing a returned note.
+					</p>{/if}
 				<div class="actions">
 					<button class="btn sec" disabled={busy}>Save draft</button><button
 						type="button"
 						class="btn"
-						disabled={busy || !signature}
+						disabled={busy || !signature || waitingToResign}
 						onclick={() => save(true)}>{busy ? 'Saving…' : 'Sign and submit'}</button
 					>
 				</div>
