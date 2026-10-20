@@ -3,6 +3,7 @@ import type { Tx } from '../../db';
 import { notifications, notificationPreferences, profiles } from '../../db/schema';
 import { needsPushSmsFallback } from '../../../domain/notifications';
 import { pushFallbackId } from './sms-fallback-id';
+import { carrierOptOut } from './carrier-consent.queries';
 
 /**
  * The SMS for a mandatory alert whose push failed for good, or null when none
@@ -33,6 +34,7 @@ export async function createPushSmsFallback(
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, identity.profileId)))
 		.for('update');
 	if (!recipient) return null;
+	if (recipient.phone && (await carrierOptOut(tx, agencyId, recipient.phone))) return null;
 	const [source] = await tx.select().from(notifications).where(scope);
 	if (!source?.reference_id) return null;
 	const [preference] = await tx

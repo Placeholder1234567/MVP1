@@ -8,6 +8,7 @@
 // (no phone, opted out, no device, deactivated) fails at once. On the last
 // attempt a failure is final: the row is marked failed and `notification.dead`
 // is logged for alerting (notifications.md §3, §11).
+import { smsCarrierSuppressed } from './carrier-consent';
 import {
 	canSendNow,
 	localTime,
@@ -134,6 +135,8 @@ export async function dispatchNotifications(
 				await removeDeadTokens(row.profileId, result.deadTokens);
 			} else if (channel === 'sms') {
 				if (!row.phone) throw new Undeliverable('no phone number');
+				if (await withService((tx) => smsCarrierSuppressed(tx, row.agencyId, row.phone!)))
+					throw new Undeliverable('carrier SMS opt-out');
 				// Texted STOP: carriers block it anyway, and opted-out numbers must not be texted.
 				if (row.smsEnabled === false) throw new Undeliverable('opted out of SMS');
 				result = await send.sms(row.phone, d);

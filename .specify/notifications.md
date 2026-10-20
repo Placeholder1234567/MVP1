@@ -1027,6 +1027,24 @@ Forced supervisor SMS is a separate remaining increment. Existing
 ordinary preference that an admin may bypass would be unsafe. This increment
 leaves SMS opt-outs, carrier suppression, fallback and daily limits unchanged.
 
+**Carrier-state separation:** verified inbound STOP/START now also records
+`sms_carrier_consents` by agency and phone digest, independently of preferences.
+STOP remains effective even if a later UI preference save enables SMS. Dispatch,
+push-to-SMS fallback and inbound auto-replies recheck this server-only state;
+START clears it and restores the existing role defaults. A phone change during
+inbound processing is rejected instead of applying the reply to a different
+number. The table is never synced and has no application-user policies. Existing
+saved SMS-off preferences are conservatively backfilled as `legacy_suppressed`,
+because they cannot distinguish a prior STOP from an ordinary opt-out. Only a
+verified START clears that suppression. Before an ordinary preference save, a
+missing phone state is captured as legacy suppression or `unknown`; later UI
+choices never become carrier STOP or positive consent. Shared numbers share
+suppression within an agency, while agencies remain isolated. No legacy row is
+interpreted as new carrier consent. Operators must cut over old application
+writers before relying on this new state: an old STOP handler cannot write it.
+No production cutover has been performed. Agency-required supervisor SMS remains
+a subsequent increment and must never infer consent from `unknown` state.
+
 
 ---
 
