@@ -138,6 +138,19 @@ export async function exportCoverage(
 			'VALIDATION_FAILED',
 			'Coverage report exceeds 8 MB. Choose a shorter period.'
 		);
+	// The profile lock stabilizes role/home access; re-read the joined plan
+	// before publication without taking an admin-only agency row lock.
+	const current = await q.coverageViewer(tx, user.agencyId, user.profileId);
+	const currentFeatures = current
+		? resolveFeatures(current.tier, current.enabledFeatures)
+		: new Set();
+	if (
+		!current ||
+		current.timeZone !== viewer.timeZone ||
+		!currentFeatures.has('reports') ||
+		!currentFeatures.has('coverage')
+	)
+		throw new ServiceError('FORBIDDEN', 'This report is unavailable for your current agency plan');
 	// Only the append-only export audit insert is elevated, never source reads.
 	await asService(tx, (t) =>
 		recordExport(t, user.agencyId, user.profileId, p.format, rows.length, request, 'coverage', {

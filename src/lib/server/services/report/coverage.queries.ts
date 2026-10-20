@@ -13,23 +13,31 @@ import {
 /** Fresh facts under the caller's existing RLS; never read as app_service. */
 export async function coverageViewer(tx: Tx, agencyId: string, profileId: string) {
 	return (
-		await tx
-			.select({
-				role: profiles.role,
-				homeIds: profiles.home_ids,
-				authUid: profiles.auth_uid,
-				tier: agencies.subscription_tier,
-				enabledFeatures: agencies.enabled_features,
-				timeZone: agencies.timezone
-			})
-			.from(profiles)
-			.innerJoin(agencies, eq(agencies.id, profiles.agency_id))
-			.where(
-				and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId), eq(profiles.active, true))
-			)
-			.limit(1)
-			.for('share')
-	)[0];
+		(
+			await tx
+				.select({
+					role: profiles.role,
+					homeIds: profiles.home_ids,
+					authUid: profiles.auth_uid,
+					tier: agencies.subscription_tier,
+					enabledFeatures: agencies.enabled_features,
+					timeZone: agencies.timezone
+				})
+				.from(profiles)
+				.innerJoin(agencies, eq(agencies.id, profiles.agency_id))
+				.where(
+					and(
+						eq(profiles.agency_id, agencyId),
+						eq(profiles.id, profileId),
+						eq(profiles.active, true)
+					)
+				)
+				.limit(1)
+				// Lock only the caller's profile. Locking the joined agency would
+				// also require its admin-only UPDATE policy for a supervisor SELECT.
+				.for('share', { of: profiles })
+		)[0]
+	);
 }
 export async function coverageHome(tx: Tx, agencyId: string, homeId: string) {
 	return (
