@@ -37,6 +37,8 @@ src/lib/server/services/
 - `getUsersByIds(agencyId, ids): Profile[]` — batch-fetch profiles by ID.
 - `updateProfile(agencyId, profileId, data): Profile` — update staff details, home assignments, med certification.
 - `deactivateUser(agencyId, profileId): void` — soft-delete (sets `active = false`), disables the Identity Platform account and revokes its refresh tokens; never hard-deletes.
+
+Agency-wide offboarding is an operator-only orchestration exported by the Agency service, not a user deactivation shortcut. `offboardAgency(input, { dryRun: true })` previews by default; execution requires exact agency-ID confirmation. It commits the access block and application retention hold before identity cleanup, persists retry/claim state, preserves clinical/audit rows and exposes no app/tRPC/OpenAPI procedure. See security.md “Disposal and Agency Offboarding”.
 - `listActiveStaff(agencyId): Profile[]` — all active profiles for the agency.
 - `inviteUser(agencyId, email, name, role, homeIds, medCertified?): Profile` — create an Identity Platform user and a corresponding `profiles` row, and send an invitation email (password-setup link from the Admin SDK) via SES. Used by the `staff.invite` tRPC procedure.
 

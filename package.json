@@ -35,6 +35,7 @@
 		"agency:provision": "tsx --env-file=.env scripts/provision-agency.ts",
 		"maintenance:announce": "tsx --env-file=.env scripts/announce-maintenance.ts",
 		"agency:set-plan": "tsx --env-file=.env scripts/set-plan.ts",
+		"agency:offboard": "tsx --env-file=.env scripts/offboard-agency.ts",
 		"db:seed": "tsx --env-file=.env src/lib/server/seed.ts",
 		"pretest": "svelte-kit sync",
 		"pretest:integration": "svelte-kit sync",
