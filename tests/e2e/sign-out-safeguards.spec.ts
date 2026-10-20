@@ -31,15 +31,20 @@ test('canceling sign-out preserves a saved unfinished care draft across reload',
 		})
 	).toBeVisible();
 	const careUrl = page.url();
-	// Keep the durable draft while leaving the editor to reach the sign-out action.
-	const leave = (dialog: import('@playwright/test').Dialog) => void dialog.accept();
-	page.on('dialog', leave);
+	// Reload retains the encrypted recovery draft. Accepting the editor's
+	// "Discard" navigation prompt would deliberately delete it before sign-out.
+	page.once('dialog', (dialog) => void dialog.accept());
+	await page.reload();
+	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
+	await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+	await expect(
+		page.getByRole('button', { name: 'Resume unfinished form', exact: true })
+	).toBeVisible();
 	await page.getByRole('link', { name: 'Me', exact: true }).first().click();
 	await expect(page).toHaveURL(/\/me$/);
 	await expect(
 		page.getByRole('button', { name: 'Sign out on all devices', exact: true })
 	).toBeVisible();
-	page.off('dialog', leave);
 	const prompt = page.waitForEvent('dialog').then(async (dialog) => {
 		expect(dialog.message()).toContain('unfinished draft');
 		await dialog.dismiss();
