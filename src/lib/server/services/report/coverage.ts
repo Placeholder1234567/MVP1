@@ -73,14 +73,23 @@ export async function exportCoverage(
 	const candidates = await q.coverageCandidatesForReport(tx, user.agencyId, ids);
 	const activity = await q.coverageActivityForReport(tx, user.agencyId, p.homeId, ids);
 	const notifications = await q.coverageNotificationsForReport(tx, user.agencyId, ids);
-	if (requests.length + candidates.length + activity.length + notifications.length > 1000)
+	const offerEvidence = await q.coverageOfferEvidenceForReport(tx, user.agencyId, p.homeId, ids);
+	if (
+		requests.length +
+			candidates.length +
+			activity.length +
+			notifications.length +
+			offerEvidence.length >
+		1000
+	)
 		throw tooMany();
 	const staffIds = [
 		...new Set(
 			[
 				...requests.flatMap((r) => [r.calledOutBy, r.filledBy]),
 				...candidates.map((r) => r.staffId),
-				...notifications.map((r) => r.staffId)
+				...notifications.map((r) => r.staffId),
+				...offerEvidence.map((r) => r.staffId)
 			].filter((id): id is string => !!id)
 		)
 	];
@@ -116,10 +125,11 @@ export async function exportCoverage(
 		),
 		...candidates.map((r) => row('candidate', r.requestId, r)),
 		...activity.map((r) => row('activity', r.requestId, r)),
-		...notifications.map((r) => row('notification', r.requestId!, r))
+		...notifications.map((r) => row('notification', r.requestId!, r)),
+		...offerEvidence.map((r) => row('offer_evidence', r.requestId, r))
 	];
 	const report: CoverageReport = {
-		version: 1,
+		version: 2,
 		type: 'coverage',
 		homeId: p.homeId,
 		fromDay: p.fromDay,
@@ -127,6 +137,7 @@ export async function exportCoverage(
 		timeZone: viewer.timeZone,
 		generatedAt: new Date().toISOString(),
 		notificationVisibility: viewer.role === 'admin' ? 'agency' : 'own_recipient_only',
+		offerEvidenceVisibility: 'selected_home_prospective',
 		dateBasis:
 			'Coverage request shift start calendar day in the agency time zone; includes both selected days, including overnight shift starts',
 		evidenceLimits: COVERAGE_EVIDENCE_LIMITS,
@@ -159,7 +170,8 @@ export async function exportCoverage(
 			toDay: p.toDay,
 			staffIds,
 			requestIds: ids,
-			notificationVisibility: report.notificationVisibility
+			notificationVisibility: report.notificationVisibility,
+			offerEvidenceVisibility: report.offerEvidenceVisibility
 		})
 	);
 	return {

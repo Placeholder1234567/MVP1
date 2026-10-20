@@ -86,10 +86,12 @@ test('coverage exports real recorded shifts explicitly and discards responses fr
 	const path = info.outputPath('synthetic-coverage.json');
 	await file.saveAs(path);
 	const report = JSON.parse(await readFile(path, 'utf8'));
+	expect(report.version).toBe(2);
 	expect(report.type).toBe('coverage');
 	expect(report.fromDay).toBe(day);
 	expect(report.toDay).toBe(day);
 	expect(report.notificationVisibility).toBe('own_recipient_only');
+	expect(report.offerEvidenceVisibility).toBe('selected_home_prospective');
 	expect(report.rows).toContainEqual(
 		expect.objectContaining({
 			kind: 'request',
@@ -103,7 +105,7 @@ test('coverage exports real recorded shifts explicitly and discards responses fr
 		expect.objectContaining({ kind: 'activity', description: 'Coverage requested' })
 	);
 	expect(report.evidenceLimits).toContain('Eligibility is not proof an offer was sent');
-	expect(report.evidenceLimits).toContain('Missing notification evidence is unknown');
+	expect(report.evidenceLimits).toContain('Missing evidence is unknown');
 	expect(
 		(await new AxeBuilder({ page }).include('section[aria-label="Coverage log export"]').analyze())
 			.violations

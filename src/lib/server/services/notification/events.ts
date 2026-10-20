@@ -15,7 +15,7 @@ import {
 	staffWithEmail,
 	suppress
 } from './events.queries';
-import { activeStaffByRole } from './notification.queries';
+import { activeStaffByRole, recordCoverageOfferEvidence } from './notification.queries';
 
 interface SesEvent {
 	eventType?: string;
@@ -42,7 +42,14 @@ export function handleEmailEvent(event: SesEvent): Promise<EventOutcome> {
 			: type === 'Complaint'
 				? event.complaint?.complainedRecipients
 				: undefined;
-	// Delivery receipts change nothing: the row is already 'sent'.
+	if (type === 'Delivery') {
+		return withService(async (tx) => {
+			const delivery = await deliveryByProviderId(tx, messageId, 'email');
+			if (!delivery || !['pending', 'sent'].includes(delivery.status)) return 'ignored';
+			await recordCoverageOfferEvidence(tx, delivery.id, 'delivery_reported');
+			return 'sent';
+		});
+	}
 	if (!recipients?.length) return Promise.resolve('ignored');
 	return withService(async (tx) => {
 		const delivery = await deliveryByProviderId(tx, messageId, 'email');
@@ -68,7 +75,10 @@ export function handleEmailEvent(event: SesEvent): Promise<EventOutcome> {
 			suppressed = true;
 		}
 		if (!suppressed) return 'ignored';
-		if (type === 'Bounce') await setDeliveryStatus(tx, delivery.id, 'failed');
+		if (type === 'Bounce') {
+			await setDeliveryStatus(tx, delivery.id, 'failed');
+			await recordCoverageOfferEvidence(tx, delivery.id, 'failed');
+		} else await recordCoverageOfferEvidence(tx, delivery.id, 'suppressed');
 		console.log(`email suppression for notification ${delivery.id}`);
 		return 'suppressed';
 	});
@@ -120,6 +130,11 @@ export function handleSmsEvent(event: SmsEvent): Promise<EventOutcome> {
 		// Read receipts and escalations are further along; leave them alone.
 		if (!delivery || !['pending', 'sent'].includes(delivery.status)) return 'ignored';
 		await setDeliveryStatus(tx, delivery.id, status);
+		await recordCoverageOfferEvidence(
+			tx,
+			delivery.id,
+			status === 'sent' ? 'delivery_reported' : 'failed'
+		);
 		if (status === 'failed') await queueSmsPushFallback(tx, delivery.agencyId, delivery.id);
 		if (status === 'failed') console.log(`sms ${eventType} for notification ${delivery.id}`);
 		return status;

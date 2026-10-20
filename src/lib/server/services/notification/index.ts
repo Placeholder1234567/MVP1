@@ -26,6 +26,7 @@ import { smsCarrierOverrideAllowed } from './carrier-consent';
 import {
 	activeStaffByRole,
 	insertNotifications,
+	recordCoverageOfferEvidence,
 	preferencesFor,
 	agencyNotificationSettings
 } from './notification.queries';
@@ -187,6 +188,11 @@ export function notify(
 			);
 		}
 		const inserted = await insertNotifications(tx, rows);
+		await recordCoverageOfferEvidence(
+			tx,
+			inserted.map((row) => row.id),
+			'queued'
+		);
 		const deliveries = inserted.filter((r) => r.channel !== 'in_app');
 		const first = inserted.find((r) => r.channel === 'in_app');
 		afterCommit(async () => {

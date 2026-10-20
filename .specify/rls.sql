@@ -1047,6 +1047,23 @@ CREATE POLICY notifications_delete ON public.notifications
     AND public.current_user_role() = 'admin'
   );
 
+-- Prospective coverage-offer evidence is append-only and contains no message
+-- content or contact data. Supervisors see only currently assigned homes;
+-- admins see their agency. Caregivers cannot read it, and no app_user writes.
+ALTER TABLE public.coverage_offer_evidence ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY coverage_offer_evidence_select ON public.coverage_offer_evidence
+  FOR SELECT USING (
+    agency_id = public.current_agency_id()
+    AND (
+      public.current_user_role() = 'admin'
+      OR (
+        public.current_user_role() = 'supervisor'
+        AND home_id = ANY(public.current_user_home_ids())
+      )
+    )
+  );
+
 
 -- =============================================================================
 -- 26. notification_preferences
@@ -1728,7 +1745,8 @@ BEGIN
                            'medication_history', 'notes', 'note_goals', 'incidents',
                            'mar_records', 'health_entries', 'attendance', 'case_notes',
                            'referrals', 'messages', 'schedule_slots', 'clock_records',
-                           'coverage_requests', 'profiles', 'api_keys', 'webhooks'] LOOP
+                           'coverage_requests', 'coverage_offer_evidence',
+                           'profiles', 'api_keys', 'webhooks'] LOOP
     EXECUTE format('CREATE TRIGGER %I_audit AFTER INSERT OR UPDATE OR DELETE ON public.%I
                     FOR EACH ROW EXECUTE FUNCTION public.audit_row_change()', t, t);
   END LOOP;

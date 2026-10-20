@@ -31,6 +31,10 @@ INSERT INTO coverage_requests (id, agency_id, home_id, day, shift) VALUES
   ('91000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'b1000000-0000-0000-0000-000000000000', '2026-10-13', 'pm');
 INSERT INTO coverage_candidates (id, agency_id, coverage_request_id, profile_id, eligible) VALUES
   ('92000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', '91000000-0000-0000-0000-000000000000', 'c1000000-0000-0000-0000-000000000000', false);
+INSERT INTO notifications (id, agency_id, profile_id, type, title, channel, status, reference_id, reference_type) VALUES
+  ('93000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'c1000000-0000-0000-0000-000000000000', 'coverage_offer', 'Synthetic offer', 'sms', 'sent', '91000000-0000-0000-0000-000000000000', 'coverage_requests');
+INSERT INTO coverage_offer_evidence (id, agency_id, home_id, coverage_request_id, notification_id, recipient_profile_id, channel, event) VALUES
+  ('94000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', 'b1000000-0000-0000-0000-000000000000', '91000000-0000-0000-0000-000000000000', '93000000-0000-0000-0000-000000000000', 'c1000000-0000-0000-0000-000000000000', 'sms', 'provider_accepted');
 
 -- Board messages from the supervisor: f8 at Oak, f9 at Maple.
 INSERT INTO messages (id, agency_id, home_id, from_name, body, created_by) VALUES

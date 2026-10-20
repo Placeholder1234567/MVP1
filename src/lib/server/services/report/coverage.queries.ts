@@ -7,6 +7,7 @@ import {
 	coverageRequests,
 	coverageCandidates,
 	coverageSteps,
+	coverageOfferEvidence,
 	notifications
 } from '../../db/schema';
 
@@ -151,5 +152,39 @@ export function coverageNotificationsForReport(tx: Tx, agencyId: string, ids: st
 			)
 		)
 		.orderBy(asc(notifications.reference_id), asc(notifications.created_at), asc(notifications.id))
+		.limit(1001);
+}
+
+/** Prospective cross-recipient evidence, scoped by its own home-aware RLS. */
+export function coverageOfferEvidenceForReport(
+	tx: Tx,
+	agencyId: string,
+	homeId: string,
+	ids: string[]
+) {
+	if (!ids.length) return Promise.resolve([]);
+	return tx
+		.select({
+			id: coverageOfferEvidence.id,
+			requestId: coverageOfferEvidence.coverage_request_id,
+			notificationId: coverageOfferEvidence.notification_id,
+			staffId: coverageOfferEvidence.recipient_profile_id,
+			channel: coverageOfferEvidence.channel,
+			event: coverageOfferEvidence.event,
+			occurredAt: coverageOfferEvidence.occurred_at
+		})
+		.from(coverageOfferEvidence)
+		.where(
+			and(
+				eq(coverageOfferEvidence.agency_id, agencyId),
+				eq(coverageOfferEvidence.home_id, homeId),
+				inArray(coverageOfferEvidence.coverage_request_id, ids)
+			)
+		)
+		.orderBy(
+			asc(coverageOfferEvidence.coverage_request_id),
+			asc(coverageOfferEvidence.occurred_at),
+			asc(coverageOfferEvidence.id)
+		)
 		.limit(1001);
 }

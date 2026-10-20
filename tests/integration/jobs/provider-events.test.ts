@@ -4,6 +4,10 @@ import { and, eq } from 'drizzle-orm';
 import { closeDb, withService } from '../../../src/lib/server/db';
 import * as s from '../../../src/lib/server/db/schema';
 import { dispatchNotifications } from '../../../src/lib/server/services/notification';
+import {
+	markDelivery,
+	recordCoverageOfferEvidence
+} from '../../../src/lib/server/services/notification/notification.queries';
 import { setProvidersForTests } from '../../../src/lib/server/messaging';
 import { canonicalString, type SnsMessage } from '../../../src/lib/server/messaging/sns';
 import { POST } from '../../../src/routes/api/webhooks/aws/[topic]/+server';
@@ -11,6 +15,8 @@ import { POST } from '../../../src/routes/api/webhooks/aws/[topic]/+server';
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 const agency = randomUUID();
 const profile = randomUUID();
+const home = randomUUID();
+const coverageRequest = randomUUID();
 const address = `synthetic-${profile}@example.test`;
 const email = vi.fn(async () => ({ providerMessageId: 'unused' }));
 const push = vi.fn(async (tokens: string[]) => ({
@@ -106,6 +112,14 @@ beforeAll(async () => {
 			email: address.toUpperCase(),
 			name: 'Synthetic Supervisor',
 			role: 'supervisor'
+		});
+		await tx.insert(s.homes).values({ id: home, agency_id: agency, name: 'Synthetic home' });
+		await tx.insert(s.coverageRequests).values({
+			id: coverageRequest,
+			agency_id: agency,
+			home_id: home,
+			day: '2026-10-20',
+			shift: 'pm'
 		});
 		await tx.insert(s.notificationPreferences).values({
 			agency_id: agency,
@@ -216,6 +230,51 @@ it('SMS delivery receipts update the delivery status', async () => {
 	).toBe('failed');
 	expect(await statusOf(a)).toBe('sent');
 	expect(await statusOf(b)).toBe('failed');
+});
+
+it('keeps prospective coverage offer acceptance and delivery evidence distinct and idempotent', async () => {
+	const id = randomUUID();
+	const providerMessageId = `coverage-sms-${randomUUID()}`;
+	await withService(async (tx) => {
+		await tx.insert(s.notifications).values({
+			id,
+			agency_id: agency,
+			profile_id: profile,
+			type: 'coverage_offer',
+			title: 'Coverage available',
+			channel: 'sms',
+			reference_id: coverageRequest,
+			reference_type: 'coverage_requests'
+		});
+		await recordCoverageOfferEvidence(tx, id, 'queued');
+		await markDelivery(tx, id, {
+			status: 'sent',
+			providerMessageId,
+			evidence: 'provider_accepted'
+		});
+	});
+	for (let i = 0; i < 2; i++) {
+		expect(
+			(
+				await post(
+					'sms-events',
+					sns(smsTopic, { eventType: 'TEXT_DELIVERED', messageId: providerMessageId })
+				)
+			).body.outcome
+		).toBe('sent');
+	}
+	const evidence = await withService((tx) =>
+		tx
+			.select({ event: s.coverageOfferEvidence.event })
+			.from(s.coverageOfferEvidence)
+			.where(eq(s.coverageOfferEvidence.notification_id, id))
+			.orderBy(s.coverageOfferEvidence.occurred_at)
+	);
+	expect(evidence.map((row) => row.event)).toEqual([
+		'queued',
+		'provider_accepted',
+		'delivery_reported'
+	]);
 });
 
 it('push removes tokens the provider rejected for good', async () => {
