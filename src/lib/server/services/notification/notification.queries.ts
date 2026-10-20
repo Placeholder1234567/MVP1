@@ -150,9 +150,17 @@ export async function markDelivery(
  */
 export async function claimDelivery(tx: Tx, id: string, lease: number) {
 	const now = new Date();
+	const [row] = await tx
+		.select({ createdAt: notifications.created_at })
+		.from(notifications)
+		.where(and(eq(notifications.id, id), eq(notifications.status, 'pending')));
+	if (!row) return false;
 	const claimed = await tx
 		.update(notifications)
-		.set({ updated_at: now })
+		// Postgres keeps microseconds; a JS Date can round back to/before created_at,
+		// leaving a fresh claim eligible for a concurrent dispatcher. Always advance
+		// beyond creation, even when clocks differ or both operations share a tick.
+		.set({ updated_at: new Date(Math.max(now.getTime(), row.createdAt.getTime() + 1)) })
 		.where(
 			and(
 				eq(notifications.id, id),
