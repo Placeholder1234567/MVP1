@@ -14,7 +14,9 @@
 	let message = $state('');
 	let failure = $state('');
 	let historyScope = $state<'mine' | 'agency'>('mine');
+	let ready = $state(false);
 	onMount(() => {
+		ready = true;
 		void refresh();
 	});
 	async function refresh() {
@@ -75,13 +77,13 @@
 	</p>
 	<form class="card pad stack" aria-label="Synthetic notification preview" onsubmit={preview}>
 		<label for="notification-type">Notification type</label>
-		<select id="notification-type" class="input" bind:value={selected} disabled={busy}
+		<select id="notification-type" class="input" bind:value={selected} disabled={!ready || busy}
 			>{#each NOTIFICATION_TYPES as type (type)}<option value={type}
 					>{NOTIFICATION_LABELS[type]}</option
 				>{/each}</select
 		>
-		<button class="btn" disabled={busy}>Preview notification</button>
-		<button type="button" class="btn sec" disabled={busy} onclick={sendTest}
+		<button class="btn" disabled={!ready || busy}>Preview notification</button>
+		<button type="button" class="btn sec" disabled={!ready || busy} onclick={sendTest}
 			>Send synthetic test</button
 		>
 		{#if message}<p role="status">{message}</p>{/if}
@@ -98,10 +100,16 @@
 	<section class="stack" aria-labelledby="recent-heading">
 		<div class="spread">
 			<h2 id="recent-heading">Recent deliveries</h2>
-			<button class="btn sec" onclick={refresh}>Refresh history</button>
+			<button class="btn sec" disabled={!ready || busy} onclick={refresh}>Refresh history</button>
 		</div>
 		<label for="history-scope">Delivery history scope</label>
-		<select id="history-scope" class="input" bind:value={historyScope} onchange={refresh}>
+		<select
+			id="history-scope"
+			class="input"
+			disabled={!ready || busy}
+			bind:value={historyScope}
+			onchange={refresh}
+		>
 			<option value="mine">My account</option><option value="agency">Demo agency</option>
 		</select>
 		<p class="muted">
