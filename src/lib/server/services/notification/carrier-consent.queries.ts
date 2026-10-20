@@ -11,7 +11,7 @@ export async function carrierPhone(tx: Tx, agencyId: string, profileId: string) 
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId)));
 	return row?.phone;
 }
-async function carrierState(tx: Tx, agencyId: string, phone: string) {
+export async function carrierState(tx: Tx, agencyId: string, phone: string) {
 	const [row] = await tx
 		.select({ state: smsCarrierConsents.state })
 		.from(smsCarrierConsents)
@@ -22,6 +22,13 @@ async function carrierState(tx: Tx, agencyId: string, phone: string) {
 			)
 		);
 	return row?.state;
+}
+export async function carrierRecipient(tx: Tx, agencyId: string, profileId: string) {
+	const [row] = await tx
+		.select({ phone: profiles.phone, active: profiles.active, role: profiles.role })
+		.from(profiles)
+		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId)));
+	return row;
 }
 /** Preserve ambiguous legacy SMS-off choices before ordinary preferences change. */
 export async function ensureCarrierState(tx: Tx, agencyId: string, phone: string) {

@@ -36,8 +36,11 @@ test('an admin can save agency notification rules without disabling safety alert
 	await expect(form.getByRole('checkbox', { name: 'Coverage offers', exact: true })).toHaveCount(0);
 	const required = form.getByRole('checkbox', { name: 'Require daily summary email', exact: true });
 	const initial = await required.isChecked();
+	const sms = form.getByRole('checkbox', { name: 'Require SMS: Daily summaries', exact: true });
+	const initialSms = await sms.isChecked();
 	try {
 		await required.setChecked(!initial);
+		await sms.setChecked(!initialSms);
 		await form.getByRole('button', { name: 'Save notification rules', exact: true }).click();
 		await expect(form.getByRole('status')).toHaveText('Notification rules saved.');
 		await page.reload();
@@ -45,8 +48,13 @@ test('an admin can save agency notification rules without disabling safety alert
 		await page.getByRole('button', { name: 'Unlock', exact: true }).click();
 		await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
 		await expect(required).toBeChecked({ checked: !initial });
+		await expect(sms).toBeChecked({ checked: !initialSms });
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+			true
+		);
 	} finally {
 		await required.setChecked(initial);
+		await sms.setChecked(initialSms);
 		await form.getByRole('button', { name: 'Save notification rules', exact: true }).click();
 		await expect(form.getByRole('status')).toHaveText('Notification rules saved.');
 	}

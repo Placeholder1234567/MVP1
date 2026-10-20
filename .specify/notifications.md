@@ -1009,7 +1009,7 @@ Agency admins can set organization-wide defaults that override the role-based de
 Admin overrides are stored in `agencies.settings` under the `notification_overrides` key. User preferences that conflict with admin overrides are silently overridden at send time.
 
 **Implemented increment:** Setup → Agency notification rules saves validated
-`{ disabledTypes, requireSummaryEmail, quietHours }` under that key through the
+`{ disabledTypes, forceSmsTypes, requireSummaryEmail, quietHours }` under that key through the
 existing admin-only `agency.update`. Quiet hours are null (use personal hours)
 or a 4–10 hour `{ start, end }` window in agency time. Email and urgent/high
 alerts retain their quiet-hours exemptions. Mandatory safety types and essential workflow transports (coverage offers,
@@ -1022,10 +1022,17 @@ Escalation also stops for disabled optional types. Existing in-app history is
 retained. Required summary email is selected when a summary is queued; existing
 queued events are not regenerated. Unrelated agency settings are preserved.
 
-Forced supervisor SMS is a separate remaining increment. Existing
-`sms_enabled = false` also represents a carrier STOP, so treating it as an
-ordinary preference that an admin may bypass would be unsafe. This increment
-leaves SMS opt-outs, carrier suppression, fallback and daily limits unchanged.
+**Required supervisor SMS:** admins can select known `forceSmsTypes` in Setup.
+For current active supervisors with a phone and verified START for that exact
+number, those types add SMS even when their ordinary SMS preference is off.
+Caregivers and admins keep their normal channel defaults. A required type cannot
+also be disabled. Preview shares selection without initializing consent or
+writing delivery rows. Dispatch rechecks current agency policy, recipient role,
+phone and carrier state; removing policy, changing role/number or STOP before
+delivery prevents an override. Unknown/legacy suppression is never new consent,
+and STOP cannot be overridden. Existing quiet-hour exemptions, daily limits and
+normal escalation timing remain. This selects channels for newly queued events;
+changing policy does not regenerate past events or guarantee provider delivery.
 
 **Carrier-state separation:** verified inbound STOP/START now also records
 `sms_carrier_consents` by agency and phone digest, independently of preferences.
@@ -1042,8 +1049,8 @@ choices never become carrier STOP or positive consent. Shared numbers share
 suppression within an agency, while agencies remain isolated. No legacy row is
 interpreted as new carrier consent. Operators must cut over old application
 writers before relying on this new state: an old STOP handler cannot write it.
-No production cutover has been performed. Agency-required supervisor SMS remains
-a subsequent increment and must never infer consent from `unknown` state.
+No production cutover has been performed. Agency-required supervisor SMS never
+infers consent from `unknown` state.
 
 
 ---

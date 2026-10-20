@@ -15,6 +15,7 @@ it('malformed or old settings cannot turn off safety alerts', () => {
 		}
 	});
 	expect(rules).toEqual({
+		forceSmsTypes: [],
 		disabledTypes: ['shift_reminder'],
 		quietHours: null,
 		requireSummaryEmail: false
@@ -27,6 +28,33 @@ it('required summary email wins over conflicting legacy disabled settings', () =
 	const rules = notificationOverrides({
 		notification_overrides: { disabledTypes: ['daily_summary'], requireSummaryEmail: true }
 	});
+	expect(notificationDisabled('daily_summary', rules)).toBe(false);
+});
+it('validates required SMS types and protects them from malformed disabled settings', () => {
+	const base = { disabledTypes: [], requireSummaryEmail: false, quietHours: null };
+	expect(
+		NotificationOverridesInput.safeParse({ ...base, forceSmsTypes: ['unknown'] }).success
+	).toBe(false);
+	expect(
+		NotificationOverridesInput.safeParse({
+			...base,
+			forceSmsTypes: ['daily_summary', 'daily_summary']
+		}).success
+	).toBe(false);
+	expect(
+		NotificationOverridesInput.safeParse({
+			...base,
+			disabledTypes: ['daily_summary'],
+			forceSmsTypes: ['daily_summary']
+		}).success
+	).toBe(false);
+	const rules = notificationOverrides({
+		notification_overrides: {
+			disabledTypes: ['daily_summary'],
+			forceSmsTypes: ['daily_summary', 'unknown', 'daily_summary']
+		}
+	});
+	expect(rules.forceSmsTypes).toEqual(['daily_summary']);
 	expect(notificationDisabled('daily_summary', rules)).toBe(false);
 });
 it('validates safety exclusions, quiet-hour duration and conflicting admin choices', () => {
