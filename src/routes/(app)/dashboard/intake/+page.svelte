@@ -360,13 +360,10 @@
 								/></label
 							>
 						</div>
-						{#if !creating}<label
-								>Stage<select class="input" bind:value={stage}
+						{#if !creating}<label for="referral-stage">Stage</label><select id="referral-stage" class="input" bind:value={stage}
 									>{#each stages.filter((s) => s !== 'placed' || selected?.status === 'placed') as value (value)}<option
 											{value}>{value}</option
-										>{/each}</select
-								></label
-							><label
+										>{/each}</select><label
 								>Proposed home<select
 									class="input"
 									bind:value={homeId}
@@ -498,17 +495,14 @@
 								bind:value={admissionName}
 							/></label
 						><label>First name<input class="input" maxlength="100" bind:value={firstName} /></label>
-						<label
-							>Admission home<select
+						<label for="admission-home">Admission home</label><select id="admission-home"
 								class="input"
 								required
 								bind:value={homeId}
 								onchange={() => (roomId = '')}
 								><option value="">Choose a home</option
 								>{#each app.openHomes as home (home.id)}<option value={home.id}>{home.name}</option
-									>{/each}</select
-							></label
-						>
+									>{/each}</select>
 						<label
 							>Available room<select class="input" bind:value={roomId}
 								><option value="">Assign a room later</option

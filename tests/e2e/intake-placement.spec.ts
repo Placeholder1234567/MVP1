@@ -1,6 +1,9 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
+// A stalled action must fail early enough to retain the runner's full error report.
+test.use({ actionTimeout: 30000 });
+
 test('explicit placement needs survive reload and keep human comparison guidance', async ({
 	page
 }, info) => {
