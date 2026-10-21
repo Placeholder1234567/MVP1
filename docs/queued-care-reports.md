@@ -4,6 +4,8 @@ This workflow limits supervisors to assigned homes; administrators can select an
 
 Selected reports and recent rows display their original requested period, person/all-people scope and signed/approved-note filter. These summaries use server metadata independently of the editable request form, so changing form dates does not relabel an existing file.
 
+Navigation start immediately invalidates in-flight status, recent-list, request and download responses and clears this view's local job references, before waiting for the destination to load or this component to be disposed. It does not cancel a server job or delete a prepared file. If navigation is cancelled, select the request again from the recent list; no request or download is automatically retried.
+
 Supervisors with Care reporting access can request a larger care export from Care reports. The selected home is required; a person can be selected or everyone in that home included. Dates include both agency-local calendar days, up to 93 days. CSV, structured data and HTML allow 10,000 records; PDF allows 2,000. Every file is limited to 8 MB. Signed/approved note rules match immediate care exports; this screen never signs or changes clinical records.
 
 Request, refresh, recent requests and download are POST mutations carrying the expected current profile ID. The server reauthorizes each operation. Before a new request the screen refreshes device upload status and blocks until saved changes sync. The selected job and recent metadata are held only in page memory. Account, home or privacy-lock transitions discard them and invalidate in-flight responses. No report content, selection or job reference is written to browser storage, URLs or logs.

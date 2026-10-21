@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { useSession } from './session.svelte';
 	import { ReportJobGuard, reportCanConnect } from './report-job';
 	import { trpc } from '#lib/trpc.ts';
@@ -19,6 +20,12 @@
 		if (!fullReports) format = 'csv';
 	});
 	const guard = new ReportJobGuard();
+	beforeNavigate(() => {
+		controller?.abort();
+		guard.change('navigating');
+		busy = false;
+		message = '';
+	});
 	const context = () =>
 		JSON.stringify([
 			app.user.agencyId,
