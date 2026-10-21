@@ -22,7 +22,8 @@ for (const change of ['home', 'lock', 'navigation', 'dates'] as const) {
 		await page.getByRole('link', { name: 'Timesheets', exact: true }).first().click();
 		await page.getByRole('link', { name: 'Care record reports →', exact: true }).click();
 		const button = page.getByRole('button', { name: 'Download care report', exact: true });
-		const form = page.locator('form').filter({ has: button });
+		// The submit button becomes “Preparing report…” while its real response is held.
+		const form = page.locator('form').filter({ has: page.getByLabel('Report', { exact: true }) });
 		await form.getByLabel('Report', { exact: true }).selectOption('health');
 		await form.getByLabel('Format', { exact: true }).selectOption('json');
 		await form.getByLabel('From', { exact: true }).fill('2026-01-01');
