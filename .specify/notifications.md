@@ -819,7 +819,7 @@ SES templates are stored in AWS and referenced by `templateId` in the `EmailJob`
 
 - SES publishes bounce and complaint notifications to an SNS topic subscribed to `/api/webhooks/aws/ses-events` (signature verified as above).
 - **Hard bounce** (permanent failure): add email to suppression list, set `notification_preferences.email_enabled = false` for the profile, log the event.
-- **Soft bounce** (temporary failure): retry via the queue retry policy. After 3 soft bounces in 24 hours, treat as hard bounce. (As built: each soft bounce is a row in `email_bounces`; the third within 24 hours suppresses the address with reason `soft_bounce_limit`.)
+- **Soft bounce** (temporary failure): after 3 distinct bounced deliveries in 24 hours, treat as hard bounce. SES handles transient delivery retries. As built, each stored delivery/address pair has one stable `email_bounces` identity within its agency; repeated or concurrent callbacks do not add failures or repeat the suppression alert. The third distinct bounced delivery within 24 hours suppresses the address with reason `soft_bounce_limit`. Existing historical rows are retained; no retrospective deduplication or suppression removal is performed.
 - **Complaint** (user marks as spam): immediately suppress, set `email_enabled = false`, alert agency admin. (As built: every suppression, from a hard bounce, the soft-bounce limit or a complaint, sends the `email_delivery_problem` alert to admins.)
 
 ### Suppression List
