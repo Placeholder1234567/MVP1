@@ -17,7 +17,7 @@ import {
 import { featureRoleProcedure, router } from '../middleware.ts';
 
 export const reportRouter = router({
-	exportCoverage: featureRoleProcedure('reports', 'supervisor')
+	exportCoverage: featureRoleProcedure(['reports_basic', 'reports'], 'supervisor')
 		.input(CoverageExport)
 		.mutation(({ ctx, input }) => exportCoverage(ctx.db, ctx.user, input, ctx.request)),
 	recentBackground: featureRoleProcedure('reports', 'supervisor')

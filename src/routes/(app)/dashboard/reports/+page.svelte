@@ -68,9 +68,9 @@
 	}
 </script>
 
-<svelte:head><title>Care reports · Guad</title></svelte:head>
+<svelte:head><title>Reports · Guad</title></svelte:head>
 <div class="stack">
-	<p class="eyebrow">Care records</p>
+	<p class="eyebrow">Reports</p>
 	<h1>Records ready for review.</h1>
 	{#if page.data.user?.features?.includes('reports')}<a
 			class="textbtn"
@@ -79,8 +79,7 @@
 	<a class="textbtn" href={resolve('/(app)/dashboard/imports')}>Review CSV imports →</a>
 	<p class="muted">
 		Download an audited report from the server. Dates include both selected days in {app.user
-			.timeZone}. Reports require a connection and your agency’s reporting and care feature
-		permissions.
+			.timeZone}. Available reports follow your agency’s plan. Connect and choose a home to export.
 	</p>
 	<a class="textbtn" href={resolve('/(app)/dashboard/timesheets')}>Payroll and timesheets →</a>
 	{#if page.data.user?.features?.includes('mar')}<a
@@ -91,74 +90,76 @@
 			class="textbtn"
 			href={resolve('/(app)/dashboard/goals')}>Manage goals and templates →</a
 		>{/if}
-	<form class="card pad stack" onsubmit={download}>
-		<label
-			>Report<select class="input" bind:value={type}
-				>{#each CLINICAL_TYPES as item (item)}<option value={item}>{labels[item]}</option
-					>{/each}</select
-			></label
-		>
-		<p class="muted">
-			Home: {app.homes.find((h) => h.id === app.homeId)?.name ??
-				'Choose a home in the app navigation'}
-		</p>
-		<label
-			>Person<select class="input" bind:value={clientId}
-				><option value="">Everyone in this home</option
-				>{#each app.currentPeople as person (person.id)}<option value={person.id}
-						>{person.name}</option
-					>{/each}</select
-			></label
-		>
-		<div class="grid">
-			<label>From<input class="input" type="date" required bind:value={fromDay} /></label><label
-				>Through<input class="input" type="date" required bind:value={toDay} /></label
+	{#if app.user.features.includes('reports')}
+		<form class="card pad stack" onsubmit={download}>
+			<label
+				>Report<select class="input" bind:value={type}
+					>{#each CLINICAL_TYPES as item (item)}<option value={item}>{labels[item]}</option
+						>{/each}</select
+				></label
 			>
-		</div>
-		<label
-			>Format<select class="input" bind:value={format}
-				><option value="csv">CSV spreadsheet</option><option value="json">Structured JSON</option
-				><option value="pdf">PDF for printing and sharing</option><option value="html"
-					>Print-ready HTML</option
-				></select
-			></label
-		>
-		{#if type === 'notes' || type === 'goals'}<label
-				><input type="checkbox" bind:checked={approvedOnly} /> Approved notes only</label
-			>
-			{#if type === 'goals'}<p class="muted">
-					Uses recorded goal trials from signed/approved notes, including stopped goals. Independent
-					rates include refused trials in the denominator. Not-attempted records and empty trials
-					are reported separately. Goal text is the current definition; missing days and target
-					achievement are not inferred.
-				</p>{/if}
 			<p class="muted">
-				Includes submitted and approved notes; drafts and returned notes are excluded. Dates use the
-				shift start day, including overnight shifts. Available signing and approval history is
-				included; a missing event is not a new signature.
-			</p>{:else if type === 'mar'}<p class="muted">
-				Includes every recorded dose outcome, amendment and conflict in the dose-day range.
-				Medication IDs refer to the source record; current medication details are omitted to avoid
-				presenting changed prescriptions as historical doses.
-			</p>{:else if type === 'incidents'}<p class="muted">
-				Includes open, reviewed and closed incidents by occurrence time. Incidents without an
-				occurrence time are excluded.
-			</p>{:else if type === 'health'}<p class="muted">
-				Includes recorded health entries and acknowledgment flags, from the first day’s midnight
-				through the midnight after the last day.
-			</p>{:else}<p class="muted">Includes recorded attendance services by service day.</p>{/if}
-		<p class="muted">
-			Maximum 93 calendar days, 1,000 records and 8 MB. No partial report is downloaded when a limit
-			is exceeded. Exported files contain confidential care information.
-		</p>
-		{#if app.pending || app.checkingSync}<p role="status" class="muted">
-				Reports use records received by the server. Wait for this device’s saved changes to finish
-				syncing.
-			</p>{/if}
-		<button class="btn" disabled={busy || !app.homeId || !!app.pending || app.checkingSync}
-			>{busy ? 'Preparing report…' : 'Download care report'}</button
-		>
-	</form>
-	{#if message}<p class="callout" role="status">{message}</p>{/if}
+				Home: {app.homes.find((h) => h.id === app.homeId)?.name ??
+					'Choose a home in the app navigation'}
+			</p>
+			<label
+				>Person<select class="input" bind:value={clientId}
+					><option value="">Everyone in this home</option
+					>{#each app.currentPeople as person (person.id)}<option value={person.id}
+							>{person.name}</option
+						>{/each}</select
+				></label
+			>
+			<div class="grid">
+				<label>From<input class="input" type="date" required bind:value={fromDay} /></label><label
+					>Through<input class="input" type="date" required bind:value={toDay} /></label
+				>
+			</div>
+			<label
+				>Format<select class="input" bind:value={format}
+					><option value="csv">CSV spreadsheet</option><option value="json">Structured JSON</option
+					><option value="pdf">PDF for printing and sharing</option><option value="html"
+						>Print-ready HTML</option
+					></select
+				></label
+			>
+			{#if type === 'notes' || type === 'goals'}<label
+					><input type="checkbox" bind:checked={approvedOnly} /> Approved notes only</label
+				>
+				{#if type === 'goals'}<p class="muted">
+						Uses recorded goal trials from signed/approved notes, including stopped goals.
+						Independent rates include refused trials in the denominator. Not-attempted records and
+						empty trials are reported separately. Goal text is the current definition; missing days
+						and target achievement are not inferred.
+					</p>{/if}
+				<p class="muted">
+					Includes submitted and approved notes; drafts and returned notes are excluded. Dates use
+					the shift start day, including overnight shifts. Available signing and approval history is
+					included; a missing event is not a new signature.
+				</p>{:else if type === 'mar'}<p class="muted">
+					Includes every recorded dose outcome, amendment and conflict in the dose-day range.
+					Medication IDs refer to the source record; current medication details are omitted to avoid
+					presenting changed prescriptions as historical doses.
+				</p>{:else if type === 'incidents'}<p class="muted">
+					Includes open, reviewed and closed incidents by occurrence time. Incidents without an
+					occurrence time are excluded.
+				</p>{:else if type === 'health'}<p class="muted">
+					Includes recorded health entries and acknowledgment flags, from the first day’s midnight
+					through the midnight after the last day.
+				</p>{:else}<p class="muted">Includes recorded attendance services by service day.</p>{/if}
+			<p class="muted">
+				Maximum 93 calendar days, 1,000 records and 8 MB. No partial report is downloaded when a
+				limit is exceeded. Exported files contain confidential care information.
+			</p>
+			{#if app.pending || app.checkingSync}<p role="status" class="muted">
+					Reports use records received by the server. Wait for this device’s saved changes to finish
+					syncing.
+				</p>{/if}
+			<button class="btn" disabled={busy || !app.homeId || !!app.pending || app.checkingSync}
+				>{busy ? 'Preparing report…' : 'Download care report'}</button
+			>
+		</form>
+		{#if message}<p class="callout" role="status">{message}</p>{/if}
+	{/if}
 	{#if app.user.features.includes('coverage')}<CoverageExport />{/if}
 </div>

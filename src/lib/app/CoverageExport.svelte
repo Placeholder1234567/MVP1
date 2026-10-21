@@ -14,6 +14,10 @@
 	let online = $state(false);
 	let visible = $state(false);
 	let controller: AbortController | undefined;
+	const fullReports = $derived(app.user.features.includes('reports'));
+	$effect(() => {
+		if (!fullReports) format = 'csv';
+	});
 	const guard = new ReportJobGuard();
 	const context = () =>
 		JSON.stringify([
@@ -105,10 +109,11 @@
 		home. Dates use the shift start day in {app.user.timeZone}.
 	</p>
 	<p class="muted">
-		Eligibility is not proof an offer was sent. Notification evidence follows your existing access:
-		admins can see agency records; supervisors see only their own recipient records. Missing
-		evidence is unknown. Recorded channel state is not guaranteed delivery. Names are current
-		labels.
+		Eligibility is not proof an offer was sent. Prospective offer evidence covers this home under
+		your current access. Legacy personal notification records remain limited to your own recipient
+		records unless you are an admin. Queued and provider-accepted messages are not proof of device
+		delivery; supported provider callbacks are labeled separately. Missing evidence is unknown.
+		Names are current labels.
 	</p>
 	<form class="stack" onsubmit={download}>
 		<p>
@@ -137,7 +142,8 @@
 		</div>
 		<label for="coverage-export-format">Coverage format</label>
 		<select id="coverage-export-format" class="input" bind:value={format} disabled={busy}>
-			<option value="csv">CSV spreadsheet</option><option value="json">Structured JSON</option>
+			<option value="csv">CSV spreadsheet</option>
+			{#if fullReports}<option value="json">Structured JSON</option>{/if}
 		</select>
 		<p class="muted">
 			Maximum 93 inclusive calendar days, 1,000 total source records and 8 MB. Excessive reports are

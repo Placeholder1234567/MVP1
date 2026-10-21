@@ -140,14 +140,12 @@ beforeAll(async () => {
 				eligibility_reason: 'not_trained'
 			}
 		]);
-		await tx
-			.insert(s.coverageSteps)
-			.values({
-				agency_id: agency,
-				home_id: home,
-				coverage_request_id: requestId,
-				description: 'Synthetic recorded activity'
-			});
+		await tx.insert(s.coverageSteps).values({
+			agency_id: agency,
+			home_id: home,
+			coverage_request_id: requestId,
+			description: 'Synthetic recorded activity'
+		});
 		await tx.insert(s.notifications).values([
 			{
 				id: ownNotification,
@@ -354,6 +352,57 @@ it('rejects stale home, role, active-account and plan access without broadening 
 	);
 });
 
+it('allows Starter coverage CSV under fresh scope checks while rejecting full reports and JSON', async () => {
+	await withService((tx) =>
+		tx.update(s.agencies).set({ subscription_tier: 'starter' }).where(eq(s.agencies.id, agency))
+	);
+	try {
+		// Build a new real caller so this checks middleware as well as fresh service entitlements.
+		const sup = await as(supervisor);
+		const csv = await sup.report.exportCoverage({ ...input(supervisor), format: 'csv' });
+		expect(csv.filename).toBe('guad-coverage.csv');
+		expect(csv.contentType).toBe('text/csv;charset=utf-8');
+		expect(csv.content).toContain('Synthetic callout marker');
+		expect(csv.content).toContain('selected_home_prospective');
+		expect(csv.content).not.toContain('+12025550155');
+		await expect(sup.report.exportCoverage(input(supervisor))).rejects.toMatchObject({
+			code: 'FORBIDDEN'
+		});
+		await expect(
+			sup.report.exportCoverage({ ...input(supervisor), format: 'csv', homeId: otherHome })
+		).rejects.toMatchObject({ code: 'FORBIDDEN' });
+		await expect(
+			sup.report.exportCoverage({ ...input(supervisor), format: 'csv', expectedProfileId: admin })
+		).rejects.toMatchObject({ code: 'FORBIDDEN' });
+		await expect(
+			sup.report.exportClinical({
+				type: 'notes',
+				homeId: home,
+				fromDay: '2026-03-08',
+				toDay: '2026-03-08',
+				format: 'csv'
+			})
+		).rejects.toMatchObject({ code: 'FORBIDDEN' });
+		await withService((tx) =>
+			tx.update(s.profiles).set({ home_ids: [] }).where(eq(s.profiles.id, supervisor))
+		);
+		await expect(
+			sup.report.exportCoverage({ ...input(supervisor), format: 'csv' })
+		).rejects.toMatchObject({ code: 'FORBIDDEN' });
+	} finally {
+		await withService(async (tx) => {
+			await tx
+				.update(s.profiles)
+				.set({ home_ids: [home] })
+				.where(eq(s.profiles.id, supervisor));
+			await tx
+				.update(s.agencies)
+				.set({ subscription_tier: 'complete' })
+				.where(eq(s.agencies.id, agency));
+		});
+	}
+});
+
 it('rejects invalid/overlong periods, unknown input fields, excess source rows and oversized output', async () => {
 	const sup = await as(supervisor);
 	for (const p of [
@@ -377,16 +426,14 @@ it('rejects invalid/overlong periods, unknown input fields, excess source rows a
 			},
 			{ id: many, agency_id: agency, home_id: home, day: '2026-04-02', shift: 'am' }
 		]);
-		await tx
-			.insert(s.coverageSteps)
-			.values(
-				Array.from({ length: 1000 }, () => ({
-					agency_id: agency,
-					home_id: home,
-					coverage_request_id: many,
-					description: 'Synthetic bounded activity'
-				}))
-			);
+		await tx.insert(s.coverageSteps).values(
+			Array.from({ length: 1000 }, () => ({
+				agency_id: agency,
+				home_id: home,
+				coverage_request_id: many,
+				description: 'Synthetic bounded activity'
+			}))
+		);
 	});
 	await expect(
 		sup.report.exportCoverage({ ...input(supervisor), fromDay: '2026-04-01', toDay: '2026-04-01' })
