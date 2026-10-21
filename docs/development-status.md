@@ -10,6 +10,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 - Timesheet loads and payroll downloads use the existing in-memory response guard and abort on account/home/privacy/view changes, clear reports on scope changes, preserve offline dates and retain the loaded export period despite later form edits. New held-real-response desktop/phone tests cover loads, downloads, home-away/back, lock, navigation, loaded-period JSON, offline controls, axe and overflow. Final-head cloud validation is required before merge.
 
+The first PR245 browser run passed all ten new Timesheets cases but found an immediate Care navigation race: a held response could complete after navigation started and before the old page was disposed. Care and Timesheets now invalidate pending responses in `beforeNavigate` as well as on disposal. Their navigation regressions hold the destination's real route-data request, release the report while the transition is still pending and require zero downloads before allowing navigation to finish. Original scope/period/privacy assertions remain.
+
 - Immediate Care downloads use the existing in-memory report guard and request abort on privacy/view/account/scope changes. Submitted period/format metadata is captured before waits; offline controls retain form dates. Held real server-response regressions run on desktop and phone in cloud CI for home-away/back, lock, navigation and edited dates.
 
 PR244 merged after all four final-head gates passed: 528 units, 326 integration tests plus SQL RLS, 145 production and 2 development browser passes, and performance. Its eight new desktop/phone cases passed without weakening the privacy or captured-period assertions.

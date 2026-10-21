@@ -50,6 +50,8 @@ for (const change of [
 				true
 			);
 		}
+		let releaseNavigation: (() => void) | undefined;
+		let completeNavigation: (() => Promise<void>) | undefined;
 		let downloads = 0;
 		page.on('download', () => downloads++);
 		let release!: () => void;
@@ -98,13 +100,26 @@ for (const change of [
 					page.getByRole('heading', { name: 'Workspace locked', exact: true })
 				).toBeVisible();
 			} else if (change === 'export-navigation') {
+				let destinationRequested!: () => void;
+				const destinationHeld = new Promise<void>((r) => (destinationRequested = r));
+				const destinationGate = new Promise<void>((r) => (releaseNavigation = r));
+				await page.route('**/shifts/__data.json*', async (route) => {
+					destinationRequested();
+					await destinationGate;
+					await route.continue().catch(() => {});
+				});
 				await page.getByRole('button', { name: 'Search', exact: true }).click();
 				await page.getByRole('combobox', { name: /^Search people/ }).fill('schedule');
-				await page
+				const navigationClick = page
 					.getByRole('option', { name: /^Schedule/ })
 					.first()
 					.click();
-				await expect(page).toHaveURL(/\/shifts$/);
+				await destinationHeld;
+				completeNavigation = async () => {
+					releaseNavigation?.();
+					await navigationClick;
+					await expect(page).toHaveURL(/\/shifts$/);
+				};
 			} else {
 				await form.getByLabel('From', { exact: true }).fill('2026-02-01T00:00');
 				await form.getByLabel('To', { exact: true }).fill('2026-02-02T00:00');
@@ -119,6 +134,11 @@ for (const change of [
 						requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
 					)
 			);
+			if (completeNavigation) {
+				// Assert disposal before the destination can replace/unmount the source page.
+				expect(downloads).toBe(0);
+				await completeNavigation();
+			}
 			if (download) {
 				const file = await download;
 				const path = info.outputPath('synthetic-payroll.json');
@@ -135,6 +155,7 @@ for (const change of [
 				await expect(page.getByText(/^Exported \d+ records\./)).toHaveCount(0);
 			}
 		} finally {
+			releaseNavigation?.();
 			release();
 			await page.unroute(pattern);
 		}

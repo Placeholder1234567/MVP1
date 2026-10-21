@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { useSession } from '#lib/app/session.svelte.ts';
@@ -22,6 +23,13 @@
 	let visible = $state(false);
 	let controller: AbortController | undefined;
 	const guard = new ReportJobGuard();
+	beforeNavigate(() => {
+		// The old component can remain mounted while the destination is loading.
+		controller?.abort();
+		guard.change('navigating');
+		busy = false;
+		message = '';
+	});
 	const context = () =>
 		JSON.stringify([
 			app.user.agencyId,

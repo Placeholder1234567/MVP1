@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
@@ -17,6 +18,14 @@
 	let visible = $state(false);
 	let controller: AbortController | undefined;
 	const guard = new ReportJobGuard();
+	beforeNavigate(() => {
+		controller?.abort();
+		guard.change('navigating');
+		reading = false;
+		report = null;
+		reportRange = null;
+		message = '';
+	});
 	const context = () =>
 		JSON.stringify([
 			app.user.agencyId,

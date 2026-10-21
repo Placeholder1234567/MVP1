@@ -39,6 +39,8 @@ for (const change of ['home', 'lock', 'navigation', 'dates'] as const) {
 			);
 		}
 		await expect(button).toBeEnabled();
+		let releaseNavigation: (() => void) | undefined;
+		let completeNavigation: (() => Promise<void>) | undefined;
 		let downloads = 0;
 		page.on('download', () => downloads++);
 		let release!: () => void;
@@ -84,13 +86,26 @@ for (const change of ['home', 'lock', 'navigation', 'dates'] as const) {
 					page.getByRole('heading', { name: 'Workspace locked', exact: true })
 				).toBeVisible();
 			} else if (change === 'navigation') {
+				let destinationRequested!: () => void;
+				const destinationHeld = new Promise<void>((r) => (destinationRequested = r));
+				const destinationGate = new Promise<void>((r) => (releaseNavigation = r));
+				await page.route('**/shifts/__data.json*', async (route) => {
+					destinationRequested();
+					await destinationGate;
+					await route.continue().catch(() => {});
+				});
 				await page.getByRole('button', { name: 'Search', exact: true }).click();
 				await page.getByRole('combobox', { name: /^Search people/ }).fill('schedule');
-				await page
+				const navigationClick = page
 					.getByRole('option', { name: /^Schedule/ })
 					.first()
 					.click();
-				await expect(page).toHaveURL(/\/shifts$/);
+				await destinationHeld;
+				completeNavigation = async () => {
+					releaseNavigation?.();
+					await navigationClick;
+					await expect(page).toHaveURL(/\/shifts$/);
+				};
 			} else {
 				await form.getByLabel('From', { exact: true }).fill('2026-01-02');
 				await form.getByLabel('Through', { exact: true }).fill('2026-01-02');
@@ -106,6 +121,11 @@ for (const change of ['home', 'lock', 'navigation', 'dates'] as const) {
 						requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
 					)
 			);
+			if (completeNavigation) {
+				// Assert disposal before the destination can replace/unmount the source page.
+				expect(downloads).toBe(0);
+				await completeNavigation();
+			}
 			if (download) {
 				const file = await download;
 				const path = info.outputPath('synthetic-immediate-report.json');
@@ -126,6 +146,7 @@ for (const change of ['home', 'lock', 'navigation', 'dates'] as const) {
 				await expect(page.getByText(/^Downloaded \d+ records/)).toHaveCount(0);
 			}
 		} finally {
+			releaseNavigation?.();
 			release();
 			await page.unroute(pattern);
 		}
