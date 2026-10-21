@@ -8,6 +8,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+- Immediate Care downloads use the existing in-memory report guard and request abort on privacy/view/account/scope changes. Submitted period/format metadata is captured before waits; offline controls retain form dates. Held real server-response regressions run on desktop and phone in cloud CI for home-away/back, lock, navigation and edited dates.
+
 - Basic reporting plans can export coverage CSV with current account/home/plan checks; JSON and Care reports still require full reporting. The Reports page shows the clinical form only with full report access. This corrects the endpoint's earlier mismatch with the Starter `reports_basic` entitlement.
 - Email transient-bounce accounting uses stable agency/delivery/address identities so callback replay cannot turn one failed message into three failures. Concurrent duplicate inserts are idempotent; three distinct bounced messages still trigger the existing 24-hour suppression rule. Historical counts and suppressions are not rewritten. Cloud integration validation is required for the callback replay and concurrency regression.
 
