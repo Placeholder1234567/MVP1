@@ -8,10 +8,14 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+- Timesheet loads and payroll downloads use the existing in-memory response guard and abort on account/home/privacy/view changes, clear reports on scope changes, preserve offline dates and retain the loaded export period despite later form edits. New held-real-response desktop/phone tests cover loads, downloads, home-away/back, lock, navigation, loaded-period JSON, offline controls, axe and overflow. Final-head cloud validation is required before merge.
+
 - Immediate Care downloads use the existing in-memory report guard and request abort on privacy/view/account/scope changes. Submitted period/format metadata is captured before waits; offline controls retain form dates. Held real server-response regressions run on desktop and phone in cloud CI for home-away/back, lock, navigation and edited dates.
 
+PR244 merged after all four final-head gates passed: 528 units, 326 integration tests plus SQL RLS, 145 production and 2 development browser passes, and performance. Its eight new desktop/phone cases passed without weakening the privacy or captured-period assertions.
+
 - Basic reporting plans can export coverage CSV with current account/home/plan checks; JSON and Care reports still require full reporting. The Reports page shows the clinical form only with full report access. This corrects the endpoint's earlier mismatch with the Starter `reports_basic` entitlement.
-- Email transient-bounce accounting uses stable agency/delivery/address identities so callback replay cannot turn one failed message into three failures. Concurrent duplicate inserts are idempotent; three distinct bounced messages still trigger the existing 24-hour suppression rule. Historical counts and suppressions are not rewritten. Cloud integration validation is required for the callback replay and concurrency regression.
+- Email transient-bounce accounting uses stable agency/delivery/address identities so callback replay cannot turn one failed message into three failures. Concurrent duplicate inserts are idempotent; three distinct bounced messages still trigger the existing 24-hour suppression rule. Historical counts and suppressions are not rewritten. PR242 merged after all four gates passed, including callback replay and concurrency integration regressions. Basic coverage CSV access in PR243 also passed all four gates before merge.
 
 - Refused upload operation matching, correct-PIN failure handling and deterministic report-audit assertions are merged (PR225, PR226, PR228).
 - The guarded development notification panel and controls are merged (PR206, PR229, PR230). Core, database/RLS, production/development browser and performance checks passed on each final commit. Local timers remain volatile across restart.
