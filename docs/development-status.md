@@ -8,6 +8,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+The expanded browser job has a 30-minute overall allowance for dependency/build/emulator setup, the production and development suites, and teardown. In PR246's first run, 159 production and 2 development tests passed, but the previous 20-minute job deadline cancelled teardown before a successful gate could be recorded. Per-test/action timeouts, zero retries, all assertions and both browser phases remain unchanged; all four gates must pass on the follow-up commit.
+
 - Coverage and queued Care downloads now invalidate at navigation start, closing the same transition window found in immediate Care exports. Queued views abort outstanding UI requests and forget local job/list references without cancelling server work. Four new desktop/phone regressions hold real coverage/prepared-file responses while the destination route remains blocked and require zero downloads before navigation finishes. Final-head cloud validation is required before merge.
 
 - Timesheet loads and payroll downloads use the existing in-memory response guard and abort on account/home/privacy/view changes, clear reports on scope changes, preserve offline dates and retain the loaded export period despite later form edits. New held-real-response desktop/phone tests cover loads, downloads, home-away/back, lock, navigation, loaded-period JSON, offline controls, axe and overflow. Final-head cloud validation is required before merge.
