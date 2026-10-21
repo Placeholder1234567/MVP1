@@ -115,7 +115,7 @@
 			link.download = file.filename;
 			link.click();
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
-			message = `Downloaded ${file.rows} records for ${p.fromDay} through ${p.toDay}. ${p.format === 'html' ? 'Open the HTML file and use your browser’s Print command to print or save as PDF. ' : ''}Keep exports in approved agency storage.`;
+			message = `Downloaded ${file.rows} records. Period: ${p.fromDay} through ${p.toDay}. ${p.format === 'html' ? 'Open the HTML file and use your browser’s Print command to print or save as PDF. ' : ''}Keep exports in approved agency storage.`;
 		} catch (e) {
 			if (!current() || request.signal.aborted) return;
 			// Limit and PDF-font messages come from the report service and carry no client data.
@@ -153,37 +153,33 @@
 		>{/if}
 	{#if app.user.features.includes('reports')}
 		<form class="card pad stack" onsubmit={download}>
-			<label
-				>Report<select class="input" bind:value={type}
-					>{#each CLINICAL_TYPES as item (item)}<option value={item}>{labels[item]}</option
-						>{/each}</select
-				></label
-			>
+			<label for="clinical-report-type">Report</label>
+			<select id="clinical-report-type" class="input" bind:value={type}>
+				{#each CLINICAL_TYPES as item (item)}<option value={item}>{labels[item]}</option>{/each}
+			</select>
 			<p class="muted">
 				Home: {app.homes.find((h) => h.id === app.homeId)?.name ??
 					'Choose a home in the app navigation'}
 			</p>
-			<label
-				>Person<select class="input" bind:value={clientId}
-					><option value="">Everyone in this home</option
-					>{#each app.currentPeople as person (person.id)}<option value={person.id}
-							>{person.name}</option
-						>{/each}</select
-				></label
-			>
+			<label for="clinical-report-person">Person</label>
+			<select id="clinical-report-person" class="input" bind:value={clientId}>
+				<option value="">Everyone in this home</option>
+				{#each app.currentPeople as person (person.id)}<option value={person.id}
+						>{person.name}</option
+					>{/each}
+			</select>
 			<div class="grid">
 				<label>From<input class="input" type="date" required bind:value={fromDay} /></label><label
 					>Through<input class="input" type="date" required bind:value={toDay} /></label
 				>
 			</div>
-			<label
-				>Format<select class="input" bind:value={format}
-					><option value="csv">CSV spreadsheet</option><option value="json">Structured JSON</option
-					><option value="pdf">PDF for printing and sharing</option><option value="html"
-						>Print-ready HTML</option
-					></select
-				></label
-			>
+			<label for="clinical-report-format">Format</label>
+			<select id="clinical-report-format" class="input" bind:value={format}>
+				<option value="csv">CSV spreadsheet</option><option value="json">Structured JSON</option>
+				<option value="pdf">PDF for printing and sharing</option><option value="html"
+					>Print-ready HTML</option
+				>
+			</select>
 			{#if type === 'notes' || type === 'goals'}<label
 					><input type="checkbox" bind:checked={approvedOnly} /> Approved notes only</label
 				>

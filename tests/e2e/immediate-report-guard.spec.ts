@@ -89,7 +89,7 @@ for (const change of ['home', 'lock', 'navigation', 'dates'] as const) {
 					.getByRole('option', { name: /^Schedule/ })
 					.first()
 					.click();
-				await expect(page).toHaveURL(/\/dashboard\/schedule$/);
+				await expect(page).toHaveURL(/\/shifts$/);
 			} else {
 				await form.getByLabel('From', { exact: true }).fill('2026-01-02');
 				await form.getByLabel('Through', { exact: true }).fill('2026-01-02');
@@ -115,7 +115,7 @@ for (const change of ['home', 'lock', 'navigation', 'dates'] as const) {
 					toDay: '2026-01-01'
 				});
 				await expect(
-					page.getByText(/^Downloaded \d+ records for 2026-01-01 through 2026-01-01/)
+					page.getByText(/^Downloaded \d+ records\. Period: 2026-01-01 through 2026-01-01/)
 				).toBeVisible();
 				expect(downloads).toBe(1);
 			} else {
