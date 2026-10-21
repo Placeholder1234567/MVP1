@@ -1,7 +1,7 @@
 /**
  * Guad — HIPAA-compliant Postgres schema (Drizzle ORM)
  *
- * Every table carries agency_id for tenant isolation and RLS (38 tables).
+ * Every table carries agency_id for tenant isolation and RLS (47 tables).
  * All timestamps are stored WITH time zone.
  */
 
@@ -114,6 +114,15 @@ export const notificationStatusEnum = pgEnum('notification_status', [
   'failed',
   'escalated',
   'escalation_exhausted',
+  'rate_limited',
+]);
+
+export const coverageOfferEvidenceEventEnum = pgEnum('coverage_offer_evidence_event', [
+  'queued',
+  'provider_accepted',
+  'delivery_reported',
+  'failed',
+  'suppressed',
   'rate_limited',
 ]);
 
@@ -1881,5 +1890,40 @@ export const smsCarrierConsents = pgTable(
   },
   (t) => [
     uniqueIndex('sms_carrier_consents_agency_phone_idx').on(t.agency_id, t.phone_hash),
+  ],
+);
+
+// Prospective, append-only evidence for coverage-offer channel handling. This
+// deliberately records no contact address, provider payload or message body.
+// It starts at deployment (there is no historical backfill) and keeps provider
+// acceptance distinct from a later provider delivery callback.
+export const coverageOfferEvidence = pgTable(
+  'coverage_offer_evidence',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id').notNull().references(() => agencies.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id').notNull().references(() => homes.id, { onDelete: 'restrict' }),
+    coverage_request_id: uuid('coverage_request_id')
+      .notNull()
+      .references(() => coverageRequests.id, { onDelete: 'restrict' }),
+    notification_id: uuid('notification_id').references(() => notifications.id, {
+      onDelete: 'set null',
+    }),
+    recipient_profile_id: uuid('recipient_profile_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    channel: text('channel').notNull(),
+    event: coverageOfferEvidenceEventEnum('event').notNull(),
+    occurred_at: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('coverage_offer_evidence_notification_event_idx').on(t.notification_id, t.event),
+    index('coverage_offer_evidence_agency_home_request_idx').on(
+      t.agency_id,
+      t.home_id,
+      t.coverage_request_id,
+    ),
   ],
 );

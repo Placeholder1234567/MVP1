@@ -2,6 +2,8 @@ import { and, arrayContains, count, eq, gte, inArray, lt, lte, ne, or } from 'dr
 import type { Tx } from '../../db';
 import {
 	agencies,
+	coverageOfferEvidence,
+	coverageRequests,
 	deviceTokens,
 	notificationPreferences,
 	notifications,
@@ -51,6 +53,66 @@ export async function insertNotifications(tx: Tx, rows: (typeof notifications.$i
 		id: notifications.id,
 		channel: notifications.channel
 	});
+}
+
+export type CoverageOfferEvidenceEvent =
+	'queued' | 'provider_accepted' | 'delivery_reported' | 'failed' | 'suppressed' | 'rate_limited';
+
+/**
+ * Appends narrowly scoped coverage-offer evidence for notifications that
+ * actually reference a coverage request. The notification row supplies every
+ * identity and scope field; callers cannot forge an agency, home or recipient.
+ * The unique notification/event key makes duplicate queue tasks and provider
+ * callbacks idempotent. Existing notification RLS is not changed.
+ */
+export async function recordCoverageOfferEvidence(
+	tx: Tx,
+	notificationIds: string | string[],
+	event: CoverageOfferEvidenceEvent,
+	occurredAt = new Date()
+) {
+	const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds];
+	if (!ids.length) return;
+	const rows = await tx
+		.select({
+			agencyId: notifications.agency_id,
+			homeId: coverageRequests.home_id,
+			requestId: coverageRequests.id,
+			notificationId: notifications.id,
+			recipientProfileId: notifications.profile_id,
+			channel: notifications.channel
+		})
+		.from(notifications)
+		.innerJoin(
+			coverageRequests,
+			and(
+				eq(coverageRequests.id, notifications.reference_id),
+				eq(coverageRequests.agency_id, notifications.agency_id)
+			)
+		)
+		.where(
+			and(
+				inArray(notifications.id, ids),
+				eq(notifications.type, 'coverage_offer'),
+				eq(notifications.reference_type, 'coverage_requests')
+			)
+		);
+	if (!rows.length) return;
+	await tx
+		.insert(coverageOfferEvidence)
+		.values(
+			rows.map((row) => ({
+				agency_id: row.agencyId,
+				home_id: row.homeId,
+				coverage_request_id: row.requestId,
+				notification_id: row.notificationId,
+				recipient_profile_id: row.recipientProfileId,
+				channel: row.channel,
+				event,
+				occurred_at: occurredAt
+			}))
+		)
+		.onConflictDoNothing();
 }
 
 export async function agencyNotificationSettings(tx: Tx, agencyId: string) {
@@ -127,7 +189,11 @@ export async function sentSince(tx: Tx, profileId: string, channel: string, sinc
 export async function markDelivery(
 	tx: Tx,
 	id: string,
-	set: { status: 'sent' | 'failed' | 'rate_limited'; providerMessageId?: string }
+	set: {
+		status: 'sent' | 'failed' | 'rate_limited';
+		providerMessageId?: string;
+		evidence?: CoverageOfferEvidenceEvent;
+	}
 ) {
 	await tx
 		.update(notifications)
@@ -138,6 +204,16 @@ export async function markDelivery(
 			updated_at: new Date()
 		})
 		.where(eq(notifications.id, id));
+	await recordCoverageOfferEvidence(
+		tx,
+		id,
+		set.evidence ??
+			(set.status === 'sent'
+				? 'provider_accepted'
+				: set.status === 'rate_limited'
+					? 'rate_limited'
+					: 'failed')
+	);
 }
 
 /**

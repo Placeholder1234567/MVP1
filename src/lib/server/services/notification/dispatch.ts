@@ -73,7 +73,9 @@ export async function dispatchNotifications(
 		const now = localTime(new Date(), row.timeZone);
 		const overrides = notificationOverrides(row.agencySettings);
 		if (notificationDisabled(row.type, overrides)) {
-			await withService((tx) => markDelivery(tx, row.id, { status: 'failed' }));
+			await withService((tx) =>
+				markDelivery(tx, row.id, { status: 'failed', evidence: 'suppressed' })
+			);
 			stats.suppressed++;
 			continue;
 		}
@@ -93,7 +95,7 @@ export async function dispatchNotifications(
 		if (overDailyLimit(channel, row.priority, lastDay)) {
 			console.log(`notification ${row.id} ${channel} rate limited`);
 			await withService(async (tx) => {
-				await markDelivery(tx, row.id, { status: 'rate_limited' });
+				await markDelivery(tx, row.id, { status: 'rate_limited', evidence: 'rate_limited' });
 				if (channel === 'sms') await queueSmsPushFallback(tx, row.agencyId, row.id);
 			});
 			stats.rateLimited++;
@@ -105,7 +107,9 @@ export async function dispatchNotifications(
 			(await withService((tx) => isSuppressed(tx, row.agencyId, row.email.toLowerCase())))
 		) {
 			console.log(`notification ${row.id} email skipped: address suppressed`);
-			await withService((tx) => markDelivery(tx, row.id, { status: 'failed' }));
+			await withService((tx) =>
+				markDelivery(tx, row.id, { status: 'failed', evidence: 'suppressed' })
+			);
 			stats.suppressed++;
 			continue;
 		}
@@ -153,7 +157,11 @@ export async function dispatchNotifications(
 				result = await send.email(row.email, d);
 			}
 			await withService((tx) =>
-				markDelivery(tx, row.id, { status: 'sent', providerMessageId: result.providerMessageId })
+				markDelivery(tx, row.id, {
+					status: 'sent',
+					providerMessageId: result.providerMessageId,
+					evidence: 'provider_accepted'
+				})
 			);
 			stats.sent++;
 		} catch (e) {
@@ -166,7 +174,7 @@ export async function dispatchNotifications(
 			}
 			console.error(`notification.dead ${row.id} ${channel}: ${(e as Error).name}`);
 			await withService(async (tx) => {
-				await markDelivery(tx, row.id, { status: 'failed' });
+				await markDelivery(tx, row.id, { status: 'failed', evidence: 'failed' });
 				if (channel === 'sms') await queueSmsPushFallback(tx, row.agencyId, row.id);
 				// Mandatory alerts reach someone with no push device by text (§5).
 				if (channel === 'push') await queuePushSmsFallback(tx, row.agencyId, row.id);

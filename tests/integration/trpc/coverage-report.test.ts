@@ -183,6 +183,28 @@ beforeAll(async () => {
 				reference_type: 'coverage_requests'
 			}
 		]);
+		await tx.insert(s.coverageOfferEvidence).values([
+			{
+				agency_id: agency,
+				home_id: home,
+				coverage_request_id: requestId,
+				notification_id: otherNotification,
+				recipient_profile_id: caregiver,
+				channel: 'sms',
+				event: 'queued',
+				occurred_at: new Date('2026-03-08T09:59:00Z')
+			},
+			{
+				agency_id: agency,
+				home_id: home,
+				coverage_request_id: requestId,
+				notification_id: otherNotification,
+				recipient_profile_id: caregiver,
+				channel: 'sms',
+				event: 'provider_accepted',
+				occurred_at: new Date('2026-03-08T10:00:00Z')
+			}
+		]);
 	});
 });
 afterAll(closeDb);
@@ -191,7 +213,9 @@ it('exports scoped current facts, preserves notification RLS and audits only sco
 	const sup = await as(supervisor);
 	const file = await sup.report.exportCoverage(input(supervisor));
 	const report = JSON.parse(file.content);
+	expect(report.version).toBe(2);
 	expect(report.notificationVisibility).toBe('own_recipient_only');
+	expect(report.offerEvidenceVisibility).toBe('selected_home_prospective');
 	expect(report.timeZone).toBe('America/New_York');
 	expect(report.rows.filter((r: { kind: string }) => r.kind === 'request')).toMatchObject([
 		{ id: requestId, shift: 'on', filledBy: caregiver, reason: '=Synthetic callout marker' }
@@ -206,7 +230,22 @@ it('exports scoped current facts, preserves notification RLS and audits only sco
 			.filter((r: { kind: string }) => r.kind === 'notification')
 			.map((r: { id: string }) => r.id)
 	).toEqual([ownNotification]);
+	expect(
+		report.rows
+			.filter((r: { kind: string }) => r.kind === 'offer_evidence')
+			.map((r: { event: string }) => r.event)
+	).toEqual(['queued', 'provider_accepted']);
+	expect(report.rows.filter((r: { kind: string }) => r.kind === 'offer_evidence')).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				staffId: caregiver,
+				staffName: '=Candidate label',
+				channel: 'sms'
+			})
+		])
+	);
 	expect(report.evidenceLimits).toContain('Eligibility is not proof an offer was sent');
+	expect(report.evidenceLimits).toContain('provider_accepted is not device delivery');
 	expect(report.evidenceLimits).toContain('not a snapshot at the period end');
 	for (const marker of [
 		'Outside period marker',
@@ -245,7 +284,8 @@ it('exports scoped current facts, preserves notification RLS and audits only sco
 			rows: report.rows.length,
 			homeId: home,
 			requestIds: [requestId],
-			notificationVisibility: 'own_recipient_only'
+			notificationVisibility: 'own_recipient_only',
+			offerEvidenceVisibility: 'selected_home_prospective'
 		});
 		expect(JSON.stringify(audit.new_values)).not.toContain('Synthetic callout marker');
 		expect(

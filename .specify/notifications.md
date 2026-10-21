@@ -897,6 +897,8 @@ The escalation engine uses delayed Cloud Tasks tasks. When a notification is sen
 
 The `notifications` table tracks delivery and escalation state via the `status` column. The canonical set of status values (should be enforced as a pgEnum `notification_status` in schema.ts):
 
+**Prospective coverage evidence:** `coverage_offer_evidence` is an append-only, content-free ledger derived only from stored `coverage_offer` notification rows. It records `queued`, `provider_accepted`, `delivery_reported`, `failed`, `suppressed` and `rate_limited` separately and de-duplicates notification/event pairs. SMS and SES delivery callbacks can add `delivery_reported`; channels without such a callback stop at provider acceptance. It has no backfill, so missing evidence is unknown. Assigned supervisors and agency admins may read the selected home's ledger for reporting; caregivers cannot. Existing personal notification RLS is unchanged.
+
 | Status | Meaning |
 |--------|---------|
 | `pending` | Initial send queued, not yet dispatched |

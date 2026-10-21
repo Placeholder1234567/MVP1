@@ -51,6 +51,10 @@ SELECT expect('cg cannot create notifications',
 -- 5. Coverage eligibility
 UPDATE coverage_candidates SET eligible = true, reply = 'accepted' WHERE id = '92000000-0000-0000-0000-000000000000';
 SELECT check_eq('cg cannot make self eligible (0 rows changed)', (SELECT count(*) FROM coverage_candidates WHERE eligible), 0);
+SELECT check_eq('cg cannot read supervisor coverage offer evidence', (SELECT count(*) FROM coverage_offer_evidence), 0);
+SELECT expect('cg cannot forge coverage offer evidence',
+  $$INSERT INTO coverage_offer_evidence (agency_id, home_id, coverage_request_id, recipient_profile_id, channel, event)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','91000000-0000-0000-0000-000000000000','c1000000-0000-0000-0000-000000000000','sms','queued')$$, true);
 
 -- 6. Note lifecycle (one note per shift)
 INSERT INTO notes (id, agency_id, client_id, home_id, author_id, day, shift, type, status, content)
@@ -162,6 +166,14 @@ SELECT check_eq('the photo row is unchanged',
 
 -- ================= as supervisor c2 =================
 SELECT set_config('app.claims', :'sup', false);
+SELECT check_eq('sup sees prospective offer evidence for assigned homes', (SELECT count(*) FROM coverage_offer_evidence), 1);
+SELECT expect('sup cannot forge coverage offer evidence',
+  $$INSERT INTO coverage_offer_evidence (agency_id, home_id, coverage_request_id, recipient_profile_id, channel, event)
+    VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','91000000-0000-0000-0000-000000000000','c1000000-0000-0000-0000-000000000000','sms','queued')$$, true);
+UPDATE coverage_offer_evidence SET event = 'delivery_reported' WHERE id = '94000000-0000-0000-0000-000000000000';
+DELETE FROM coverage_offer_evidence WHERE id = '94000000-0000-0000-0000-000000000000';
+SELECT check_eq('offer evidence is immutable for app users',
+  (SELECT count(*) FROM coverage_offer_evidence WHERE id = '94000000-0000-0000-0000-000000000000' AND event = 'provider_accepted'), 1);
 SELECT expect('a photo is attached only by the person who uploaded it',
   $$INSERT INTO messages (agency_id, home_id, photo_id, from_name, body, created_by)
     VALUES ('a1000000-0000-0000-0000-000000000000','b1000000-0000-0000-0000-000000000000','f6000000-0000-0000-0000-000000000000','Sue Pervisor','Mine now','c2000000-0000-0000-0000-000000000000')$$, true);
