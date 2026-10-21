@@ -9,6 +9,7 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 ## Current increments
 
 - Basic reporting plans can export coverage CSV with current account/home/plan checks; JSON and Care reports still require full reporting. The Reports page shows the clinical form only with full report access. This corrects the endpoint's earlier mismatch with the Starter `reports_basic` entitlement.
+- Email transient-bounce accounting uses stable agency/delivery/address identities so callback replay cannot turn one failed message into three failures. Concurrent duplicate inserts are idempotent; three distinct bounced messages still trigger the existing 24-hour suppression rule. Historical counts and suppressions are not rewritten. Cloud integration validation is required for the callback replay and concurrency regression.
 
 - Refused upload operation matching, correct-PIN failure handling and deterministic report-audit assertions are merged (PR225, PR226, PR228).
 - The guarded development notification panel and controls are merged (PR206, PR229, PR230). Core, database/RLS, production/development browser and performance checks passed on each final commit. Local timers remain volatile across restart.

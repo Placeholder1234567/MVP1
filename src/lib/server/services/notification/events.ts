@@ -62,8 +62,8 @@ export function handleEmailEvent(event: SesEvent): Promise<EventOutcome> {
 			if (type === 'Complaint') reason = 'complaint';
 			else if (bounceType === 'Permanent') reason = 'hard_bounce';
 			else {
-				// Soft bounce: SES retries it; repeated ones mean the address is dead.
-				await recordSoftBounce(tx, delivery.agencyId, email);
+				// Count distinct deliveries, not retries of the same provider callback.
+				if (!(await recordSoftBounce(tx, delivery.agencyId, email, delivery.id))) continue;
 				const since = new Date(Date.now() - 24 * 3600_000);
 				if ((await softBouncesSince(tx, delivery.agencyId, email, since)) < SOFT_BOUNCE_LIMIT)
 					continue;
