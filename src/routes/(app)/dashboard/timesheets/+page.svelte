@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
+	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { resolve } from '$app/paths';
@@ -10,6 +13,63 @@
 	let report = $state<Awaited<ReturnType<typeof trpc.clock.timesheet.query>> | null>(null);
 	let reportRange = $state<{ from: Date; to: Date; homeId: string } | null>(null);
 	let busy = $state(false);
+	let reading = $state(false);
+	let online = $state(false);
+	let visible = $state(false);
+	let controller: AbortController | undefined;
+	const guard = new ReportJobGuard();
+	beforeNavigate(() => {
+		controller?.abort();
+		guard.change('navigating');
+		reading = false;
+		report = null;
+		reportRange = null;
+		message = '';
+	});
+	const context = () =>
+		JSON.stringify([
+			app.user.agencyId,
+			app.user.profileId,
+			app.user.role,
+			app.user.homeIds,
+			app.user.features,
+			app.homeId,
+			app.privacyLocked
+		]);
+	const canConnect = $derived(reportCanConnect(online, visible, app.privacyLocked));
+	$effect(() => {
+		if (guard.change(context())) {
+			controller?.abort();
+			reading = false;
+			report = null;
+			reportRange = null;
+			message = '';
+		}
+	});
+	onMount(() => {
+		const update = () => {
+			online = navigator.onLine;
+			visible = document.visibilityState === 'visible';
+			if (!online || !visible) {
+				controller?.abort();
+				guard.change(`unavailable-${Date.now()}`);
+				reading = false;
+			}
+		};
+		update();
+		window.addEventListener('online', update);
+		window.addEventListener('offline', update);
+		document.addEventListener('visibilitychange', update);
+		return () => {
+			window.removeEventListener('online', update);
+			window.removeEventListener('offline', update);
+			document.removeEventListener('visibilitychange', update);
+		};
+	});
+	onDestroy(() => {
+		controller?.abort();
+		guard.change('disposed');
+	});
 	let message = $state('');
 	let person = $state('');
 	let entryIn = $state('');
@@ -40,19 +100,32 @@
 		}
 	}
 	async function load() {
+		if (reading || !app.homeId || !canConnect) return;
+		guard.change(context());
+		const stillCurrent = guard.capture();
+		const original = context();
+		const current = () => stillCurrent() && original === context() && canConnect;
+		const request = new AbortController();
+		controller = request;
 		const requested = { from: new Date(from), to: new Date(to), homeId: app.homeId };
-		busy = true;
+		reading = true;
 		message = '';
 		try {
-			report = await trpc.clock.timesheet.query({
-				homeId: requested.homeId,
-				dateRange: { from: requested.from, to: requested.to }
-			});
+			const result = await trpc.clock.timesheet.query(
+				{
+					homeId: requested.homeId,
+					dateRange: { from: requested.from, to: requested.to }
+				},
+				{ signal: request.signal }
+			);
+			if (!current() || request.signal.aborted) return;
+			report = result;
 			reportRange = requested;
 		} catch {
+			if (!current() || request.signal.aborted) return;
 			message = 'Could not load this report. Connect and check the date range.';
 		} finally {
-			busy = false;
+			if (stillCurrent()) reading = false;
 		}
 	}
 	async function acknowledge(id: string) {
@@ -90,16 +163,27 @@
 		}
 	}
 	async function exportReport(format: 'csv' | 'json') {
-		if (!reportRange || busy) return;
-		busy = true;
+		if (!reportRange || busy || reading || !canConnect || reportRange.homeId !== app.homeId) return;
+		guard.change(context());
+		const stillCurrent = guard.capture();
+		const original = context();
+		const current = () => stillCurrent() && original === context() && canConnect;
+		const requested = { ...reportRange, format };
+		const request = new AbortController();
+		controller = request;
+		reading = true;
 		message = '';
 		try {
-			const file = await trpc.report.exportTimesheet.mutate({
-				homeId: reportRange.homeId,
-				from: reportRange.from,
-				to: reportRange.to,
-				format
-			});
+			const file = await trpc.report.exportTimesheet.mutate(
+				{
+					homeId: requested.homeId,
+					from: requested.from,
+					to: requested.to,
+					format
+				},
+				{ signal: request.signal }
+			);
+			if (!current() || request.signal.aborted) return;
 			const url = URL.createObjectURL(new Blob([file.content], { type: file.contentType }));
 			const link = document.createElement('a');
 			link.href = url;
@@ -108,10 +192,11 @@
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
 			message = `Exported ${file.rows} records. Keep downloaded files in your agency’s approved storage.`;
 		} catch {
+			if (!current() || request.signal.aborted) return;
 			message =
 				'Could not export. Reconnect and check your report permissions or choose a shorter period.';
 		} finally {
-			busy = false;
+			if (stillCurrent()) reading = false;
 		}
 	}
 </script>
@@ -136,8 +221,13 @@
 			<label>From<input class="input" type="datetime-local" required bind:value={from} /></label
 			><label>To<input class="input" type="datetime-local" required bind:value={to} /></label>
 		</div>
-		<button class="btn" disabled={busy || !app.homeId}>Load timesheet</button>
+		<button class="btn" disabled={busy || reading || !canConnect || !app.homeId}
+			>Load timesheet</button
+		>
 	</form>
+	{#if !online}<p role="status">
+			Reconnect to refresh or download timesheets. Your selected dates stay here.
+		</p>{/if}
 	{#if message}<p role="status" class="callout">{message}</p>{/if}
 	{#if report}<p class="muted">
 			Report: {reportRange?.from.toLocaleString()} to {reportRange?.to.toLocaleString()} · {app.homes.find(
@@ -159,10 +249,14 @@
 			</div>
 		</div>
 		<div class="spread">
-			<button class="btn sec" disabled={busy} onclick={() => exportReport('csv')}
-				>Download CSV</button
-			><button class="btn sec" disabled={busy} onclick={() => exportReport('json')}
-				>Download JSON</button
+			<button
+				class="btn sec"
+				disabled={busy || reading || !canConnect}
+				onclick={() => exportReport('csv')}>Download CSV</button
+			><button
+				class="btn sec"
+				disabled={busy || reading || !canConnect}
+				onclick={() => exportReport('json')}>Download JSON</button
 			>
 		</div>
 		<p class="muted">
@@ -190,7 +284,7 @@
 						{row.reason}
 					</p>{/if}{#if !row.acknowledged && (!row.verified || row.manual_override)}<button
 						class="btn sec"
-						disabled={busy}
+						disabled={busy || reading}
 						onclick={() => acknowledge(row.id)}>Acknowledge reviewed entry</button
 					>{/if}{#if correcting === row.id}<form class="stack" onsubmit={(e) => correct(e, row.id)}>
 						<label
@@ -205,7 +299,7 @@
 							></textarea></label
 						>
 						<div class="spread">
-							<button class="btn" disabled={busy}>Save clock-out</button><button
+							<button class="btn" disabled={busy || reading}>Save clock-out</button><button
 								type="button"
 								class="btn sec"
 								onclick={() => (correcting = null)}>Cancel</button
@@ -213,7 +307,7 @@
 						</div>
 					</form>{:else}<button
 						class="textbtn"
-						disabled={busy}
+						disabled={busy || reading}
 						onclick={() => {
 							correcting = row.id;
 							correctOut = '';
@@ -246,6 +340,8 @@
 		<label
 			>Reason<textarea class="input" required maxlength="1000" bind:value={reason}
 			></textarea></label
-		><button class="btn sec" disabled={busy || !app.homeId}>Add manual entry for review</button>
+		><button class="btn sec" disabled={busy || reading || !app.homeId}
+			>Add manual entry for review</button
+		>
 	</form>
 </div>
