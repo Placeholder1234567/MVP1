@@ -8,6 +8,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+- Basic reporting plans can export coverage CSV with current account/home/plan checks; JSON and Care reports still require full reporting. The Reports page shows the clinical form only with full report access. This corrects the endpoint's earlier mismatch with the Starter `reports_basic` entitlement.
+
 - Refused upload operation matching, correct-PIN failure handling and deterministic report-audit assertions are merged (PR225, PR226, PR228).
 - The guarded development notification panel and controls are merged (PR206, PR229, PR230). Core, database/RLS, production/development browser and performance checks passed on each final commit. Local timers remain volatile across restart.
 - Sign-out work preservation (PR227) includes explicit draft/refused-write warnings, fail-closed inventory reads, bounded server cleanup and accurate warnings when the server session cannot be confirmed ended. Its final-head core, database/RLS, browser and performance checks passed before merge.

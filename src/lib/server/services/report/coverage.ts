@@ -44,7 +44,10 @@ export async function exportCoverage(
 			'This report is unavailable for your current account or home access'
 		);
 	const features = resolveFeatures(viewer.tier, viewer.enabledFeatures);
-	if (!features.has('reports') || !features.has('coverage'))
+	if (
+		!features.has('coverage') ||
+		(!features.has('reports') && (!features.has('reports_basic') || p.format !== 'csv'))
+	)
 		throw new ServiceError('FORBIDDEN', 'This report is not included in your agency plan');
 	try {
 		clinicalPeriod(p.fromDay, p.toDay, viewer.timeZone);
@@ -158,7 +161,8 @@ export async function exportCoverage(
 	if (
 		!current ||
 		current.timeZone !== viewer.timeZone ||
-		!currentFeatures.has('reports') ||
+		(!currentFeatures.has('reports') &&
+			(!currentFeatures.has('reports_basic') || p.format !== 'csv')) ||
 		!currentFeatures.has('coverage')
 	)
 		throw new ServiceError('FORBIDDEN', 'This report is unavailable for your current agency plan');
