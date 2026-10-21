@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { useSession } from '#lib/app/session.svelte.ts';
@@ -6,6 +7,7 @@
 	import { addDays, localTime } from '#lib/domain/index.ts';
 	import { CLINICAL_TYPES, type ClinicalType } from '#lib/domain/clinical-export.ts';
 	import CoverageExport from '#lib/app/CoverageExport.svelte';
+	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	const app = useSession();
 	const today = localTime(new Date(), app.user.timeZone).day;
 	let fromDay = $state(addDays(today, -6));
@@ -16,6 +18,55 @@
 	let approvedOnly = $state(false);
 	let busy = $state(false);
 	let message = $state('');
+	let online = $state(false);
+	let visible = $state(false);
+	let controller: AbortController | undefined;
+	const guard = new ReportJobGuard();
+	const context = () =>
+		JSON.stringify([
+			app.user.agencyId,
+			app.user.profileId,
+			app.user.role,
+			app.user.homeIds,
+			app.user.features,
+			app.homeId,
+			app.privacyLocked,
+			type,
+			clientId,
+			clientId ? app.people.find((person) => person.id === clientId)?.home_id : null
+		]);
+	const canConnect = $derived(reportCanConnect(online, visible, app.privacyLocked));
+	$effect(() => {
+		if (guard.change(context())) {
+			controller?.abort();
+			busy = false;
+			message = '';
+		}
+	});
+	onMount(() => {
+		const update = () => {
+			online = navigator.onLine;
+			visible = document.visibilityState === 'visible';
+			if (!online || !visible) {
+				controller?.abort();
+				guard.change(`unavailable-${Date.now()}`);
+				busy = false;
+			}
+		};
+		update();
+		window.addEventListener('online', update);
+		window.addEventListener('offline', update);
+		document.addEventListener('visibilitychange', update);
+		return () => {
+			window.removeEventListener('online', update);
+			window.removeEventListener('offline', update);
+			document.removeEventListener('visibilitychange', update);
+		};
+	});
+	onDestroy(() => {
+		controller?.abort();
+		guard.change('disposed');
+	});
 	const labels = {
 		notes: 'Signed notes',
 		mar: 'Medication administration',
@@ -26,25 +77,34 @@
 	};
 	async function download(event: SubmitEvent) {
 		event.preventDefault();
-		if (busy || !app.homeId) return;
+		if (busy || !app.homeId || !canConnect) return;
+		guard.change(context());
+		const stillCurrent = guard.capture();
+		const original = context();
+		const current = () => stillCurrent() && original === context() && canConnect;
+		const p = {
+			type,
+			format,
+			homeId: app.homeId,
+			clientId: clientId || undefined,
+			fromDay,
+			toDay,
+			approvedOnly
+		};
+		const request = new AbortController();
+		controller = request;
 		busy = true;
 		message = '';
 		try {
 			await app.refreshUploadStatus();
+			if (!current()) return;
 			if (app.pending || app.checkingSync) {
 				message =
 					'Wait for this device’s saved changes to finish syncing before downloading a care report.';
 				return;
 			}
-			const file = await trpc.report.exportClinical.mutate({
-				type,
-				format,
-				homeId: app.homeId,
-				clientId: clientId || undefined,
-				fromDay,
-				toDay,
-				approvedOnly
-			});
+			const file = await trpc.report.exportClinical.mutate(p, { signal: request.signal });
+			if (!current() || request.signal.aborted) return;
 			const body =
 				file.encoding === 'base64'
 					? Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0))
@@ -55,15 +115,16 @@
 			link.download = file.filename;
 			link.click();
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
-			message = `Downloaded ${file.rows} records. ${format === 'html' ? 'Open the HTML file and use your browser’s Print command to print or save as PDF. ' : ''}Keep exports in approved agency storage.`;
+			message = `Downloaded ${file.rows} records for ${p.fromDay} through ${p.toDay}. ${p.format === 'html' ? 'Open the HTML file and use your browser’s Print command to print or save as PDF. ' : ''}Keep exports in approved agency storage.`;
 		} catch (e) {
+			if (!current() || request.signal.aborted) return;
 			// Limit and PDF-font messages come from the report service and carry no client data.
 			message =
 				(e as { data?: { code?: string } })?.data?.code === 'BAD_REQUEST' && e instanceof Error
 					? e.message
 					: 'Could not export. Connect and check your report permissions, selected home and person. Use at most 93 days and a smaller period if the report exceeds 1,000 records or 8 MB.';
 		} finally {
-			busy = false;
+			if (stillCurrent()) busy = false;
 		}
 	}
 </script>
@@ -155,7 +216,12 @@
 					Reports use records received by the server. Wait for this device’s saved changes to finish
 					syncing.
 				</p>{/if}
-			<button class="btn" disabled={busy || !app.homeId || !!app.pending || app.checkingSync}
+			{#if !online}<p role="status">
+					Reconnect to download server records. Your selected dates stay here.
+				</p>{/if}
+			<button
+				class="btn"
+				disabled={busy || !canConnect || !app.homeId || !!app.pending || app.checkingSync}
 				>{busy ? 'Preparing report…' : 'Download care report'}</button
 			>
 		</form>
