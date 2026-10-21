@@ -8,6 +8,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+- Email transient-bounce accounting uses stable agency/delivery/address identities so callback replay cannot turn one failed message into three failures. Concurrent duplicate inserts are idempotent; three distinct bounced messages still trigger the existing 24-hour suppression rule. Historical counts and suppressions are not rewritten. Cloud integration validation is required for the callback replay and concurrency regression.
+
 - Refused upload operation matching, correct-PIN failure handling and deterministic report-audit assertions are merged (PR225, PR226, PR228).
 - The guarded development notification panel and controls are merged (PR206, PR229, PR230). Core, database/RLS, production/development browser and performance checks passed on each final commit. Local timers remain volatile across restart.
 - Sign-out work preservation (PR227) includes explicit draft/refused-write warnings, fail-closed inventory reads, bounded server cleanup and accurate warnings when the server session cannot be confirmed ended. Its final-head core, database/RLS, browser and performance checks passed before merge.

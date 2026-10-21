@@ -7,6 +7,7 @@ import { closeDb, withService } from '../../../src/lib/server/db';
 import * as s from '../../../src/lib/server/db/schema';
 import { handleEmailEvent } from '../../../src/lib/server/services/notification';
 import { setProvidersForTests } from '../../../src/lib/server/messaging';
+import { recordSoftBounce } from '../../../src/lib/server/services/notification/events.queries';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 const agency = randomUUID(),
@@ -129,4 +130,72 @@ it('a spam complaint suppresses at once and alerts admins', async () => {
 	expect((await adminAlerts()).map((a) => a.title)).toContain(
 		'A staff member marked Guad email as spam'
 	);
+});
+
+it('counts a replayed transient callback once and still suppresses three distinct deliveries', async () => {
+	const address = `replay-${randomUUID()}@example.test`;
+	const messageId = await sentEmail();
+	const callback = {
+		eventType: 'Bounce',
+		mail: { messageId },
+		bounce: {
+			bounceType: 'Transient',
+			bouncedRecipients: [{ emailAddress: address.toUpperCase() }]
+		}
+	};
+	const alertsBefore = (await adminAlerts()).length;
+	expect(await handleEmailEvent(callback)).toBe('ignored');
+	expect(await handleEmailEvent(callback)).toBe('ignored');
+	expect(await handleEmailEvent(callback)).toBe('ignored');
+	const rows = () =>
+		withService((tx) =>
+			tx
+				.select()
+				.from(s.emailBounces)
+				.where(and(eq(s.emailBounces.agency_id, agency), eq(s.emailBounces.email, address)))
+		);
+	expect(await rows()).toHaveLength(1);
+	expect((await suppressions()).some((r) => r.email === address)).toBe(false);
+	expect(await softBounce(address)).toBe('ignored');
+	expect(await rows()).toHaveLength(2);
+	expect(await softBounce(address)).toBe('suppressed');
+	expect(await rows()).toHaveLength(3);
+	expect((await suppressions()).filter((r) => r.email === address)).toEqual([
+		expect.objectContaining({ reason: 'soft_bounce_limit' })
+	]);
+	// Replaying an earlier receipt after suppression must not alert again.
+	expect(await handleEmailEvent(callback)).toBe('ignored');
+	expect(await adminAlerts()).toHaveLength(alertsBefore + 1);
+});
+
+it('deduplicates concurrent bounce inserts while separating agency, delivery and address', async () => {
+	const address = `concurrent-${randomUUID()}@example.test`;
+	const deliveryId = randomUUID();
+	const outcomes = await Promise.all([
+		withService((tx) => recordSoftBounce(tx, agency, address, deliveryId)),
+		withService((tx) => recordSoftBounce(tx, agency, address, deliveryId))
+	]);
+	expect(outcomes.sort()).toEqual([false, true]);
+	expect(await withService((tx) => recordSoftBounce(tx, agency, address, randomUUID()))).toBe(true);
+	expect(
+		await withService((tx) => recordSoftBounce(tx, agency, `other-${address}`, deliveryId))
+	).toBe(true);
+	const secondAgency = randomUUID();
+	await withService((tx) =>
+		tx.insert(s.agencies).values({
+			id: secondAgency,
+			name: 'Synthetic replay isolation',
+			slug: `replay-${secondAgency}`
+		})
+	);
+	expect(await withService((tx) => recordSoftBounce(tx, secondAgency, address, deliveryId))).toBe(
+		true
+	);
+	const counts = await withService((tx) =>
+		tx
+			.select()
+			.from(s.emailBounces)
+			.where(and(eq(s.emailBounces.agency_id, agency), eq(s.emailBounces.email, address)))
+	);
+	expect(counts).toHaveLength(2);
 });
