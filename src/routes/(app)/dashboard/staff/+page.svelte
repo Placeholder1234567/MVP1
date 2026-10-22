@@ -4,7 +4,9 @@
 	// Changes need a connection: they go straight to staff.* (tRPC).
 	import LoadMore from '#lib/app/components/LoadMore.svelte';
 	import { LIST_PAGE } from '#lib/domain/note-review.ts';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
+	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { initialsOf } from '#lib/domain/people.ts';
 	import { isDormant } from '#lib/domain/access-review.ts';
@@ -19,7 +21,7 @@
 
 	let staff = $state<Staff[]>([]);
 	let showInactive = $state(false);
-	let loading = $state(true);
+	let loading = $state(false);
 	let saving = $state(false);
 	let message = $state('');
 	// null: no form open; '': adding; otherwise the profile being edited
@@ -53,19 +55,107 @@
 	let limit = $state(LIST_PAGE);
 	const visible = $derived(staff.filter((p) => showInactive || p.active));
 
+	let online = $state(false);
+	let pageVisible = $state(false);
+	const canConnect = $derived(
+		app.user.role !== 'caregiver' && reportCanConnect(online, pageVisible, app.privacyLocked)
+	);
+	const guard = new ReportJobGuard();
+	const controllers: Partial<Record<'list' | 'change', AbortController>> = {};
+	const context = () =>
+		JSON.stringify([
+			app.user.agencyId,
+			app.user.profileId,
+			app.user.role,
+			app.user.homeIds,
+			app.user.features,
+			app.privacyLocked
+		]);
+	function abortAll() {
+		for (const controller of Object.values(controllers)) controller?.abort();
+		loading = false;
+		saving = false;
+	}
+	function close() {
+		editing = null;
+		name = '';
+		email = '';
+		role = 'caregiver';
+		medCertified = false;
+		homeIds = [];
+		active = true;
+	}
+	function forget() {
+		abortAll();
+		staff = [];
+		limit = LIST_PAGE;
+		message = '';
+		close();
+	}
+	$effect(() => {
+		if (guard.change(context())) forget();
+	});
+	beforeNavigate(() => {
+		guard.change('navigating');
+		forget();
+	});
+	onDestroy(() => {
+		guard.change('disposed');
+		abortAll();
+	});
+	onMount(() => {
+		const update = () => {
+			online = navigator.onLine;
+			pageVisible = document.visibilityState === 'visible';
+			if (!online || !pageVisible) {
+				guard.change(`unavailable-${Date.now()}`);
+				abortAll();
+			}
+		};
+		update();
+		void load();
+		window.addEventListener('online', update);
+		window.addEventListener('offline', update);
+		document.addEventListener('visibilitychange', update);
+		return () => {
+			window.removeEventListener('online', update);
+			window.removeEventListener('offline', update);
+			document.removeEventListener('visibilitychange', update);
+		};
+	});
+	function begin(kind: 'list' | 'change') {
+		guard.change(context());
+		const current = guard.capture();
+		const original = context();
+		controllers[kind]?.abort();
+		const abort = new AbortController();
+		controllers[kind] = abort;
+		return {
+			signal: abort.signal,
+			valid: () =>
+				current() &&
+				original === context() &&
+				canConnect &&
+				!abort.signal.aborted &&
+				controllers[kind] === abort
+		};
+	}
 	async function load() {
+		if (!canConnect) return;
+		const operation = begin('list');
 		loading = true;
 		try {
-			staff = await trpc.staff.list.query({});
+			const result = await trpc.staff.list.query({}, { signal: operation.signal });
+			if (operation.valid()) staff = result;
 		} catch {
-			message = 'Connect to load staff.';
+			if (operation.valid()) message = 'Connect to load staff.';
 		} finally {
-			loading = false;
+			if (operation.valid()) loading = false;
 		}
 	}
-	onMount(load);
 
 	function open(person?: Staff) {
+		if (!isAdmin || !canConnect || saving) return;
 		editing = person?.id ?? '';
 		name = person?.name ?? '';
 		email = person?.email ?? '';
@@ -82,27 +172,35 @@
 
 	async function resetMfa() {
 		if (
+			!isAdmin ||
+			!canConnect ||
+			saving ||
 			!editing ||
 			!confirm(
 				'Reset two-step sign-in? Their authenticator stops working, they are signed out everywhere, and they set it up again at their next sign-in. Only do this after confirming who they are.'
 			)
 		)
 			return;
+		const operation = begin('change');
 		saving = true;
 		try {
-			await trpc.staff.resetMfa.mutate({ id: editing });
+			await trpc.staff.resetMfa.mutate({ id: editing }, { signal: operation.signal });
+			if (!operation.valid()) return;
 			message = 'Two-step sign-in was reset. They will set it up again when they next sign in.';
 			editing = null;
 			await load();
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Could not reset.';
+			if (operation.valid()) message = e instanceof Error ? e.message : 'Could not reset.';
 		} finally {
-			saving = false;
+			if (operation.valid()) saving = false;
 		}
 	}
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
+		if (!isAdmin || !canConnect || saving || editing === null) return;
+		const operation = begin('change');
+		const submittedEmail = email;
 		saving = true;
 		message = '';
 		try {
@@ -116,19 +214,28 @@
 					)
 				)
 					return;
-				await trpc.staff.update.mutate({ id: editing, role, medCertified, homeIds, active });
+				await trpc.staff.update.mutate(
+					{ id: editing, role, medCertified, homeIds, active },
+					{ signal: operation.signal }
+				);
+				if (!operation.valid()) return;
 				message = 'Saved.';
 			} else {
-				await trpc.staff.invite.mutate({ email, name, role, homeIds, medCertified });
-				message = `Invitation sent to ${email}. The link to set a password expires in an hour.`;
+				await trpc.staff.invite.mutate(
+					{ email: submittedEmail, name, role, homeIds, medCertified },
+					{ signal: operation.signal }
+				);
+				if (!operation.valid()) return;
+				message = `Invitation sent to ${submittedEmail}. The link to set a password expires in an hour.`;
 			}
 			editing = null;
 			await load();
 		} catch (e) {
 			// Service messages are written for people and carry no client data.
-			message = e instanceof Error ? e.message : 'Could not save. Check your connection.';
+			if (operation.valid())
+				message = e instanceof Error ? e.message : 'Could not save. Check your connection.';
 		} finally {
-			saving = false;
+			if (operation.valid()) saving = false;
 		}
 	}
 </script>
@@ -138,18 +245,29 @@
 <section class="stack" aria-label="Staff">
 	<div class="spread">
 		<h1>Staff</h1>
-		{#if isAdmin}<button class="btn" disabled={saving} onclick={() => open()}>Add staff</button
+		{#if isAdmin}<button class="btn" disabled={saving || !canConnect} onclick={() => open()}
+				>Add staff</button
 			>{/if}
 	</div>
 	<label class="check"
 		><input type="checkbox" bind:checked={showInactive} /> Show deactivated staff</label
 	>
+	<p class="muted">
+		Interrupted changes may still complete. Refresh staff before retrying an invitation or account
+		change.
+	</p>
+	<button type="button" class="btn sec" disabled={loading || saving || !canConnect} onclick={load}
+		>Refresh staff</button
+	>
+	{#if !canConnect}<p class="muted" role="status">
+			Connect with this workspace visible and unlocked to manage staff.
+		</p>{/if}
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
 
 	{#if editing !== null}
 		<form class="card pad stack" onsubmit={save}>
 			<h2>{editing ? 'Edit staff member' : 'Add staff'}</h2>
-			<fieldset class="stack" disabled={saving}>
+			<fieldset class="stack" disabled={saving || !canConnect}>
 				{#if !editing}
 					<label>Full name<input class="input" required maxlength="100" bind:value={name} /></label>
 					<label
@@ -200,8 +318,10 @@
 					<p class="muted">They'll get an email with a link to set their password.</p>
 				{/if}
 				<div class="actions">
-					<button class="btn" disabled={saving}>{editing ? 'Save' : 'Send invitation'}</button>
-					<button type="button" class="btn sec" onclick={() => (editing = null)}>Cancel</button>
+					<button class="btn" disabled={saving || !canConnect}
+						>{editing ? 'Save' : 'Send invitation'}</button
+					>
+					<button type="button" class="btn sec" onclick={close}>Cancel</button>
 					{#if editing && editing !== app.user.profileId && staff.find((p) => p.id === editing)?.mfaEnabled}<button
 							type="button"
 							class="btn sec"
@@ -229,7 +349,7 @@
 					</span>
 					{#if isAdmin}<button
 							class="btn sec"
-							disabled={saving}
+							disabled={saving || !canConnect}
 							aria-label="Edit {person.name}"
 							onclick={() => open(person)}>Edit</button
 						>{/if}
