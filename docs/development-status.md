@@ -8,6 +8,11 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+- Audit list/detail/CSV responses use in-memory context generations and separate abortable operations. Account/role/plan/privacy changes and navigation clear loaded entries/details and suppress late responses; closing a pending entry or selecting another aborts the old detail request. Offline retains filters and already loaded same-context data for reading, while server reads/downloads require an online, visible, unlocked view. New desktop/phone tests hold real list/detail/export responses across locks, Close and pending navigation, then verify explicit metadata CSV recovery after unlock. Final-head cloud validation is required before merge.
+
+PR246 merged after all four final-head gates passed: 528 units, 326 integration tests plus SQL RLS, 159 production and 2 development browser passes, performance. Coverage and queued Care navigation-start tests passed; server jobs/files retain their existing lifecycle.
+
+
 The expanded browser job has a 30-minute overall allowance for dependency/build/emulator setup, the production and development suites, and teardown. In PR246's first run, 159 production and 2 development tests passed, but the previous 20-minute job deadline cancelled teardown before a successful gate could be recorded. Per-test/action timeouts, zero retries, all assertions and both browser phases remain unchanged; all four gates must pass on the follow-up commit.
 
 - Coverage and queued Care downloads now invalidate at navigation start, closing the same transition window found in immediate Care exports. Queued views abort outstanding UI requests and forget local job/list references without cancelling server work. Four new desktop/phone regressions hold real coverage/prepared-file responses while the destination route remains blocked and require zero downloads before navigation finishes. Final-head cloud validation is required before merge.
