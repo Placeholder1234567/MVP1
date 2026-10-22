@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
@@ -32,6 +33,18 @@
 	let controller: AbortController | undefined;
 	let context = $state('');
 	const guard = new ReportJobGuard();
+	beforeNavigate(() => {
+		// Forget this view's references; the server job may still finish normally.
+		controller?.abort();
+		recentController?.abort();
+		guard.change('navigating');
+		job = null;
+		recent = [];
+		busy = false;
+		recentBusy = false;
+		message = '';
+		recentMessage = '';
+	});
 	const canConnect = $derived(reportCanConnect(online, visible, app.privacyLocked));
 	const availableHomes = $derived(
 		app.homes.filter((home) => app.user.role === 'admin' || app.user.homeIds.includes(home.id))

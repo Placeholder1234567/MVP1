@@ -16,7 +16,8 @@ jobs:
   browser:
     name: Chromium desktop, phone and accessibility
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Includes dependency/build/emulator setup and both browser phases plus teardown.
+    timeout-minutes: 30
     env:
       DATABASE_URL: postgres://guad:guad@localhost:5433/guad
     steps:
