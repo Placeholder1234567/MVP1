@@ -87,6 +87,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### staff
 
+The Staff screen guards roster and account-change responses against account/role/home-assignment/features/privacy changes, navigation and disposal. Unlock/reconnect uses explicit refresh; same-context loaded roster data remains readable offline, while new server reads and changes require an online, visible, unlocked workspace. Dropping UI responses does not undo invitations, profile changes or MFA resets, and the screen advises refreshing before retrying. Existing server authorization, RLS, identity and mutation semantics remain unchanged.
+
 **As built:** `staff.invite` creates the Identity Platform account with no password and emails the Admin SDK password-setup link after the profile commits. `staff.update` with `active: false` disables the account and revokes its sessions; `active: true` re-enables it. Admins can't demote or deactivate themselves. `agency.update` also takes `timezone`; settings are merged, not replaced, and the plan (tier, features) isn't editable here. Known settings are validated: `mfa_required_roles`, `session_minutes` (15 to 720; sign-in length for new sessions), and `incident_rules` (`{ guardianWhen, nurseTypes, nurseWhen, stateSeverities, stateTypes, stateWhen, abuseHotline?, guardianHours?, nurseHours?, stateHours? }`, deadlines up to 60 characters; the hours, 1 to 720 or null for none, drive `incident_contact_overdue` reminders), which drives `incident.create`'s `mustNotify` and the device's incident wizard.
 
 | Procedure | Type | Input | Output | Min Role | Description |
