@@ -8,6 +8,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+PR247 merged after all four exact-head gates passed: 528 units, 326 integration tests plus SQL RLS, 167 production and 2 development browser passes, and performance. Its eight audit-response cases passed. The first core attempt stopped at a registry advisory HTTP 503; one normal failed-job retry passed the unchanged production dependency audit.
+
 - Audit list/detail/CSV responses use in-memory context generations and separate abortable operations. Account/role/plan/privacy changes and navigation clear loaded entries/details and suppress late responses; closing a pending entry or selecting another aborts the old detail request. Offline retains filters and already loaded same-context data for reading, while server reads/downloads require an online, visible, unlocked view. New desktop/phone tests hold real list/detail/export responses across locks, Close and pending navigation, then verify explicit metadata CSV recovery after unlock. Final-head cloud validation is required before merge.
 
 PR246 merged after all four final-head gates passed: 528 units, 326 integration tests plus SQL RLS, 159 production and 2 development browser passes, performance. Coverage and queued Care navigation-start tests passed; server jobs/files retain their existing lifecycle.
@@ -56,3 +58,17 @@ PR234 implements encrypted local-only original-observation and review-ledger rec
 ## Current Care PDF identification increment
 
 Care PDFs read and display the current tenant agency name at generation, using the same caller transaction/RLS and existing glyph refusal, output limits and clinical source rules. This covers immediate and account-owned queued Care PDFs through their shared export service, not external API PDFs. It is not historical branding, logo support or expanded font coverage. PR240 passed all four exact-final-head gates before merge. No browser rendering, provider execution or deployment is claimed.
+
+## Development dependency review — 2026-10-22
+
+Production dependency audit returned zero vulnerabilities on PR247. The development-inclusive audit reported 11 affected dependency records (8 moderate, 3 high); these are propagated package records, not 11 distinct flaws. The latest main package/lock matched the reviewed baseline.
+
+A narrow override selects `uuid@11.1.1` only below `firebase-tools > gaxios`, replacing the CLI's unsupported 9.0.1 resolution. [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) identifies 11.1.1 as patched and the [upstream release](https://github.com/uuidjs/uuid/releases/tag/v11.1.1) backports that fix. The installed gaxios 6.7.1 uses the CommonJS `v4()` export to construct multipart boundaries; the advisory concerns v3/v5/v6 external output buffers, so this is dependency hygiene rather than evidence of an exploitable Guad request path. A fresh lockfile install passed a no-network smoke check of CommonJS resolution, the patched buffer rejection and gaxios multipart boundary generation using an intercepted fetch. The development-inclusive audit decreased to 9 affected records (6 moderate, 3 high); production remains zero. Keep the override scoped, retain the lockfile and require all four exact-head CI gates, including emulator/browser execution, before merging.
+
+Remaining development-tool findings need separate compatible remediation:
+
+- Firebase CLI's chokidar 3 chain brings `braces@3.0.3`. [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) lists no patched version as of this review. Upgrading the CLI to 15.34.1 alone still declares chokidar 3; forcing chokidar 4 would change its glob behavior and needs an upstream-compatible design. Do not claim this finding resolved.
+- Firebase CLI's Pub/Sub chain resolves OpenTelemetry Core 1.30.1; [GHSA-8988-4f7v-96qf](https://github.com/advisories/GHSA-8988-4f7v-96qf) is patched in 2.8.0. A forced major override needs compatibility review across its instrumentation packages.
+- Drizzle Kit 0.31.11's legacy esbuild-kit loader resolves esbuild 0.18.20; [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99) concerns the development server. Do not expose dependency development servers to untrusted origins; do not downgrade Drizzle merely because an automated audit fix suggests it.
+
+The enforced production audit and all tests remain unchanged. No provider, deployment, shared database or credential operation is part of this update.
