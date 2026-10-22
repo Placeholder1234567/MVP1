@@ -346,7 +346,7 @@ The audit screen discards late list, detail and CSV responses after account/role
 
 ### apiKey
 
-API keys for the external API (openapi.yaml). Not in the original router list; added with the Integration Service (services.md §20). The screen is `/dashboard/api-keys`.
+API keys for the external API (openapi.yaml). Not in the original router list; added with the Integration Service (services.md §20). The screen is `/dashboard/api-keys`. The mounted view drops late responses and clears one-time plaintext keys after account/role/feature/privacy changes, hidden/offline transitions, navigation or disposal; online visible unlocked access and explicit refresh are required. Response cancellation does not undo server changes: an interrupted creation may have completed, so refresh the list and revoke unused keys before creating replacements. Hash-only storage, one-time creation responses and existing admin agency-wide scope remain unchanged.
 
 | Procedure | Type | Input | Output | Min Role | Feature Gate | Description |
 |---|---|---|---|---|---|---|
