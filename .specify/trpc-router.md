@@ -335,6 +335,9 @@ The HTTP endpoint returns 404 outside an actual development build.
 
 **As built:** `audit.list` returns metadata only (who, what, when; no `oldValues`, `newValues`, IP or user agent), so the old and new values, which can hold client data, are shown one entry at a time through `audit.get`, and each `audit.get` is recorded as an `audit_views` entry. Admins only, as this table says; security.md "Access" also mentions supervisors, and RLS allows them, but the procedures follow this table. The screen is `/dashboard/audit`.
 
+The audit screen discards late list, detail and CSV responses after account/role/plan/privacy changes, navigation start or disposal. Separate operation controllers prevent older detail selections from replacing newer ones; Close also cancels a pending detail view. Locking clears loaded entries and record values; filters remain for an explicit reload after unlock. Offline retains already loaded same-context data for reading but does not open new entries or download. These UI guards preserve the existing agency-wide admin procedures, append-only audit behavior and metadata-only CSV contract.
+
+
 | Procedure | Type | Input | Output | Min Role | Feature Gate | Description |
 |---|---|---|---|---|---|---|
 | `audit.list` | query | `{ dateRange?: { from: string, to: string }, tableName?: string, recordId?: uuid, performedBy?: uuid, action?: 'INSERT' \| 'UPDATE' \| 'DELETE', limit?: number, offset?: number }` | `Array<{ id, tableName, recordId, action, oldValues, newValues, performedBy, performedByName, ipAddress, userAgent, createdAt }>` | admin | audit_log | Returns paginated audit log entries. Filterable by date range, entity (table + record), actor, and action type. |
