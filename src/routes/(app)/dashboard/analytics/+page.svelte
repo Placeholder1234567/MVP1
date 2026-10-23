@@ -172,13 +172,13 @@
 				week with the two before it.
 			</p>
 		</div>
-		<label
-			>Home<select class="input" bind:value={homeId} onchange={load}
-				><option value="">All homes</option>{#each app.homes as h (h.id)}<option value={h.id}
-						>{h.name}</option
-					>{/each}</select
-			></label
-		>
+		<div>
+			<label for="analytics-home">Home</label>
+			<select id="analytics-home" class="input" bind:value={homeId} onchange={load}>
+				<option value="">All homes</option>
+				{#each app.homes as h (h.id)}<option value={h.id}>{h.name}</option>{/each}
+			</select>
+		</div>
 	</div>
 	<div class="actions">
 		<button class="btn sec" disabled={!canConnect || loading} onclick={load}
@@ -236,6 +236,9 @@
 </section>
 
 <style>
+	#analytics-home {
+		margin-top: 6px;
+	}
 	/* Ported from mvp/styles.css (.kpis, .kpi, .chart, .bar). */
 	.kpis {
 		display: grid;
