@@ -32,4 +32,6 @@ jobs:
         with:
           name: lighthouse-reports
           path: .lighthouseci/
+          # Lighthouse writes these public-page reports inside a hidden directory.
+          include-hidden-files: true
           retention-days: 7
