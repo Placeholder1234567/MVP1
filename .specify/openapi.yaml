@@ -27,7 +27,7 @@ info:
     Served by the web service at `/api/v1` (src/routes/api/v1). Built: EVV (`/evv/*`), bulk export
     (`/export/{type}`), webhooks (`/webhooks/*`) and reports (`/reports/*`, CSV or PDF; a PDF holds
     up to 2,000 records and fails with a message when its text needs characters outside the
-    Latin-script PDF font, in which case CSV is the format to use).
+    bundled Figtree/Noto Sans fonts, in which case CSV is the format to use).
     Bearer-only, so `/api/v1` is exempt from the app's same-origin (CSRF) check.
     - Reports: generating needs a `write` key and the plan for the data (clinical types need `reports`
       plus their feature; `timesheets` needs `timekeeping` and `reports` or `reports_basic`; `audit`
@@ -271,8 +271,9 @@ paths:
                   default: csv
                   description: >-
                     Output format. PDF prints each record as labelled fields, holds up to 2,000
-                    records, and supports Latin-script text only (the job fails with a message
-                    otherwise; use csv).
+                    records, and uses Figtree with a Noto Sans fallback for Greek, Cyrillic and
+                    extended Latin. Both bundled faces must cover all text; unsupported scripts
+                    fail with a message (use csv).
       responses:
         '202':
           description: Report generation accepted

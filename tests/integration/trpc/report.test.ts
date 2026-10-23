@@ -567,7 +567,11 @@ it('reads the current tenant agency name for PDFs, including glyph refusal after
 	try {
 		// A foreign tenant's unsupported name must not contaminate this tenant's PDF.
 		await rename(otherAgency, 'አበበ');
-		const first = await caller.report.exportClinical({ ...input, type: 'attendance', format: 'pdf' });
+		const first = await caller.report.exportClinical({
+			...input,
+			type: 'attendance',
+			format: 'pdf'
+		});
 		expect(Buffer.from(first.content, 'base64').subarray(0, 5).toString('latin1')).toBe('%PDF-');
 		// Reuse the existing caller to prove the identity is read, not captured in session claims.
 		await rename(agency, 'አበበ');
@@ -575,13 +579,49 @@ it('reads the current tenant agency name for PDFs, including glyph refusal after
 			caller.report.exportClinical({ ...input, type: 'attendance', format: 'pdf' })
 		).rejects.toThrow('characters the PDF can’t show');
 		// The existing Unicode-safe fallback remains available.
-		const fallback = await caller.report.exportClinical({ ...input, type: 'attendance', format: 'html' });
+		const fallback = await caller.report.exportClinical({
+			...input,
+			type: 'attendance',
+			format: 'html'
+		});
 		expect(fallback.contentType).toBe('text/html;charset=utf-8');
 		await rename(agency, 'Renamed Synthetic Care Agency');
-		const renamed = await caller.report.exportClinical({ ...input, type: 'attendance', format: 'pdf' });
+		const renamed = await caller.report.exportClinical({
+			...input,
+			type: 'attendance',
+			format: 'pdf'
+		});
 		expect(renamed.contentType).toBe('application/pdf');
 	} finally {
 		await rename(agency, 'Synthetic report agency');
 		await rename(otherAgency, 'Foreign synthetic agency');
+	}
+});
+
+it('renders the current scoped Greek/Cyrillic agency name with the PDF fallback family', async () => {
+	const caller = await as(supervisor);
+	try {
+		await withService((tx) =>
+			tx
+				.update(s.agencies)
+				.set({ name: 'Ελληνικά Анна Nguyễn Care' })
+				.where(eq(s.agencies.id, agency))
+		);
+		const file = await caller.report.exportClinical({
+			...input,
+			type: 'attendance',
+			format: 'pdf'
+		});
+		const raw = Buffer.from(file.content, 'base64').toString('latin1');
+		expect(raw.startsWith('%PDF-')).toBe(true);
+		expect(raw).toMatch(/NotoSans-Regular/);
+		expect(raw).toMatch(/NotoSans-SemiBold/);
+	} finally {
+		await withService((tx) =>
+			tx
+				.update(s.agencies)
+				.set({ name: 'Synthetic report agency' })
+				.where(eq(s.agencies.id, agency))
+		);
 	}
 });
