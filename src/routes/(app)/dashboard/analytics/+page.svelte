@@ -1,7 +1,9 @@
 <script lang="ts">
 	// Analytics (frontend-spec-3.md §4.4): coverage, documentation and care,
 	// week by week. Supervisors and admins on the Complete plan.
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
+	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
@@ -14,15 +16,105 @@
 	let homeId = $state('');
 	let message = $state('');
 
-	async function load() {
+	let loading = $state(false);
+	let online = $state(false);
+	let visible = $state(false);
+	let loadedHomeName = $state('');
+	const guard = new ReportJobGuard();
+	let controller: AbortController | undefined;
+	const context = () =>
+		JSON.stringify([
+			app.user.agencyId,
+			app.user.profileId,
+			app.user.role,
+			app.user.homeIds,
+			app.user.features,
+			app.user.timeZone,
+			app.homeId,
+			homeId,
+			app.privacyLocked,
+			!homeId || app.homes.some((h) => h.id === homeId)
+		]);
+	const canConnect = $derived(
+		reportCanConnect(online, visible, app.privacyLocked) &&
+			app.user.role !== 'caregiver' &&
+			app.user.features.includes('analytics') &&
+			(!homeId || app.homes.some((h) => h.id === homeId))
+	);
+	function abort() {
+		controller?.abort();
+		loading = false;
+	}
+	function forget() {
+		abort();
+		data = null;
+		loadedHomeName = '';
 		message = '';
+	}
+	$effect(() => {
+		if (guard.change(context())) forget();
+	});
+	beforeNavigate(() => {
+		guard.change('navigating');
+		forget();
+	});
+	onDestroy(() => {
+		guard.change('disposed');
+		abort();
+	});
+	onMount(() => {
+		const update = () => {
+			online = navigator.onLine;
+			visible = document.visibilityState === 'visible';
+			if (!online || !visible) {
+				guard.change(`unavailable-${Date.now()}`);
+				abort();
+			}
+		};
+		update();
+		void load();
+		window.addEventListener('online', update);
+		window.addEventListener('offline', update);
+		document.addEventListener('visibilitychange', update);
+		return () => {
+			window.removeEventListener('online', update);
+			window.removeEventListener('offline', update);
+			document.removeEventListener('visibilitychange', update);
+		};
+	});
+	async function load() {
+		// Clear the prior home synchronously, before its new label can render.
+		forget();
+		if (!canConnect) return;
+		guard.change(context());
+		const original = context();
+		const stillCurrent = guard.capture();
+		const requestedHome = homeId;
+		const requestedName = app.homes.find((h) => h.id === requestedHome)?.name ?? 'All homes';
+		const pending = new AbortController();
+		controller = pending;
+		const valid = () =>
+			stillCurrent() &&
+			original === context() &&
+			canConnect &&
+			!pending.signal.aborted &&
+			controller === pending;
+		loading = true;
 		try {
-			data = await trpc.analytics.weekly.query({ homeId: homeId || undefined, weeks: 4 });
+			const result = await trpc.analytics.weekly.query(
+				{ homeId: requestedHome || undefined, weeks: 4 },
+				{ signal: pending.signal }
+			);
+			if (valid()) {
+				data = result;
+				loadedHomeName = requestedName;
+			}
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Connect to load analytics.';
+			if (valid()) message = e instanceof Error ? e.message : 'Connect to load analytics.';
+		} finally {
+			if (valid()) loading = false;
 		}
 	}
-	onMount(load);
 
 	const short = (week: string) =>
 		new Date(`${week}T12:00:00Z`).toLocaleDateString(undefined, {
@@ -76,8 +168,8 @@
 		<div>
 			<h1>Analytics</h1>
 			<p class="muted">
-				{homeName} · last 4 weeks, by week starting. Arrows compare the last full week with the two before
-				it.
+				{data ? loadedHomeName : homeName} · last 4 weeks, by week starting. Arrows compare the last full
+				week with the two before it.
 			</p>
 		</div>
 		<label
@@ -88,8 +180,17 @@
 			></label
 		>
 	</div>
+	<div class="actions">
+		<button class="btn sec" disabled={!canConnect || loading} onclick={load}
+			>Refresh analytics</button
+		>
+	</div>
+	<p class="muted">
+		Refresh while online and unlocked to load the selected home. Already loaded analytics remain
+		readable offline; locking clears them.
+	</p>
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
-	{#if !data && !message}<Skeleton kind="stats" count={3} label="Loading analytics" />{/if}
+	{#if loading}<Skeleton kind="stats" count={3} label="Loading analytics" />{/if}
 	{#if data}
 		<div class="spread">
 			<h2>Coverage</h2>

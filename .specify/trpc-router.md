@@ -252,7 +252,7 @@ The Staff screen guards roster and account-change responses against account/role
 
 ### analytics
 
-**As built:** one procedure, `analytics.weekly({ homeId?, weeks = 4 })`, returns every weekly series the analytics screen draws (frontend-spec-3.md §4.4): coverage (needing cover, fill rate, minutes to fill), documentation (notes signed, drafted with Lomi, hours from signing to approval, sent back), care (doses given, refused or held, incidents) and goal progress (independent rate per goal). Weeks start Monday in the agency's time zone. Supervisors and admins on plans with `analytics`. The four procedures below are not built separately.
+**As built:** one procedure, `analytics.weekly({ homeId?, weeks = 4 })`, returns every weekly series the analytics screen draws (frontend-spec-3.md §4.4): coverage (needing cover, fill rate, minutes to fill), documentation (notes signed, drafted with Lomi, hours from signing to approval, sent back), care (doses given, refused or held, incidents) and goal progress (independent rate per goal). Weeks start Monday in the agency's time zone. Supervisors and admins on plans with `analytics`. The four procedures below are not built separately. The Analytics view binds each result and its displayed home label to the submitted home and latest request, drops late responses after scope/privacy/navigation/disposal changes, and clears loaded goal/person data on lock. Explicit refresh requires an online visible unlocked eligible session; already loaded same-context analytics remain readable offline. Server metrics and RLS are unchanged.
 
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
