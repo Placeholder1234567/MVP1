@@ -19,9 +19,13 @@ const agency = randomUUID(),
 const sup = randomUUID(),
 	other = randomUUID(),
 	admin = randomUUID();
-const sms = vi.fn(async (_to: string, d: { notificationId: string }) => ({
-	providerMessageId: `sms-${d.notificationId}`
-}));
+// Background deliveries from earlier escalation steps may still be in flight.
+// Fail only the test's exact delivery, never whichever provider call arrives next.
+const failingSms = new Set<string>();
+const sms = vi.fn(async (_to: string, d: { notificationId: string }) => {
+	if (failingSms.has(d.notificationId)) throw new Error('throttled');
+	return { providerMessageId: `sms-${d.notificationId}` };
+});
 const push = vi.fn(async () => ({ providerMessageId: 'push' }));
 const email = vi.fn(async () => ({ providerMessageId: 'email' }));
 
@@ -150,22 +154,29 @@ it('leaves provider failures pending for Cloud Tasks to retry, then fails them o
 			priority: 1
 		})
 	);
-	sms.mockRejectedValueOnce(new Error('throttled')).mockRejectedValueOnce(new Error('throttled'));
-	await expect(dispatchNotifications({ ids: [id] }, { final: false })).rejects.toBeInstanceOf(
-		RetryLater
-	);
-	const status = async () =>
-		(
-			await withService((tx) =>
-				tx
-					.select({ status: s.notifications.status })
-					.from(s.notifications)
-					.where(eq(s.notifications.id, id))
-			)
-		)[0].status;
-	expect(await status()).toBe('pending');
-	expect(await dispatchNotifications({ ids: [id] }, { final: true })).toMatchObject({ failed: 1 });
-	expect(await status()).toBe('failed');
+	failingSms.add(id);
+	try {
+		await expect(dispatchNotifications({ ids: [id] }, { final: false })).rejects.toBeInstanceOf(
+			RetryLater
+		);
+		const status = async () =>
+			(
+				await withService((tx) =>
+					tx
+						.select({ status: s.notifications.status })
+						.from(s.notifications)
+						.where(eq(s.notifications.id, id))
+				)
+			)[0].status;
+		expect(await status()).toBe('pending');
+		expect(await dispatchNotifications({ ids: [id] }, { final: true })).toMatchObject({
+			failed: 1
+		});
+		expect(await status()).toBe('failed');
+		expect(sms.mock.calls.filter(([, delivery]) => delivery.notificationId === id)).toHaveLength(2);
+	} finally {
+		failingSms.delete(id);
+	}
 });
 
 it('sends each supervisor a digest of their homes, with counts and home names only', async () => {
