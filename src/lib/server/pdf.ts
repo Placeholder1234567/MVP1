@@ -3,9 +3,9 @@
 // first use, so modules that only import this (the job registry, which
 // scripts/cloud-jobs.ts runs through tsx) don't pull them in.
 //
-// Figtree covers Latin scripts only. A PDF must never show blank boxes in a
-// care record, so text outside the fonts is refused (PdfUnsupportedText) and
-// the caller points people to CSV or HTML, which show every character.
+// Figtree remains the default. Noto Sans adds Greek, Cyrillic and extended
+// Latin when the complete report fits both of its faces. A report outside
+// both families is refused, retaining the CSV/HTML fallback without boxes.
 import type { PdfReport } from '../domain/report-pdf';
 import { pdfText } from '../domain/report-pdf';
 
@@ -36,17 +36,42 @@ function loadFonts() {
 	})());
 }
 
+let fallbackFonts: Promise<{ regular: Buffer; semibold: Buffer }> | undefined;
+function loadFallbackFonts() {
+	return (fallbackFonts ??= (async () => {
+		const [regular, semibold] = await Promise.all([
+			import('./fonts/noto-sans/NotoSans-Regular.ttf?inline'),
+			import('./fonts/noto-sans/NotoSans-SemiBold.ttf?inline')
+		]);
+		const bytes = (url: string) => Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
+		return { regular: bytes(regular.default), semibold: bytes(semibold.default) };
+	})());
+}
+
 export async function renderPdf(report: PdfReport): Promise<Buffer> {
-	const [{ default: PDFDocument }, fontkit, { regular, semibold }] = await Promise.all([
+	const [{ default: PDFDocument }, fontkit, primary] = await Promise.all([
 		import('pdfkit'),
 		import('fontkit'),
 		loadFonts()
 	]);
-	const check = fontkit.create(regular) as import('fontkit').Font;
-	for (const text of pdfText(report))
-		for (const ch of text)
-			if (!/\s/.test(ch) && !check.hasGlyphForCodePoint(ch.codePointAt(0)!))
-				throw new PdfUnsupportedText();
+	const text = [...pdfText(report)];
+	const covers = (family: { regular: Buffer; semibold: Buffer }) => {
+		const faces = [family.regular, family.semibold].map(
+			(bytes) => fontkit.create(bytes) as import('fontkit').Font
+		);
+		return text.every((line) =>
+			[...line].every(
+				(ch) =>
+					/\s/.test(ch) || faces.every((face) => face.hasGlyphForCodePoint(ch.codePointAt(0)!))
+			)
+		);
+	};
+	let selected = primary;
+	if (!covers(primary)) {
+		selected = await loadFallbackFonts();
+		if (!covers(selected)) throw new PdfUnsupportedText();
+	}
+	const { regular, semibold } = selected;
 
 	const doc = new PDFDocument({
 		size: 'LETTER',

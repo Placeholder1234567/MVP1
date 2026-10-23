@@ -52,8 +52,20 @@ describe('PDF rendering', () => {
 		expect(pages(pdf)).toBe(1);
 	});
 
+	it('embeds a complete Noto Sans family for Greek, Cyrillic and extended Latin', async () => {
+		const report = doc('Анна · Ελληνικά · Nguyễn · Nguye\u0302\u0303n');
+		report.title = 'Care records: Ελληνικά';
+		report.intro.push('Current agency name at generation: Анна Care');
+		report.sections[0].records[0].heading = 'Nguyễn';
+		const raw = (await renderPdf(report)).toString('latin1');
+		expect(raw).toMatch(/\/BaseFont \/[A-Z]{6}\+NotoSans-Regular/);
+		expect(raw).toMatch(/\/BaseFont \/[A-Z]{6}\+NotoSans-SemiBold/);
+		expect(pages(await renderPdf(report))).toBe(1);
+		expect(pages(await renderPdf(doc('Анна Nguyễn Ελληνικά '.repeat(2000))))).toBeGreaterThan(1);
+	});
+
 	it('refuses text the font cannot show instead of drawing blank boxes', async () => {
-		for (const text of ['Анна', 'አበበ', '李', 'Nguyễn'])
+		for (const text of ['አበበ', '李', 'العربية', '🙂'])
 			await expect(renderPdf(doc(text))).rejects.toBeInstanceOf(PdfUnsupportedText);
 	});
 });

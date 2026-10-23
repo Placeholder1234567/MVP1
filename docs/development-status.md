@@ -8,6 +8,10 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+- PDF rendering retains Figtree for existing supported reports and adds unmodified SIL-OFL Noto Sans Regular/SemiBold as a complete-document fallback for Greek, Cyrillic and extended Latin. Both faces must cover all report text; Ethiopic/CJK/Arabic/emoji rejection and CSV/HTML guidance remain. Current agency labels, clinical/source rules, queue ownership/publication and external API authorization stay unchanged. Bundled server-only fonts include license, provenance and checksums. New renderer and scoped appRouter tests plus synthetic rendered/text-extracted proof files validate the increment; all four exact-head CI gates remain required before merge.
+
+PR250 merged after all four final-head checks passed: 528 units, 326 integration tests plus SQL RLS, 181 production and 2 development browser passes, and performance. All six Staff privacy/navigation cases passed.
+
 - Staff roster loads and invite/update/MFA-reset feedback use current-context generations and independent abortable list/change operations. Account/role/home-assignment/features/privacy changes, navigation and disposal invalidate responses; scope changes clear the roster and editor. Offline retains already loaded same-context roster data, with new server actions disabled and explicit refresh on reconnect/unlock. Invitation feedback uses the submitted email. Interrupted mutations may still complete, so the UI asks for refresh before retrying and never automatically repeats or reverses account actions. Six desktop/phone held-real-response cases cover list-lock, invite-lock and update during pending navigation, including explicit recovery of committed changes, offline controls, axe and overflow. All four exact-head gates are required before merge.
 
 PR249 merged after all four exact-head gates passed: 528 unit tests, 326 integration tests plus SQL RLS, 175 production and 2 development browser passes, and performance. All eight API-key privacy cases passed; server key persistence after dropped creation responses and explicit revocation recovery were verified.
