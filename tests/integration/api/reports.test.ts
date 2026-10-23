@@ -24,7 +24,8 @@ const [AGENCY, OTHER, STARTER] = [randomUUID(), randomUUID(), randomUUID()];
 const [HOME, OTHER_HOME] = [randomUUID(), randomUUID()];
 const [PERSON, OTHER_PERSON] = [randomUUID(), randomUUID()];
 const [ADMIN, STARTER_ADMIN] = [randomUUID(), randomUUID()];
-const [IN_RANGE, OUT_OF_RANGE, FOREIGN, CYRILLIC] = [
+const [IN_RANGE, OUT_OF_RANGE, FOREIGN, CYRILLIC, UNSUPPORTED] = [
+	randomUUID(),
 	randomUUID(),
 	randomUUID(),
 	randomUUID(),
@@ -130,6 +131,10 @@ beforeAll(async () => {
 			{
 				...incident(CYRILLIC, AGENCY, HOME, PERSON, '2026-05-02T10:00:00Z'),
 				description: 'Синтетический'
+			},
+			{
+				...incident(UNSUPPORTED, AGENCY, HOME, PERSON, '2026-06-02T10:00:00Z'),
+				description: 'አበበ'
 			}
 		]);
 	});
@@ -217,13 +222,36 @@ it('builds a PDF, and fails one whose text the PDF font cannot show', async () =
 		.filter((v) => v.operation === 'downloadReport' && JSON.stringify(v).includes(id));
 	expect(downloads.map((v) => v.records)).toEqual([1]);
 
-	const bad = await call(
+	const supported = await call(
 		create.POST,
 		'/api/v1/reports/incidents',
 		writeKey,
 		{ type: 'incidents' },
 		{ from: '2026-05-01', to: '2026-05-31', format: 'pdf' }
 	);
+	expect(supported.status).toBe(202);
+	const supportedId = (await supported.json()).report_id;
+	expect(await ready(supportedId)).toMatchObject({ status: 'ready', format: 'pdf' });
+	const supportedFile = await call(
+		download.GET,
+		`/api/v1/reports/incidents/${supportedId}/download`,
+		readKey,
+		{ type: 'incidents', reportId: supportedId }
+	);
+	expect(supportedFile.status).toBe(200);
+	const supportedBytes = Buffer.from(await supportedFile.arrayBuffer()).toString('latin1');
+	expect(supportedBytes.startsWith('%PDF-')).toBe(true);
+	expect(supportedBytes).toContain('NotoSans-Regular');
+	expect(supportedBytes).toContain('NotoSans-SemiBold');
+
+	const bad = await call(
+		create.POST,
+		'/api/v1/reports/incidents',
+		writeKey,
+		{ type: 'incidents' },
+		{ from: '2026-06-01', to: '2026-06-30', format: 'pdf' }
+	);
+	expect(bad.status).toBe(202);
 	const failed = await ready((await bad.json()).report_id);
 	expect(failed).toMatchObject({ status: 'failed' });
 	expect(failed.error).toContain('Use format csv');
