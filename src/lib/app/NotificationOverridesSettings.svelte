@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, onDestroy } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import {
 		notificationOverrides,
@@ -20,8 +20,13 @@
 	let saving = $state(false);
 	let error = $state('');
 	let message = $state('');
+	let disposed = false;
+	onDestroy(() => {
+		disposed = true;
+	});
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
+		const completed = onSaved;
 		saving = true;
 		error = '';
 		message = '';
@@ -36,8 +41,9 @@
 					}
 				}
 			});
+			if (disposed) return;
 			message = 'Notification rules saved.';
-			onSaved?.();
+			completed?.();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not save notification rules.';
 		} finally {

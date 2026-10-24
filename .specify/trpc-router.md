@@ -65,6 +65,8 @@ See `entitlements.md` for the full feature registry and tier-to-feature mapping.
 
 ### agency
 
+Setup binds parent agency/home reads and mutation feedback to the current admin account/agency/role/assignments/features/privacy view. Navigation start and disposal invalidate completions before unmount. Locked/context-changed views clear settings, homes and forms; offline/hidden interrupts requests while preserving already-loaded parent information for reading with changes disabled. Nested editors/usage/maintenance views are disposed on interruption and require explicit refresh to remount. Rule-editor reload callbacks are bound to the snapshot that mounted them, preventing old saves from refreshing a new editor. Dropping UI responses does not undo a committed mutation; admins are advised to refresh before retrying. Server settings merge, authorization, RLS, notification and home semantics remain unchanged.
+
 | Procedure | Type | Input | Output | Min Role | Description |
 |---|---|---|---|---|---|
 | `agency.get` | query | none | `{ id, name, slug, chartingPreset, settings, subscriptionTier, enabledFeatures, createdAt, updatedAt }` | caregiver | Returns the caller's agency record. Settings includes notification defaults, shift times, and feature flags. `subscriptionTier` defaults to `'starter'` when null. `enabledFeatures` is an array of per-agency feature flag overrides (see entitlements.md). |

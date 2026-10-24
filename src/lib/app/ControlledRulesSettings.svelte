@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Controlled medication count rules (domain/controlled.ts): start from the
 	// agency's state, then match the agency's own medication policy.
-	import { untrack } from 'svelte';
+	import { untrack, onDestroy } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import {
 		COUNT_KINDS,
@@ -24,15 +24,21 @@
 	function choose(state: StateCode) {
 		rules = copy(STATE_PRESETS[state].rules);
 	}
+	let disposed = false;
+	onDestroy(() => {
+		disposed = true;
+	});
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
+		const completed = onSaved;
 		saving = true;
 		message = '';
 		error = '';
 		try {
 			await trpc.agency.update.mutate({ settings: { controlled_rules: $state.snapshot(rules) } });
+			if (disposed) return;
 			message = 'Saved. Devices use these rules after their next sync.';
-			onSaved?.();
+			completed?.();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not save the count rules.';
 		} finally {

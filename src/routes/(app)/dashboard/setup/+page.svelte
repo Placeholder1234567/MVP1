@@ -2,7 +2,10 @@
 	// Agency settings (frontend-spec-3.md §4.8), admins only: name, charting
 	// preset (labels and form order only), time zone, MFA for caregivers, and
 	// homes with their clock-in geofence. Needs a connection.
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
+	import { useSession } from '#lib/app/session.svelte.ts';
+	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	import {
 		SESSION_MINUTES_DEFAULT,
 		SESSION_MINUTES_MIN,
@@ -39,45 +42,156 @@
 	let editingHome = $state<string | null>(null);
 	let home = $state({ name: '', address: '', lat: '', lng: '', radius: '150' });
 
+	const app = useSession();
+	let online = $state(false);
+	let pageVisible = $state(false);
+	let loading = $state(false);
+	// Child editors belong to the snapshot that mounted them, including their
+	// completion callbacks. Removing them prevents old feedback resurfacing.
+	let childView = $state<{ reload: () => void } | null>(null);
+	const canConnect = $derived(
+		app.user.role === 'admin' && reportCanConnect(online, pageVisible, app.privacyLocked)
+	);
+	const guard = new ReportJobGuard();
+	const controllers: Partial<Record<'list' | 'change', AbortController>> = {};
+	const context = () =>
+		JSON.stringify([
+			app.user.agencyId,
+			app.user.profileId,
+			app.user.role,
+			app.user.homeIds,
+			app.user.features,
+			app.privacyLocked
+		]);
+	function abortAll() {
+		for (const controller of Object.values(controllers)) controller?.abort();
+		loading = false;
+		saving = false;
+		childView = null;
+	}
+	function forget() {
+		abortAll();
+		agency = undefined;
+		homes = [];
+		message = '';
+		name = '';
+		preset = 'default';
+		timezone = '';
+		caregiverMfa = false;
+		sessionLength = String(SESSION_MINUTES_DEFAULT);
+		editingHome = null;
+		home = { name: '', address: '', lat: '', lng: '', radius: '150' };
+	}
+	$effect(() => {
+		if (guard.change(context())) forget();
+	});
+	beforeNavigate(() => {
+		guard.change('navigating');
+		forget();
+	});
+	onDestroy(() => {
+		guard.change('disposed');
+		abortAll();
+	});
+	onMount(() => {
+		const update = () => {
+			online = navigator.onLine;
+			pageVisible = document.visibilityState === 'visible';
+			if (!online || !pageVisible) {
+				guard.change(`unavailable-${Date.now()}`);
+				abortAll();
+			}
+		};
+		update();
+		void load();
+		window.addEventListener('online', update);
+		window.addEventListener('offline', update);
+		document.addEventListener('visibilitychange', update);
+		return () => {
+			window.removeEventListener('online', update);
+			window.removeEventListener('offline', update);
+			document.removeEventListener('visibilitychange', update);
+		};
+	});
+	function begin(kind: 'list' | 'change') {
+		guard.change(context());
+		const current = guard.capture();
+		const original = context();
+		controllers[kind]?.abort();
+		const abort = new AbortController();
+		controllers[kind] = abort;
+		return {
+			signal: abort.signal,
+			valid: () =>
+				current() &&
+				original === context() &&
+				canConnect &&
+				!abort.signal.aborted &&
+				controllers[kind] === abort
+		};
+	}
 	async function load() {
+		if (!canConnect || saving) return;
+		const operation = begin('list');
+		loading = true;
 		try {
-			[agency, homes] = await Promise.all([trpc.agency.get.query(), trpc.home.list.query()]);
+			const [nextAgency, nextHomes] = await Promise.all([
+				trpc.agency.get.query(undefined, { signal: operation.signal }),
+				trpc.home.list.query(undefined, { signal: operation.signal })
+			]);
+			if (!operation.valid()) return;
+			agency = nextAgency;
+			homes = nextHomes;
 			name = agency.name;
 			preset = agency.chartingPreset === 'therap' ? 'therap' : 'default';
 			timezone = agency.timezone ?? '';
 			const roles = (agency.settings as { mfa_required_roles?: string[] }).mfa_required_roles;
 			caregiverMfa = Array.isArray(roles) && roles.includes('caregiver');
 			sessionLength = String(sessionMinutes(agency.settings));
+			const reload = () => {
+				if (operation.valid()) void load();
+			};
+			if (childView) childView.reload = reload;
+			else childView = { reload };
 		} catch {
-			message = 'Connect to load settings.';
+			if (operation.valid()) message = 'Connect to load settings.';
+		} finally {
+			if (operation.valid()) loading = false;
 		}
 	}
-	onMount(load);
 
 	async function saveAgency(event: SubmitEvent) {
 		event.preventDefault();
+		if (!canConnect || saving || loading || !agency) return;
+		const operation = begin('change');
 		saving = true;
 		message = '';
 		try {
-			await trpc.agency.update.mutate({
-				name,
-				chartingPreset: preset,
-				timezone,
-				settings: {
-					mfa_required_roles: caregiverMfa ? ['caregiver'] : [],
-					session_minutes: Number(sessionLength)
-				}
-			});
+			await trpc.agency.update.mutate(
+				{
+					name,
+					chartingPreset: preset,
+					timezone,
+					settings: {
+						mfa_required_roles: caregiverMfa ? ['caregiver'] : [],
+						session_minutes: Number(sessionLength)
+					}
+				},
+				{ signal: operation.signal }
+			);
+			if (!operation.valid()) return;
 			message = 'Agency settings saved. Labels update on the next page load.';
+			saving = false;
 			await load();
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Could not save.';
+			if (operation.valid()) message = e instanceof Error ? e.message : 'Could not save.';
 		} finally {
-			saving = false;
+			if (operation.valid()) saving = false;
 		}
 	}
 
 	function openHome(h?: Home) {
+		if (!canConnect || saving || loading) return;
 		editingHome = h?.id ?? '';
 		home = {
 			name: h?.name ?? '',
@@ -89,6 +203,7 @@
 	}
 
 	async function setArchived(h: Home, archive: boolean) {
+		if (!canConnect || saving || loading) return;
 		if (
 			archive &&
 			!confirm(
@@ -96,22 +211,28 @@
 			)
 		)
 			return;
+		const operation = begin('change');
 		saving = true;
 		message = '';
 		try {
-			if (archive) await trpc.home.archive.mutate({ id: h.id });
-			else await trpc.home.restore.mutate({ id: h.id });
+			if (archive) await trpc.home.archive.mutate({ id: h.id }, { signal: operation.signal });
+			else await trpc.home.restore.mutate({ id: h.id }, { signal: operation.signal });
+			if (!operation.valid()) return;
 			message = archive ? `${h.name} archived.` : `${h.name} restored.`;
+			saving = false;
 			await load();
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Could not change the home.';
+			if (operation.valid())
+				message = e instanceof Error ? e.message : 'Could not change the home.';
 		} finally {
-			saving = false;
+			if (operation.valid()) saving = false;
 		}
 	}
 
 	async function saveHome(event: SubmitEvent) {
 		event.preventDefault();
+		if (!canConnect || saving || loading || !agency) return;
+		const operation = begin('change');
 		saving = true;
 		message = '';
 		const num = (v: string) => (v.trim() === '' ? null : Number(v));
@@ -123,15 +244,18 @@
 			radius: Number(home.radius)
 		};
 		try {
-			if (editingHome) await trpc.home.update.mutate({ id: editingHome, ...data });
-			else await trpc.home.create.mutate(data);
+			if (editingHome)
+				await trpc.home.update.mutate({ id: editingHome, ...data }, { signal: operation.signal });
+			else await trpc.home.create.mutate(data, { signal: operation.signal });
+			if (!operation.valid()) return;
 			editingHome = null;
 			message = 'Home saved. Geofence changes apply to future clock-ins.';
+			saving = false;
 			await load();
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Could not save the home.';
+			if (operation.valid()) message = e instanceof Error ? e.message : 'Could not save the home.';
 		} finally {
-			saving = false;
+			if (operation.valid()) saving = false;
 		}
 	}
 </script>
@@ -140,12 +264,21 @@
 
 <section class="stack" aria-label="Agency setup">
 	<h1>Setup</h1>
+	<p class="muted">
+		Interrupted changes may still complete. Refresh settings before retrying a save or announcement.
+	</p>
+	<button type="button" class="btn sec" disabled={loading || saving || !canConnect} onclick={load}
+		>Refresh settings</button
+	>
+	{#if !canConnect}<p class="muted" role="status">
+			Connect with this workspace visible and unlocked to manage settings.
+		</p>{/if}
 	{#if message}<p class="callout" role="status">{message}</p>{/if}
 
 	{#if agency}
 		<form class="card pad stack" onsubmit={saveAgency}>
 			<h2>Agency</h2>
-			<fieldset class="stack" disabled={saving}>
+			<fieldset class="stack" disabled={saving || loading || !canConnect}>
 				<label>Agency name<input class="input" required maxlength="100" bind:value={name} /></label>
 				<fieldset class="stack">
 					<legend>Charting terms</legend>
@@ -192,12 +325,14 @@
 
 		<div class="spread">
 			<h2>Homes</h2>
-			<button class="btn sec" disabled={saving} onclick={() => openHome()}>Add a home</button>
+			<button class="btn sec" disabled={saving || loading || !canConnect} onclick={() => openHome()}
+				>Add a home</button
+			>
 		</div>
 		{#if editingHome !== null}
 			<form class="card pad stack" onsubmit={saveHome}>
 				<h3>{editingHome ? 'Edit home' : 'Add a home'}</h3>
-				<fieldset class="stack" disabled={saving}>
+				<fieldset class="stack" disabled={saving || loading || !canConnect}>
 					<label>Name<input class="input" required maxlength="100" bind:value={home.name} /></label>
 					<label>Address<input class="input" maxlength="300" bind:value={home.address} /></label>
 					<div class="grid2">
@@ -253,13 +388,13 @@
 					>
 					{#if !h.archivedAt}<button
 							class="btn sec"
-							disabled={saving}
+							disabled={saving || loading || !canConnect}
 							aria-label="Edit {h.name}"
 							onclick={() => openHome(h)}>Edit</button
 						>{/if}
 					<button
 						class="btn sec"
-						disabled={saving}
+						disabled={saving || loading || !canConnect}
 						aria-label="{h.archivedAt ? 'Restore' : 'Archive'} {h.name}"
 						onclick={() => setArchived(h, !h.archivedAt)}
 						>{h.archivedAt ? 'Restore' : 'Archive'}</button
@@ -269,10 +404,16 @@
 				<div class="row muted" role="listitem">No homes yet.</div>
 			{/each}
 		</div>
-		<ControlledRulesSettings settings={agency.settings} onSaved={load} />
-		<IncidentRulesSettings settings={agency.settings} onSaved={load} />
-		<NotificationOverridesSettings settings={agency.settings} onSaved={load} />
-		<MessagingUsage />
-		<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
+		{#if childView}
+			{#key childView}
+				<fieldset class="stack" disabled={saving || loading || !canConnect}>
+					<ControlledRulesSettings settings={agency.settings} onSaved={childView.reload} />
+					<IncidentRulesSettings settings={agency.settings} onSaved={childView.reload} />
+					<NotificationOverridesSettings settings={agency.settings} onSaved={childView.reload} />
+					<MessagingUsage />
+					<MaintenanceNotice timezone={agency.timezone ?? 'America/New_York'} />
+				</fieldset>
+			{/key}
+		{/if}
 	{/if}
 </section>
