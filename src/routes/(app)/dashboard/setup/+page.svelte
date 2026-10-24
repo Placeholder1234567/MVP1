@@ -134,7 +134,6 @@
 		if (!canConnect || saving) return;
 		const operation = begin('list');
 		loading = true;
-		childView = null;
 		try {
 			const [nextAgency, nextHomes] = await Promise.all([
 				trpc.agency.get.query(undefined, { signal: operation.signal }),
@@ -149,11 +148,11 @@
 			const roles = (agency.settings as { mfa_required_roles?: string[] }).mfa_required_roles;
 			caregiverMfa = Array.isArray(roles) && roles.includes('caregiver');
 			sessionLength = String(sessionMinutes(agency.settings));
-			childView = {
-				reload: () => {
-					if (operation.valid()) void load();
-				}
+			const reload = () => {
+				if (operation.valid()) void load();
 			};
+			if (childView) childView.reload = reload;
+			else childView = { reload };
 		} catch {
 			if (operation.valid()) message = 'Connect to load settings.';
 		} finally {

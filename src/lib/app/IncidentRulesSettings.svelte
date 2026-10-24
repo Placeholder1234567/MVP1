@@ -3,7 +3,7 @@
 	// finding 8). Caregivers see these in the incident wizard and supervisors
 	// in the attention queue. Enter your state's actual rules; the defaults
 	// are placeholders.
-	import { untrack } from 'svelte';
+	import { untrack, onDestroy } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import {
 		ABUSE_HOTLINE_MAX,
@@ -30,15 +30,21 @@
 	let message = $state('');
 	let error = $state('');
 
+	let disposed = false;
+	onDestroy(() => {
+		disposed = true;
+	});
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
+		const completed = onSaved;
 		saving = true;
 		message = '';
 		error = '';
 		try {
 			await trpc.agency.update.mutate({ settings: { incident_rules: $state.snapshot(rules) } });
+			if (disposed) return;
 			message = 'Incident rules saved. Devices pick them up on their next sync.';
-			onSaved?.();
+			completed?.();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Could not save the incident rules.';
 		} finally {
