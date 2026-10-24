@@ -1,6 +1,6 @@
 <script lang="ts">
 	// Messaging usage (notifications.md "Cost Tracking", "Opt-Out"): what went
-	// out this month and roughly what the texts cost, and who won't get texts.
+	// out this month and roughly what the texts cost, and whose saved text preferences are off.
 	import { onMount } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 
@@ -44,16 +44,22 @@
 		<p class="muted s13">
 			The text cost is an estimate at about a cent per text; your bill may differ.
 		</p>
-		<h3>Texts turned off</h3>
+		<h3>Saved text preferences off</h3>
+		<p class="muted s13">
+			This list reflects saved preferences, not carrier consent or delivery status. A carrier STOP
+			remains in effect even if settings enable texts; only a verified START reply clears it.
+		</p>
 		{#if usage.textsOff.length}
 			<p class="muted s13">
-				These staff replied STOP or turned texts off, so they won't get text alerts, including shift
-				offers. Only they can turn texts back on, by replying START or in their settings.
+				These staff have texts off for every notification type in their saved preferences. They can
+				change preferences in their settings. Carrier restrictions still apply.
 			</p>
 			<ul>
 				{#each usage.textsOff as p (p.id)}<li>{p.name}</li>{/each}
 			</ul>
-		{:else}<p class="muted">Everyone who gets text alerts has them on.</p>{/if}
+		{:else}<p class="muted">
+				No staff with default text alerts have every saved text preference turned off.
+			</p>{/if}
 	{:else if message}<p class="muted" role="status">{message}</p>{:else}<p class="muted">
 			Loading…
 		</p>{/if}
