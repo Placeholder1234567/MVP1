@@ -25,6 +25,7 @@
 		deviceId,
 		forgetPin,
 		hasWrappedKey,
+		PasskeyError,
 		unwrapKey,
 		wrapKey,
 		verifyOfflineAccess,
@@ -295,7 +296,7 @@
 		busy = true;
 		try {
 			const unlocked = step === 'set-pin' ? key! : await unwrapKey(pin, app.user.profileId);
-			if (step === 'set-pin') await wrapKey(unlocked, pin, app.user.profileId);
+			if (step === 'set-pin') await wrapKey(unlocked, pin, app.user.profileId, { passkey: true });
 			const database = await openDb(unlocked, app.user.profileId, {
 				onWait: () => (waiting = true)
 			});
@@ -331,7 +332,9 @@
 			step = 'open';
 		} catch (e) {
 			message =
-				e instanceof WrongPinError ? e.message : 'Could not unlock this device. Please try again.';
+				e instanceof WrongPinError || e instanceof PasskeyError
+					? e.message
+					: 'Could not unlock this device. Please try again.';
 			// The wrapped key is gone; only a new password sign-in may reopen the database.
 			if (e instanceof WrongPinError && e.attemptsLeft === 0) await signInAgain();
 		} finally {
@@ -470,7 +473,7 @@
 			</h1>
 			<p class="muted">
 				{step === 'set-pin'
-					? 'Choose a PIN to keep care records private on this device.'
+					? 'Choose a PIN to keep care records private on this device. Your device may also ask for its screen lock, to save a passkey that protects the PIN.'
 					: 'Enter your device PIN to open your saved care records.'}
 			</p>
 			{#if step !== 'checking'}<form class="stack" onsubmit={unlock}>

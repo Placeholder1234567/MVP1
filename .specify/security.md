@@ -196,7 +196,7 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 |-------|-----------|----------------|
 | Cloud SQL Postgres | AES-256 (Google-managed) | Google-managed keys; customer-managed keys (Cloud KMS) optional later |
 | Cloud SQL backups | AES-256 | Same as the instance |
-| PowerSync OPFS (device) | SQLite3MultipleCiphers, ChaCha20-Poly1305 (verified in Chromium; Safari/Firefox still to verify) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2); server copy deleted on deactivation |
+| PowerSync OPFS (device) | SQLite3MultipleCiphers, ChaCha20-Poly1305 (verified in Chromium; Safari/Firefox still to verify) | Random per-device key, held in memory; stored on disk only wrapped with a PIN-derived key (PBKDF2), plus a platform passkey's PRF secret where supported; server copy deleted on deactivation |
 | Cloud Storage (exports) | AES-256 (Google-managed) | Google-managed keys |
 | Cloud Tasks payloads | AES-256 (Google-managed) | Payloads hold record IDs only, never PHI |
 
@@ -338,6 +338,15 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 - PowerSync's web SDK encrypts the local OPFS database with SQLite3MultipleCiphers (ChaCha20-Poly1305). The key is the per-device key described in offline-sync.md "Local Database Encryption Key".
 - The key is a random per-device key issued by the server at first sign-in. It is held in memory and stored on disk only wrapped with a PIN-derived key, so caregivers can reopen the app offline across token expiry without losing unsynced work.
 - Five wrong PINs delete the wrapped key; the database can then only be reopened by signing in online. Deactivating the user or device deletes the server copy of the key.
+- Offline PIN guessing (`research/decisions-2026-10.md` §3):
+  - **Where the device supports it, the wrapping key also needs a platform passkey's WebAuthn PRF secret.** The PIN check is then enforced by the device's secure hardware and screen lock, as NIST SP 800-63B-4 expects for locally verified activation secrets. A copied OPFS file is useless without the device.
+  - **Without passkey support:**
+    - The 5-try limit is a counter in the same file, so it only stops someone using the app.
+    - Someone who copies the browser storage can guess a 6-digit PIN offline in hours to days against PBKDF2-600k.
+    - Mitigations: the 12-hour offline window, revoking the device key server-side when a device is reported lost, and wiping on sign-out.
+  - **Rejected options:**
+    - A server-held pepper: it can't work offline.
+    - Longer PINs: still crackable, and too slow to type mid-shift.
 
 ### Data Cleared on Logout
 
