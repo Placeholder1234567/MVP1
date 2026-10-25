@@ -6,7 +6,11 @@
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { addDays, localTime } from '#lib/domain/index.ts';
-	import { CLINICAL_TYPES, type ClinicalType } from '#lib/domain/clinical-export.ts';
+	import {
+		CLINICAL_TYPE_LABEL as labels,
+		CLINICAL_TYPES,
+		type ClinicalType
+	} from '#lib/domain/clinical-export.ts';
 	import CoverageExport from '#lib/app/CoverageExport.svelte';
 	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	const app = useSession();
@@ -75,14 +79,6 @@
 		controller?.abort();
 		guard.change('disposed');
 	});
-	const labels = {
-		notes: 'Signed notes',
-		mar: 'Medication administration',
-		health: 'Health entries',
-		incidents: 'Incident log',
-		attendance: 'Attendance',
-		goals: 'Goal progress and trial history'
-	};
 	async function download(event: SubmitEvent) {
 		event.preventDefault();
 		if (busy || !app.homeId || !canConnect) return;

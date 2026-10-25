@@ -11,6 +11,26 @@ export const CLINICAL_TYPES = [
 	'goals'
 ] as const;
 export type ClinicalType = (typeof CLINICAL_TYPES)[number];
+
+/** The plan feature each care report needs, on top of `reports` (entitlements.md). */
+export const CLINICAL_TYPE_FEATURE = {
+	notes: 'charting',
+	mar: 'mar',
+	health: 'health',
+	incidents: 'incidents',
+	attendance: 'charting',
+	goals: 'goals'
+} as const satisfies Record<ClinicalType, string>;
+
+/** What each care report is called on the Reports pages and in alerts. */
+export const CLINICAL_TYPE_LABEL: Record<ClinicalType, string> = {
+	notes: 'Signed notes',
+	mar: 'Medication administration',
+	health: 'Health entries',
+	incidents: 'Incident log',
+	attendance: 'Attendance',
+	goals: 'Goal progress and trial history'
+};
 export type ClinicalRow = Record<string, unknown>;
 export interface ClinicalReport {
 	version: 1;

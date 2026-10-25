@@ -15,6 +15,7 @@ import {
 import { applySyncWindows } from '../services/sync/index.ts';
 import { searchCoverage, coverageTimer, sweepCoverage } from '../services/schedule/index.ts';
 import { checkMissedPunches } from '../services/clock/index.ts';
+import { sweepReportSchedules } from '../services/report/index.ts';
 import {
 	cleanupReports,
 	deliverWebhook,
@@ -168,6 +169,13 @@ const JOBS = {
 		maxAttempts: 1,
 		run: (p) => generateReport(p)
 	}),
+	// Scheduled care reports (Complete plan): each agency's due ones, as their owners.
+	'report-schedule-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => sweepReportSchedules()
+	}),
 	'report-cleanup': job({
 		queue: 'maintenance',
 		payload: z.object({}).passthrough(),
@@ -230,6 +238,8 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	{ job: 'care-reminder-sweep', cron: '*/15 * * * *' },
 	{ job: 'webhook-sweep', cron: '* * * * *' },
 	{ job: 'report-cleanup', cron: '17 * * * *' },
+	// Hourly, so each agency's reports start soon after its local midnight.
+	{ job: 'report-schedule-sweep', cron: '41 * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' },
 	// Admins hear at most weekly (access-review.ts); 14:00 UTC is US morning.
 	{ job: 'access-review-sweep', cron: '0 14 * * *' }

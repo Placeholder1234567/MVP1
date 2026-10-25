@@ -406,6 +406,19 @@ Update `notifications.sent_at`
 | **Deep Link** | `/dashboard/staff` |
 | **Escalation** | None |
 
+### 2.21 report_ready
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | A scheduled care report (Complete plan, `report.createSchedule`) has been built by the hourly `report-schedule-sweep` and is ready to download. |
+| **Recipients** | The schedule's owner only |
+| **Channels** | In-app + push + email |
+| **Priority** | Normal |
+| **Template** | `"Your scheduled report is ready: {report type}, {from} to {to}"`. No home, person or contents. The file is downloaded in the app after sign-in, kept 7 days. |
+| **PHI Safety** | Safe. Report type and dates only. |
+| **Deep Link** | `/dashboard/reports/background` |
+| **Escalation** | None |
+
 ### Notification Type Summary Table
 
 | Type | Priority | Push | SMS | Email | Mandatory | Escalation |
@@ -437,6 +450,7 @@ Update `notifications.sent_at`
 | `system_maintenance` | Low | Y | N | Y | N | None |
 | `email_delivery_problem` | Normal | Y | N | N | N | None |
 | `access_review` | Normal (High for a new admin) | Y | N | Y | N | None (at most weekly) |
+| `report_ready` | Normal | Y | N | Y | N | None |
 
 `*` SMS sent only on escalation if push is unacknowledged, not on initial send. Exception: `clock_missed` sends SMS immediately to the supervisor (not escalation-only).
 

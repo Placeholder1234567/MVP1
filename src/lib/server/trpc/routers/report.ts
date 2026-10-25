@@ -12,11 +12,26 @@ import {
 	requestBackground,
 	backgroundStatus,
 	recentBackground,
-	downloadBackground
+	downloadBackground,
+	createReportSchedule,
+	deleteReportSchedule,
+	listReportSchedules,
+	NewReportSchedule,
+	ReportScheduleId
 } from '../../services/report/index.ts';
 import { featureRoleProcedure, router } from '../middleware.ts';
 
+// Scheduled reports: Complete plan (`reports_scheduled`), each person's own.
+const scheduler = featureRoleProcedure('reports_scheduled', 'supervisor');
+
 export const reportRouter = router({
+	schedules: scheduler.query(({ ctx }) => listReportSchedules(ctx.db, ctx.user)),
+	createSchedule: scheduler
+		.input(NewReportSchedule)
+		.mutation(({ ctx, input }) => createReportSchedule(ctx.db, ctx.user, input)),
+	deleteSchedule: scheduler
+		.input(ReportScheduleId)
+		.mutation(({ ctx, input }) => deleteReportSchedule(ctx.db, ctx.user, input)),
 	exportCoverage: featureRoleProcedure(['reports_basic', 'reports'], 'supervisor')
 		.input(CoverageExport)
 		.mutation(({ ctx, input }) => exportCoverage(ctx.db, ctx.user, input, ctx.request)),

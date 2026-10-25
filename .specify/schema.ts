@@ -1927,3 +1927,49 @@ export const coverageOfferEvidence = pgTable(
     ),
   ],
 );
+
+// ─── report_schedules ────────────────────────────────────────────────────────
+// A care report a supervisor asked for every week or month (Complete plan,
+// `reports_scheduled`; domain/report-schedule.ts). The daily sweep makes a
+// report_jobs row from it as its owner, with the owner's access checked
+// again each time; a schedule whose owner lost access is switched off.
+// Owners see and change only their own; never synced.
+export const reportSchedules = pgTable(
+  'report_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    profile_id: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    home_id: uuid('home_id')
+      .notNull()
+      .references(() => homes.id, { onDelete: 'cascade' }),
+    // domain/clinical-export.ts CLINICAL_TYPES
+    type: text('type').notNull(),
+    // csv | pdf
+    format: text('format').notNull(),
+    // weekly | monthly
+    frequency: text('frequency').notNull(),
+    // ISO weekday for weekly reports, 1 = Monday
+    weekday: integer('weekday').notNull().default(1),
+    approved_only: boolean('approved_only').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    next_run_on: date('next_run_on').notNull(),
+    last_run_on: date('last_run_on'),
+    last_report_id: uuid('last_report_id'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('report_schedules_agency_id_idx').on(t.agency_id),
+    index('report_schedules_profile_id_idx').on(t.profile_id),
+    index('report_schedules_due_idx').on(t.active, t.next_run_on),
+  ],
+);

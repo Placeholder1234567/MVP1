@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { addDays } from '../../../domain/time';
 import {
+	CLINICAL_TYPE_FEATURE,
 	CLINICAL_TYPES,
 	clinicalCsv,
 	clinicalHtml,
@@ -30,14 +31,7 @@ export const ClinicalExport = z.object({
 	format: z.enum(['csv', 'json', 'html', 'pdf']),
 	approvedOnly: z.boolean().default(false)
 });
-const REQUIRED_FEATURE = {
-	notes: 'charting',
-	mar: 'mar',
-	health: 'health',
-	incidents: 'incidents',
-	attendance: 'charting',
-	goals: 'goals'
-} as const;
+const REQUIRED_FEATURE = CLINICAL_TYPE_FEATURE;
 const DATE_BASIS = {
 	notes:
 		'Shift start calendar day in agency time zone; overnight notes remain on the shift start day',

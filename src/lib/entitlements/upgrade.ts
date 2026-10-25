@@ -21,6 +21,7 @@ const MESSAGES: Record<FeatureFlag, string> = {
 		'Advanced analytics and enhanced Lomi summaries require a Complete subscription.',
 	reports: 'Full report generation requires a Professional or Complete subscription.',
 	reports_basic: 'Basic CSV reports require an active subscription.',
+	reports_scheduled: 'Scheduled reports require a Complete subscription.',
 	audit_log: 'Audit log access requires a Complete subscription.',
 	intake: 'Client intake management requires a Complete subscription.',
 	messaging: 'Team messaging requires an active subscription.',

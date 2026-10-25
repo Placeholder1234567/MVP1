@@ -11,6 +11,7 @@
 		type ClinicalType
 	} from '#lib/domain/clinical-export.ts';
 	import { ReportJobGuard, reportCanConnect, reportStillRunning } from '#lib/app/report-job.ts';
+	import ReportSchedules from '#lib/app/ReportSchedules.svelte';
 	const app = useSession();
 	const today = localTime(new Date(), app.user.timeZone).day;
 	let fromDay = $state(addDays(today, -6));
@@ -433,4 +434,5 @@
 		server work. Resume an accessible request from the recent list after unlocking. Prepared files
 		expire after 24 hours. Exported files contain confidential care information.
 	</p>
+	{#if app.user.features.includes('reports_scheduled')}<ReportSchedules />{/if}
 </div>

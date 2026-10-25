@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { afterCommit, asService, withService, withUser, type RequestInfo, type Tx } from '../../db';
+import { SCHEDULED_REPORT_DAYS } from '../../../domain/index.ts';
 import { ServiceError } from '../../errors';
 import { enqueue } from '../../jobs/queue';
 import { fileStorage } from '../../storage';
@@ -19,6 +20,7 @@ import {
 	recentCareReports
 } from './background.queries';
 import { clinicalScope } from './clinical.queries';
+import { scheduledReportReady } from './schedule-notify';
 
 export const BackgroundRequest = ClinicalExport.extend({ expectedProfileId: z.uuid() });
 export const BackgroundId = z.object({ id: z.uuid(), expectedProfileId: z.uuid() });
@@ -28,7 +30,9 @@ const Params = z.object({
 	input: ClinicalExport,
 	clientIds: z.array(z.uuid()).max(10000).default([]),
 	rows: z.number().int().min(0).max(10000).optional(),
-	revision: z.uuid().optional()
+	revision: z.uuid().optional(),
+	/** Set when a report schedule queued it (schedule.ts) */
+	scheduleId: z.uuid().optional()
 });
 const FORMAT = {
 	csv: { contentType: 'text/csv;charset=utf-8', encoding: 'utf8' },
@@ -53,8 +57,32 @@ export async function requestBackground(
 ) {
 	const { expectedProfileId, ...raw } = BackgroundRequest.parse(input);
 	bindProfile(user, expectedProfileId);
-	assignedHome(user, raw.homeId);
-	const { p } = await clinicalAccess(tx, user, raw);
+	return queueCareReport(tx, user, raw, { minutes: 15 });
+}
+
+/** Whether `user` may have this care report built for them (their homes, plan and role). */
+export async function careReportAccess(
+	tx: Tx,
+	user: CurrentUser,
+	raw: z.input<typeof ClinicalExport>
+) {
+	assignedHome(user, ClinicalExport.parse(raw).homeId);
+	return clinicalAccess(tx, user, raw);
+}
+
+/**
+ * Queues a care report for `user` (their access is checked now and again
+ * when it is built). It must be built within `minutes`; a scheduled run
+ * passes its schedule, so the file is kept 7 days instead of 24 hours and
+ * the owner hears when it is ready.
+ */
+export async function queueCareReport(
+	tx: Tx,
+	user: CurrentUser,
+	raw: z.input<typeof ClinicalExport>,
+	options: { minutes: number; scheduleId?: string }
+) {
+	const { p } = await careReportAccess(tx, user, raw);
 	const id = randomUUID();
 	const path = `care-reports/${user.agencyId}/${id}.${p.format}`;
 	const job = await asService(tx, (t) =>
@@ -64,10 +92,16 @@ export async function requestBackground(
 			requested_by: user.profileId,
 			type: p.type,
 			format: p.format,
-			params: { kind: 'care-v1', input: p, clientIds: [], revision: randomUUID() },
+			params: {
+				kind: 'care-v1',
+				input: p,
+				clientIds: [],
+				revision: randomUUID(),
+				...(options.scheduleId ? { scheduleId: options.scheduleId } : {})
+			},
 			status: 'queued',
 			storage_path: path,
-			expires_at: new Date(Date.now() + 15 * 60000)
+			expires_at: new Date(Date.now() + options.minutes * 60000)
 		})
 	);
 	// The row must be committed before a local worker can see it.
@@ -308,12 +342,21 @@ export async function generateCareReport(input: { id: string }): Promise<{ statu
 		}
 		// Ready files remain private and are never handed out by storage URLs.
 		const published = await withService((tx) =>
-			publishCareReport(tx, user, job.id, claimed.storage_path!, params)
+			publishCareReport(
+				tx,
+				user,
+				job.id,
+				claimed.storage_path!,
+				params,
+				// Scheduled reports wait for their owner longer (report-schedule.ts).
+				params.scheduleId ? SCHEDULED_REPORT_DAYS * 24 * 3600000 : undefined
+			)
 		);
 		if (!published) {
 			await removeLateFile();
 			return fail();
 		}
+		if (params.scheduleId) await scheduledReportReady(user, job.id, params.input);
 		return { status: 'ready' };
 	} catch {
 		await removeLateFile();
