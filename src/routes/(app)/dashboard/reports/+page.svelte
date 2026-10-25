@@ -83,9 +83,14 @@
 		attendance: 'Attendance',
 		goals: 'Goal progress and trial history'
 	};
+	// Without care reports on the plan, admins can still give one person their
+	// record (right of access, HIPAA 164.524): exportPersonRecord.
+	const personRecordOnly = $derived(
+		!app.user.features.includes('reports') && app.user.role === 'admin'
+	);
 	async function download(event: SubmitEvent) {
 		event.preventDefault();
-		if (busy || !app.homeId || !canConnect) return;
+		if (busy || !app.homeId || !canConnect || (personRecordOnly && !clientId)) return;
 		guard.change(context());
 		const stillCurrent = guard.capture();
 		const original = context();
@@ -111,7 +116,12 @@
 					'Wait for this device’s saved changes to finish syncing before downloading a care report.';
 				return;
 			}
-			const file = await trpc.report.exportClinical.mutate(p, { signal: request.signal });
+			const file = personRecordOnly
+				? await trpc.report.exportPersonRecord.mutate(
+						{ ...p, clientId },
+						{ signal: request.signal }
+					)
+				: await trpc.report.exportClinical.mutate(p, { signal: request.signal });
 			if (!current() || request.signal.aborted) return;
 			const body =
 				file.encoding === 'base64'
@@ -159,7 +169,13 @@
 			class="textbtn"
 			href={resolve('/(app)/dashboard/goals')}>Manage goals and templates →</a
 		>{/if}
-	{#if app.user.features.includes('reports')}
+	{#if app.user.features.includes('reports') || personRecordOnly}
+		{#if personRecordOnly}<h2>A person’s record</h2>
+			<p class="muted">
+				When someone or their guardian asks for a copy of their record, download it here one person
+				and one kind of record at a time, whatever your plan. Give it to them within 30 days of the
+				request.
+			</p>{/if}
 		<form class="card pad stack" onsubmit={download}>
 			<label for="clinical-report-type">Report</label>
 			<select id="clinical-report-type" class="input" bind:value={type}>
@@ -170,8 +186,13 @@
 					'Choose a home in the app navigation'}
 			</p>
 			<label for="clinical-report-person">Person</label>
-			<select id="clinical-report-person" class="input" bind:value={clientId}>
-				<option value="">Everyone in this home</option>
+			<select
+				id="clinical-report-person"
+				class="input"
+				bind:value={clientId}
+				required={personRecordOnly}
+			>
+				<option value="">{personRecordOnly ? 'Choose a person' : 'Everyone in this home'}</option>
 				{#each app.currentPeople as person (person.id)}<option value={person.id}
 						>{person.name}</option
 					>{/each}
@@ -225,7 +246,12 @@
 				</p>{/if}
 			<button
 				class="btn"
-				disabled={busy || !canConnect || !app.homeId || !!app.pending || app.checkingSync}
+				disabled={busy ||
+					!canConnect ||
+					!app.homeId ||
+					!!app.pending ||
+					app.checkingSync ||
+					(personRecordOnly && !clientId)}
 				>{busy ? 'Preparing report…' : 'Download care report'}</button
 			>
 		</form>

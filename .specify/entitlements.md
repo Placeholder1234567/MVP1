@@ -483,6 +483,7 @@ Every tRPC procedure is mapped to a feature flag and minimum role. Procedures ma
 | `report` | `generate` | `reports` or `reports_basic` | supervisor | Generate report. Starter agencies (via `reports_basic`) are restricted to `type: 'timesheets'` and `type: 'coverage'` only; the procedure rejects other types with `FORBIDDEN`. Professional+ agencies (via `reports`) can generate all types. Professional: Care Records reports only (notes, incidents, MAR, goals, attendance). Complete: all report types including intake and audit. |
 | `report` | `status` | `reports` or `reports_basic` | supervisor | Report generation status |
 | `report` | `download` | `reports` or `reports_basic` | supervisor | Download report |
+| `report` | `exportPersonRecord` | none (every plan) | admin | One person's record for a right-of-access request. Never gated: an agency can't be locked out of records it holds (research/product-2026-10.md §E). |
 
 ### Audit Log (Complete Only)
 

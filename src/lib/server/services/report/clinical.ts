@@ -57,13 +57,27 @@ const CONTENT_TYPES = {
 	pdf: 'application/pdf'
 } as const;
 /** Validates the live role, features, period and RLS-scoped home/person without exporting. */
+/**
+ * A person's own record for a right-of-access request (HIPAA 45 CFR 164.524;
+ * research/product-2026-10.md §E): one person, admins only, on every plan, so
+ * an agency that changed plans is never locked out of records it holds.
+ */
+export const PersonRecordExport = ClinicalExport.extend({ clientId: z.uuid() });
+
 export async function clinicalAccess(
 	tx: Tx,
 	user: CurrentUser,
-	input: z.input<typeof ClinicalExport>
+	input: z.input<typeof ClinicalExport>,
+	options: { rightOfAccess?: boolean } = {}
 ) {
 	const p = ClinicalExport.parse(input);
-	if (
+	if (options.rightOfAccess) {
+		if (user.role !== 'admin' || !p.clientId)
+			throw new ServiceError(
+				'FORBIDDEN',
+				'A person’s full record is for admins, one person at a time'
+			);
+	} else if (
 		user.role === 'caregiver' ||
 		!user.features.includes('reports') ||
 		!user.features.includes(REQUIRED_FEATURE[p.type]) ||
@@ -92,9 +106,16 @@ export async function exportClinical(
 	user: CurrentUser,
 	input: z.input<typeof ClinicalExport>,
 	request: RequestInfo,
-	options: { background?: boolean; onClients?: (ids: string[]) => void } = {}
+	options: {
+		background?: boolean;
+		onClients?: (ids: string[]) => void;
+		/** PersonRecordExport: no plan check (clinicalAccess) */
+		rightOfAccess?: boolean;
+	} = {}
 ) {
-	const { p, period } = await clinicalAccess(tx, user, input);
+	const { p, period } = await clinicalAccess(tx, user, input, {
+		rightOfAccess: options.rightOfAccess
+	});
 	const rowLimit = options.background ? (p.format === 'pdf' ? 2000 : 10000) : 1000;
 	const historyLimit = options.background ? 50000 : 5000;
 	const rows = await clinicalRows(tx, user.agencyId, {
@@ -186,7 +207,8 @@ export async function exportClinical(
 			fromDay: p.fromDay,
 			toDay: p.toDay,
 			approvedOnly: p.approvedOnly,
-			clientIds: [...new Set(rows.map((r) => String(r.clientId)))]
+			clientIds: [...new Set(rows.map((r) => String(r.clientId)))],
+			...(options.rightOfAccess ? { rightOfAccess: true } : {})
 		})
 	);
 	return {
