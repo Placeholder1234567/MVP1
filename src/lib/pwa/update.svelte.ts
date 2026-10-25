@@ -25,10 +25,12 @@ export function watchForUpdate(): () => void {
 		};
 	// When the new version takes over (Refresh in any tab, after every tab
 	// said it had nothing unsaved), this tab reloads onto it. The first
-	// install also fires this, with no earlier version to leave.
-	const hadController = !!navigator.serviceWorker.controller;
+	// install also fires this, with no earlier version to leave; after it,
+	// the tab has a version, so a later switch reloads too.
+	let hadController = !!navigator.serviceWorker.controller;
 	const switched = () => {
 		if (hadController) location.reload();
+		hadController = true;
 	};
 	navigator.serviceWorker.addEventListener('controllerchange', switched);
 	const waiting = (reg: ServiceWorkerRegistration) => {
