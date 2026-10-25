@@ -1632,9 +1632,9 @@ The `lemon(size)` SVG function will accept an optional expression parameter:
 
 ### 6.5 Progressive Disclosure
 
-> **Note:** The phased feature reveals below are target behavior for the SvelteKit rebuild, not implemented in the MVP. The MVP code makes voice/AI always available from the start. All phases should be labeled as rebuild targets during implementation planning.
+> **Decided (owner, 2026-10-25): voice and Lomi are available from day one, as in the MVP and the original plan.** Caregivers adopt the tool by using it from the first shift, so nothing below is gated by usage counts. The table is kept as the rejected proposal, for history; build none of its reveals. Learning help comes from the getting-started card, Lomi's warm empty states and one-time tips, which never hide a tool.
 
-**Feature visibility gated by usage thresholds (Rebuild target -- not in MVP):**
+**Rejected proposal: feature visibility gated by usage thresholds (do not build):**
 
 | Phase | Threshold | What changes |
 |-------|-----------|-------------|
@@ -1669,7 +1669,7 @@ Each feature's visibility is gated by a threshold check. No server-side feature 
 
 Total time: 3 minutes. Lomi appears as a 40px lemon in the corner of each step with a one-sentence instruction. After completing, DSP has clocked in, written one note, and signed it.
 
-**As built:** a "Getting started" card on Today for caregivers (`GettingStarted.svelte`, rules in `src/lib/domain/onboarding.ts`) lists the four steps with the next one highlighted. Each step ticks itself off from the synced records (a clock record, a note by them, a signed note), so nothing has to be clicked through. The card goes once all are done, or when "Hide these tips" saves `onboardingDone` in `user_settings.disclosure` (`auth.setDisclosure`), which follows the person to other devices. Me has a Help section with short answers and the Guad/Therap terms side by side, and "Show getting-started tips again". The usage-threshold reveals in the table above are not built; voice and Lomi stay available from the start, as in the MVP.
+**As built:** a "Getting started" card on Today for caregivers (`GettingStarted.svelte`, rules in `src/lib/domain/onboarding.ts`) lists the four steps with the next one highlighted. Each step ticks itself off from the synced records (a clock record, a note by them, a signed note), so nothing has to be clicked through. The card goes once all are done, or when "Hide these tips" saves `onboardingDone` in `user_settings.disclosure` (`auth.setDisclosure`), which follows the person to other devices. Me has a Help section with short answers and the Guad/Therap terms side by side, and "Show getting-started tips again". Voice and Lomi are available from the first session (decided above); the usage-threshold table is a rejected proposal, not missing work.
 
 ---
 
