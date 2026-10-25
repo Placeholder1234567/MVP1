@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { trpc } from '#lib/trpc.ts';
 	import { useSession } from './session.svelte';
 	import { readPushRegistration } from '#lib/pwa/push-storage.ts';
@@ -11,20 +12,76 @@
 	let busy = $state(false);
 	let loaded = $state(false);
 	let message = $state('');
+	let listRequest: AbortController | undefined;
+	let listGeneration = 0;
+	let online = $state(false);
+	let visible = $state(false);
+	const identity = () =>
+		JSON.stringify([app.user.agencyId, app.user.profileId, app.user.role, app.user.features]);
+	let previousIdentity = '';
+	function interruptList(clear = false) {
+		listGeneration++;
+		listRequest?.abort();
+		if (clear) {
+			devices = [];
+			loaded = false;
+		}
+	}
+	$effect(() => {
+		const next = identity();
+		if (next !== previousIdentity) {
+			previousIdentity = next;
+			interruptList(true);
+		}
+		if (app.privacyLocked) interruptList(true);
+	});
+	beforeNavigate(() => interruptList(true));
+	onDestroy(() => interruptList(true));
+	let loadingList = $state(false);
 	async function load() {
-		busy = true;
-		message = '';
+		if (!online || !visible || app.privacyLocked || busy) return;
+		interruptList();
+		const request = new AbortController();
+		listRequest = request;
+		const generation = listGeneration,
+			account = identity();
+		const valid = () =>
+			generation === listGeneration &&
+			account === identity() &&
+			!request.signal.aborted &&
+			!app.privacyLocked &&
+			online &&
+			visible;
+		loadingList = true;
 		try {
-			devices = await trpc.notification.pushDevices.query();
-			loaded = true;
-		} catch {
-			message = 'Connect to load your push devices.';
+			const rows = await trpc.notification.pushDevices.query(undefined, { signal: request.signal });
+			if (valid()) {
+				devices = rows;
+				loaded = true;
+			}
 		} finally {
-			busy = false;
+			if (listRequest === request) loadingList = false;
 		}
 	}
 	onMount(() => {
-		void load();
+		const update = () => {
+			online = navigator.onLine;
+			visible = document.visibilityState === 'visible';
+			if (!online || !visible) {
+				interruptList();
+				loadingList = false;
+			}
+		};
+		update();
+		void load().catch(() => {});
+		window.addEventListener('online', update);
+		window.addEventListener('offline', update);
+		document.addEventListener('visibilitychange', update);
+		return () => {
+			window.removeEventListener('online', update);
+			window.removeEventListener('offline', update);
+			document.removeEventListener('visibilitychange', update);
+		};
 	});
 	async function remove(id: string) {
 		if (
@@ -60,31 +117,38 @@
 		Use the browser push setup above to register this browser when your agency has configured it.
 		Enabling a delivery preference alone does not register a device or grant browser permission.
 	</p>
-	{#each devices as device, index (device.id)}<div class="spread">
-			<div>
-				<b
-					>{device.platform === 'web'
-						? 'Browser'
-						: device.platform === 'ios'
-							? 'iPhone or iPad'
-							: device.platform === 'android'
-								? 'Android'
-								: 'Push device'}
-					{index + 1}</b
+	{#if !app.privacyLocked}
+		{#each devices as device, index (device.id)}<div class="spread">
+				<div>
+					<b
+						>{device.platform === 'web'
+							? 'Browser'
+							: device.platform === 'ios'
+								? 'iPhone or iPad'
+								: device.platform === 'android'
+									? 'Android'
+									: 'Push device'}
+						{index + 1}</b
+					>
+					<p class="muted">
+						Last registered: {device.lastSeenAt
+							? new Date(device.lastSeenAt).toLocaleDateString()
+							: new Date(device.createdAt).toLocaleDateString()}
+					</p>
+				</div>
+				<button class="btn sec" disabled={busy} onclick={() => remove(device.id)}
+					>Remove device {index + 1}</button
 				>
-				<p class="muted">
-					Last registered: {device.lastSeenAt
-						? new Date(device.lastSeenAt).toLocaleDateString()
-						: new Date(device.createdAt).toLocaleDateString()}
-				</p>
-			</div>
-			<button class="btn sec" disabled={busy} onclick={() => remove(device.id)}
-				>Remove device {index + 1}</button
-			>
-		</div>{/each}
-	{#if loaded && !devices.length}<p>No push devices are registered for your account.</p>{/if}
-	<button class="textbtn" disabled={busy} onclick={load}
-		>{busy ? 'Loading…' : 'Refresh push devices'}</button
+			</div>{/each}
+	{/if}
+	{#if !app.privacyLocked && loaded && !devices.length}<p>
+			No push devices are registered for your account.
+		</p>{/if}
+	<button
+		class="textbtn"
+		disabled={busy || loadingList || !online || !visible || app.privacyLocked}
+		onclick={() => load().catch(() => {})}
+		>{loadingList ? 'Loading…' : 'Refresh push devices'}</button
 	>
 	{#if message}<p role="status">{message}</p>{/if}
 </section>
