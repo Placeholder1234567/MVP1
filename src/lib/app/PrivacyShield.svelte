@@ -2,7 +2,12 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { privacyLockDue } from '#lib/domain/privacy.ts';
-	import { unwrapKey, unwrapOfflineKey, WrongPinError } from '#lib/sync/device-key.ts';
+	import {
+		PasskeyError,
+		unwrapKey,
+		unwrapOfflineKey,
+		WrongPinError
+	} from '#lib/sync/device-key.ts';
 	let {
 		profileId,
 		offline = false,
@@ -120,7 +125,7 @@
 			locked = false;
 		} catch (e) {
 			error =
-				e instanceof WrongPinError
+				e instanceof WrongPinError || e instanceof PasskeyError
 					? e.message
 					: 'Could not unlock. Reconnect or return to sign-in.';
 			if (e instanceof WrongPinError && e.attemptsLeft === 0) await onLockedOut?.();

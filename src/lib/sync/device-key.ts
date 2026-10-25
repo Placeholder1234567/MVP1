@@ -3,6 +3,13 @@
 // in OPFS holding the device ID and the key wrapped with a PIN-derived key
 // (PBKDF2-SHA256, 600k iterations, AES-256-GCM). No PHI, and nothing in
 // localStorage or IndexedDB.
+//
+// Where the device supports it, the wrapping key also needs a secret held by a
+// platform passkey (WebAuthn PRF), so a copy of this storage cannot be opened
+// by guessing PINs offline: every guess needs the device's own authenticator
+// (research/decisions-2026-10.md §3). The PIN still matters on a shared
+// tablet, whose screen lock any coworker may know. Nothing about the passkey
+// goes to the server; it protects the key on this device, it is not sign-in.
 
 import { offlineAccessValid, OFFLINE_ACCESS_MS } from '../domain/pwa';
 
@@ -18,6 +25,17 @@ interface DeviceRecord {
 	failedAttempts: number;
 	/** Non-PHI freshness marker; offline access never renews it. */
 	verifiedAt?: number;
+	/** The passkey whose PRF secret is mixed into the wrapping key, if any. */
+	passkey?: { credentialId: string; salt: string };
+}
+
+/** The passkey was cancelled, removed, or is not on this device. Not a wrong PIN. */
+export class PasskeyError extends Error {
+	constructor() {
+		super(
+			"Confirm with this device's screen lock to unlock. If that keeps failing, sign in again with your password."
+		);
+	}
 }
 
 const b64 = (bytes: ArrayBuffer | Uint8Array) =>
@@ -43,21 +61,126 @@ async function writeRecord(record: DeviceRecord, profileId?: string): Promise<vo
 	await writable.close();
 }
 
-async function pinKey(pin: string, salt: Uint8Array): Promise<CryptoKey> {
+async function pinKey(pin: string, salt: Uint8Array, secret?: Uint8Array): Promise<CryptoKey> {
 	const base = await crypto.subtle.importKey(
 		'raw',
 		new TextEncoder().encode(pin),
 		'PBKDF2',
 		false,
-		['deriveKey']
+		['deriveKey', 'deriveBits']
 	);
+	const pbkdf2 = {
+		name: 'PBKDF2',
+		hash: 'SHA-256',
+		salt: salt as BufferSource,
+		iterations: ITERATIONS
+	};
+	const aes = { name: 'AES-GCM', length: 256 };
+	if (!secret) return crypto.subtle.deriveKey(pbkdf2, base, aes, false, ['encrypt', 'decrypt']);
+	// PIN and passkey secret together: HKDF over both, so neither alone is enough.
+	const ikm = new Uint8Array([
+		...new Uint8Array(await crypto.subtle.deriveBits(pbkdf2, base, 256)),
+		...secret
+	]);
+	const both = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveKey']);
+	ikm.fill(0);
 	return crypto.subtle.deriveKey(
-		{ name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations: ITERATIONS },
-		base,
-		{ name: 'AES-GCM', length: 256 },
+		{
+			name: 'HKDF',
+			hash: 'SHA-256',
+			salt: salt as BufferSource,
+			info: new TextEncoder().encode('guad-device-key:pin+passkey')
+		},
+		both,
+		aes,
 		false,
 		['encrypt', 'decrypt']
 	);
+}
+
+/** Whether this device can hold the unlock secret in a platform passkey (WebAuthn PRF). */
+export async function passkeyUnlockAvailable(): Promise<boolean> {
+	try {
+		const PKC = globalThis.PublicKeyCredential;
+		if (!PKC?.getClientCapabilities) return false;
+		const [platform, capabilities] = await Promise.all([
+			PKC.isUserVerifyingPlatformAuthenticatorAvailable(),
+			PKC.getClientCapabilities()
+		]);
+		return platform && capabilities['extension:prf'] === true;
+	} catch {
+		return false;
+	}
+}
+
+const PASSKEY_TIMEOUT_MS = 60_000;
+const bytesOf = (v: BufferSource) =>
+	new Uint8Array(
+		ArrayBuffer.isView(v) ? v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) : v
+	);
+
+/** The passkey's PRF secret for this salt, after the device verifies the user. */
+async function passkeySecret(credentialId: Uint8Array, salt: Uint8Array): Promise<Uint8Array> {
+	let credential: Credential | null;
+	try {
+		credential = await navigator.credentials.get({
+			publicKey: {
+				challenge: crypto.getRandomValues(new Uint8Array(32)),
+				allowCredentials: [{ type: 'public-key', id: credentialId as BufferSource }],
+				userVerification: 'required',
+				timeout: PASSKEY_TIMEOUT_MS,
+				extensions: { prf: { eval: { first: salt as BufferSource } } }
+			}
+		});
+	} catch {
+		throw new PasskeyError();
+	}
+	const first = (credential as PublicKeyCredential | null)?.getClientExtensionResults().prf?.results
+		?.first;
+	if (!first) throw new PasskeyError();
+	return bytesOf(first);
+}
+
+/** Creates this profile's unlock passkey on this device; null when the device can't. */
+async function createPasskey(
+	salt: Uint8Array
+): Promise<{ credentialId: Uint8Array; secret: Uint8Array } | null> {
+	if (!(await passkeyUnlockAvailable())) return null;
+	try {
+		const credential = (await navigator.credentials.create({
+			publicKey: {
+				rp: { name: 'Guad' },
+				// Random, not the profile ID: password managers list this, and it is no one's identity.
+				user: {
+					id: crypto.getRandomValues(new Uint8Array(16)),
+					name: 'Guad device unlock',
+					displayName: 'Guad device unlock'
+				},
+				challenge: crypto.getRandomValues(new Uint8Array(32)),
+				pubKeyCredParams: [
+					{ type: 'public-key', alg: -7 },
+					{ type: 'public-key', alg: -257 }
+				],
+				authenticatorSelection: {
+					authenticatorAttachment: 'platform',
+					residentKey: 'discouraged',
+					userVerification: 'required'
+				},
+				timeout: PASSKEY_TIMEOUT_MS,
+				extensions: { prf: { eval: { first: salt as BufferSource } } }
+			}
+		})) as PublicKeyCredential | null;
+		const prf = credential?.getClientExtensionResults().prf;
+		if (!credential || !prf?.enabled) return null;
+		const credentialId = new Uint8Array(credential.rawId);
+		// Some platforms evaluate PRF only on get(), not while creating.
+		const secret = prf.results?.first
+			? bytesOf(prf.results.first)
+			: await passkeySecret(credentialId, salt);
+		return { credentialId, secret };
+	} catch {
+		return null; // cancelled or unsupported: the PIN alone protects the key
+	}
 }
 
 /** This device's stable random ID, created on first use. */
@@ -109,26 +232,59 @@ export async function offlineAccessUntil(profileId: string): Promise<number> {
 export async function forgetPin(profileId: string): Promise<void> {
 	const record = await readRecord(profileId);
 	if (record) await writeRecord({ deviceId: record.deviceId, failedAttempts: 0 }, profileId);
+	if (record?.passkey) forgetPasskey(record.passkey.credentialId);
 }
 
-/** Stores the key wrapped with the PIN. The plain key never touches disk. */
-export async function wrapKey(key: Uint8Array, pin: string, profileId?: string): Promise<void> {
+/** Asks the password manager to drop an unlock passkey nothing can use any more. */
+function forgetPasskey(credentialId: string) {
+	try {
+		void PublicKeyCredential.signalUnknownCredential?.({
+			rpId: location.hostname,
+			credentialId: credentialId.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+		}).catch(() => {});
+	} catch {
+		// Not supported: the passkey stays listed but unlocks nothing.
+	}
+}
+
+/**
+ * Stores the key wrapped with the PIN, and with a new platform passkey's
+ * secret when `passkey` is set and the device supports it. The plain key
+ * never touches disk.
+ */
+export async function wrapKey(
+	key: Uint8Array,
+	pin: string,
+	profileId?: string,
+	options: { passkey?: boolean } = {}
+): Promise<void> {
 	const id = await deviceId(profileId);
 	const salt = crypto.getRandomValues(new Uint8Array(16));
 	const iv = crypto.getRandomValues(new Uint8Array(12));
+	const prfSalt = crypto.getRandomValues(new Uint8Array(32));
+	const passkey = options.passkey ? await createPasskey(prfSalt) : null;
 	const ciphertext = await crypto.subtle.encrypt(
 		{ name: 'AES-GCM', iv },
-		await pinKey(pin, salt),
+		await pinKey(pin, salt, passkey?.secret),
 		key as BufferSource
 	);
+	passkey?.secret.fill(0);
 	await writeRecord(
 		{
 			deviceId: id,
 			wrapped: { salt: b64(salt), iv: b64(iv), ciphertext: b64(ciphertext) },
-			failedAttempts: 0
+			failedAttempts: 0,
+			...(passkey && {
+				passkey: { credentialId: b64(passkey.credentialId), salt: b64(prfSalt) }
+			})
 		},
 		profileId
 	);
+}
+
+/** Whether this profile's key on this device also needs its passkey. */
+export async function usesPasskey(profileId: string): Promise<boolean> {
+	return !!(await readRecord(profileId))?.passkey;
 }
 
 export class WrongPinError extends Error {
@@ -150,11 +306,15 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 	const record = await readRecord(profileId);
 	if (!record?.wrapped) throw new WrongPinError(0);
 	const { salt, iv, ciphertext } = record.wrapped;
+	// The passkey first: cancelling it is not a wrong PIN and costs no attempt.
+	const secret = record.passkey
+		? await passkeySecret(unb64(record.passkey.credentialId), unb64(record.passkey.salt))
+		: undefined;
 	let plain: ArrayBuffer;
 	try {
 		plain = await crypto.subtle.decrypt(
 			{ name: 'AES-GCM', iv: unb64(iv) },
-			await pinKey(pin, unb64(salt)),
+			await pinKey(pin, unb64(salt), secret),
 			unb64(ciphertext)
 		);
 	} catch {
@@ -164,7 +324,10 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 			left > 0 ? { ...record, failedAttempts } : { deviceId: record.deviceId, failedAttempts: 0 }, // wrapped key deleted
 			profileId
 		);
+		if (left <= 0 && record.passkey) forgetPasskey(record.passkey.credentialId);
 		throw new WrongPinError(left);
+	} finally {
+		secret?.fill(0);
 	}
 	// Outside the try: a failed write here (another tab writing the file, a
 	// full disk) must not count a correct PIN as a wrong one.

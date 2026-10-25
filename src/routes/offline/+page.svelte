@@ -5,6 +5,7 @@
 		offlineProfiles,
 		unwrapOfflineKey,
 		offlineAccessUntil,
+		PasskeyError,
 		WrongPinError
 	} from '#lib/sync/device-key.ts';
 	import type { PowerSyncDatabase } from '@powersync/web';
@@ -136,7 +137,7 @@
 			await closeDb();
 			database = undefined;
 			error =
-				e instanceof WrongPinError
+				e instanceof WrongPinError || e instanceof PasskeyError
 					? e.message
 					: 'Saved access is unavailable or expired. Reconnect and sign in to refresh this device.';
 		} finally {
