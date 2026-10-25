@@ -89,6 +89,14 @@ npm run agency:set-plan -- --slug sunrise-care --feature intake --operator you@g
 
 `--feature` (repeatable) replaces the agency's extra features on top of its tier, and `--clear-features` removes them.
 
+To give an agency a full copy of its records (when it leaves, or when it asks), run the export from the same kind of machine. It writes one CSV per table and a `manifest.json` with row counts and SHA-256 checksums into a new folder that only you can read, all from one database snapshot, and records the export and who ran it in the agency's audit log:
+
+```bash
+npm run agency:export -- --slug sunrise-care --operator you@guad.example --out ./sunrise-care-export
+```
+
+The folder holds PHI. Send it only over the channel agreed with the agency, and delete your copy once it's delivered. Board photo files aren't included (`message_photos.csv` lists them); copy them from `MEDIA_BUCKET` separately if the agency wants them. Sign-in IDs, key hashes, sealed secrets and device keys are left out, as are integration and delivery bookkeeping tables (the list and reasons are in `services/agency/export.queries.ts`).
+
 ## Platform maintenance
 
 Before maintenance that affects every agency (a database upgrade, say), announce it from the same kind of machine. Everyone active in each agency gets a push, an email and an in-app notice with the window in their agency's time zone and a fixed impact line (no typed text, so nothing sensitive):
