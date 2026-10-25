@@ -235,13 +235,13 @@ Update `notifications.sent_at`
 | **Template (SMS)** | `"Guad: New incident reported at {homeName}. Please review in the app."` (used only for push-denied fallback; incident type is omitted from SMS for PHI safety in small homes) |
 | **PHI Safety** | No incident type, client name or details in push or SMS. In a small home, "Seizure at Oak House" can identify the person. Details are shown only in the app. |
 | **Deep Link** | `/incidents/{incidentId}` |
-| **Escalation** | Severity-based. Low/medium: push only, no escalation. High: triggers `incident_high_severity` flow. |
+| **Escalation** | Severity-based. Low/medium: push only, no escalation, except critical types (abuse, neglect, exploitation, death), which always use `incident_high_severity`. High: triggers `incident_high_severity` flow. |
 
 ### 2.11 incident_high_severity
 
 | Field | Value |
 |-------|-------|
-| **Trigger** | `createIncident()` called with `severity = 'high'` |
+| **Trigger** | `createIncident()` called with `severity = 'high'`, or with a critical incident type whatever the severity: suspected abuse or neglect, suspected exploitation, death (`CRITICAL_INCIDENT_TYPES`, 42 CFR 441.302(a)(6)). Title "High-severity incident reported", or "Urgent incident reported" for a critical type at lower severity; the type itself is never in the title. |
 | **Recipients** | All supervisors for the home + agency admin |
 | **Channels** | Push + SMS (both immediate) |
 | **Priority** | Urgent |

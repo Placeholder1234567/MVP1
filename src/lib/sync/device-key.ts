@@ -17,6 +17,14 @@ const deviceFile = (profileId?: string) =>
 	profileId ? 'guad-device-' + profileId + '.json' : 'guad-device.json';
 const ITERATIONS = 600_000;
 export const MAX_PIN_ATTEMPTS = 5;
+/**
+ * How long a privacy-lock unlock needs only the PIN (NIST SP 800-63B-4
+ * "partial reauthentication": after an inactivity lock, a single factor plus
+ * the live session; research/decisions-2026-10.md §4). Capped at the longest
+ * sign-in (12 hours); a reload, a closed app or sign-out starts over with the
+ * full check, passkey included.
+ */
+export const SESSION_UNLOCK_MS = 12 * 60 * 60 * 1000;
 
 interface DeviceRecord {
 	deviceId: string;
@@ -233,6 +241,7 @@ export async function forgetPin(profileId: string): Promise<void> {
 	const record = await readRecord(profileId);
 	if (record) await writeRecord({ deviceId: record.deviceId, failedAttempts: 0 }, profileId);
 	if (record?.passkey) forgetPasskey(record.passkey.credentialId);
+	forgetSessionUnlock();
 }
 
 /** Asks the password manager to drop an unlock passkey nothing can use any more. */
@@ -269,6 +278,7 @@ export async function wrapKey(
 		key as BufferSource
 	);
 	passkey?.secret.fill(0);
+	if (profileId) remember(key, pin, profileId);
 	await writeRecord(
 		{
 			deviceId: id,
@@ -280,6 +290,48 @@ export async function wrapKey(
 		},
 		profileId
 	);
+}
+
+/**
+ * The key wrapped with the PIN in this page's memory only, after a full unlock.
+ * Never written anywhere, so a copy of the device's storage doesn't include it.
+ */
+let session: {
+	profileId: string;
+	salt: Uint8Array;
+	iv: Uint8Array;
+	ciphertext: ArrayBuffer;
+	until: number;
+} | null = null;
+
+let remembering: Promise<void> = Promise.resolve();
+
+function remember(key: Uint8Array, pin: string, profileId: string) {
+	const copy = key.slice(); // callers zero theirs once the database is open
+	remembering = (async () => {
+		try {
+			const salt = crypto.getRandomValues(new Uint8Array(16));
+			const iv = crypto.getRandomValues(new Uint8Array(12));
+			const ciphertext = await crypto.subtle.encrypt(
+				{ name: 'AES-GCM', iv },
+				await pinKey(pin, salt),
+				copy as BufferSource
+			);
+			session = { profileId, salt, iv, ciphertext, until: Date.now() + SESSION_UNLOCK_MS };
+		} catch {
+			// Not remembered: the next unlock is the full one.
+		} finally {
+			copy.fill(0);
+		}
+	})();
+}
+
+/** Drops the in-memory unlock, so the next unlock is the full one. */
+export function forgetSessionUnlock(): void {
+	session = null;
+	remembering = remembering.then(() => {
+		session = null;
+	});
 }
 
 /** Whether this profile's key on this device also needs its passkey. */
@@ -306,6 +358,25 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 	const record = await readRecord(profileId);
 	if (!record?.wrapped) throw new WrongPinError(0);
 	const { salt, iv, ciphertext } = record.wrapped;
+	// Within a live session (a privacy lock, not a cold start), the PIN alone.
+	await remembering;
+	const held =
+		session && session.profileId === profileId && session.until > Date.now() ? session : null;
+	if (held) {
+		let plain: ArrayBuffer;
+		try {
+			plain = await crypto.subtle.decrypt(
+				{ name: 'AES-GCM', iv: held.iv as BufferSource },
+				await pinKey(pin, held.salt),
+				held.ciphertext
+			);
+		} catch {
+			throw await wrongPin(record, profileId);
+		}
+		if (record.failedAttempts)
+			await writeRecord({ ...record, failedAttempts: 0 }, profileId).catch(() => {});
+		return new Uint8Array(plain);
+	}
 	// The passkey first: cancelling it is not a wrong PIN and costs no attempt.
 	const secret = record.passkey
 		? await passkeySecret(unb64(record.passkey.credentialId), unb64(record.passkey.salt))
@@ -318,14 +389,7 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 			unb64(ciphertext)
 		);
 	} catch {
-		const failedAttempts = record.failedAttempts + 1;
-		const left = MAX_PIN_ATTEMPTS - failedAttempts;
-		await writeRecord(
-			left > 0 ? { ...record, failedAttempts } : { deviceId: record.deviceId, failedAttempts: 0 }, // wrapped key deleted
-			profileId
-		);
-		if (left <= 0 && record.passkey) forgetPasskey(record.passkey.credentialId);
-		throw new WrongPinError(left);
+		throw await wrongPin(record, profileId);
 	} finally {
 		secret?.fill(0);
 	}
@@ -333,7 +397,24 @@ export async function unwrapKey(pin: string, profileId?: string): Promise<Uint8A
 	// full disk) must not count a correct PIN as a wrong one.
 	if (record.failedAttempts)
 		await writeRecord({ ...record, failedAttempts: 0 }, profileId).catch(() => {});
-	return new Uint8Array(plain);
+	const key = new Uint8Array(plain);
+	if (profileId) remember(key, pin, profileId);
+	return key;
+}
+
+/** Counts a wrong PIN; the last one deletes the wrapped key (and the passkey and in-memory unlock). */
+async function wrongPin(record: DeviceRecord, profileId?: string): Promise<WrongPinError> {
+	const failedAttempts = record.failedAttempts + 1;
+	const left = MAX_PIN_ATTEMPTS - failedAttempts;
+	await writeRecord(
+		left > 0 ? { ...record, failedAttempts } : { deviceId: record.deviceId, failedAttempts: 0 }, // wrapped key deleted
+		profileId
+	);
+	if (left <= 0) {
+		if (record.passkey) forgetPasskey(record.passkey.credentialId);
+		forgetSessionUnlock();
+	}
+	return new WrongPinError(left);
 }
 
 /** Key bytes as the hex string SQLite3MultipleCiphers takes as its key. */

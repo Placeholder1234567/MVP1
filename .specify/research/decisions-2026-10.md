@@ -158,6 +158,42 @@ Researched 2026-10-25 for three open questions. **Product research, not legal ad
 
 ---
 
+## 4. How often should unlocking ask for the device's screen lock as well as the PIN?
+
+**Decision:**
+- **Opening the app needs the full check:** a cold start, a reload, or after sign-in or lockout means the passkey (device screen lock) and the PIN, as in §3.
+- **A privacy lock within a live session needs only the PIN:** this covers an idle timeout, a hidden tab or the Lock button, for up to 12 hours after that full unlock.
+
+### Standards and practice
+
+- **NIST SP 800-63B-4, "partial reauthentication":**
+  - After the inactivity timeout but before the overall timeout, the verifier "MAY allow the subscriber to reauthenticate using only a successful password or biometric comparison in conjunction with the session secret."
+  - At AAL2 the overall timeout SHOULD be no more than 24 hours and the inactivity timeout no more than 1 hour **[verify against the final text]**.
+  - Source: https://pages.nist.gov/800-63-4/sp800-63b.html
+- **HIPAA automatic logoff** (45 CFR 164.312(a)(2)(iii)):
+  - Addressable and risk-based.
+  - Guidance favours an application lock that requires credentials again, with short idle limits on shared and mobile devices.
+  - Guidance warns that abrupt lockouts can get in the way of care.
+  - Sources: https://www.accountablehq.com/post/hipaa-automatic-logoff-requirements-explained-45-cfr-164-312-a-2-iii, https://censinet.com/perspectives/hipaa-technical-safeguards-automatic-logoff-explained
+- **Mobile key practice (Android Keystore, OWASP MASTG):**
+  - Use a fresh hardware check on cold start.
+  - Run a separate app-lock timer on resume.
+  - Avoid long validity windows for the hardware-held key itself.
+  - Sources: https://mas.owasp.org/MASTG/best-practices/MASTG-BEST-0036/, https://mas.owasp.org/MASTG/knowledge/android/MASVS-AUTH/MASTG-KNOW-0001/
+
+### What this means for Guad
+
+- **The privacy lock stays short and is unchanged:** `domain/privacy.ts` decides when it locks.
+- **The "session secret" is held in memory only.** After a full unlock, the database key is wrapped with the PIN and kept only in that page's memory, never on disk. So:
+  - a copy of the device's storage still needs the passkey;
+  - the PIN alone opens it only in the same running app, for at most 12 hours.
+- **Wrong PINs:** they count toward the same 5-try limit. The fifth wipes the wrapped key and drops the in-memory copy.
+- **Back to the full check:** a reload, a closed app, sign-out, or 12 hours after the full unlock. 12 hours is the longest sign-in, inside NIST's 24-hour AAL2 ceiling.
+- **Why not the full check every time:**
+  - A caregiver may unlock dozens of times a shift.
+  - On a shared tablet, the device screen lock adds little that the per-caregiver PIN doesn't already give.
+  - NIST explicitly allows one factor plus the session here.
+
 ## 5. Alert limits for breathing rate and SpO2
 
 **Decision:**
