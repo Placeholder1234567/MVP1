@@ -832,6 +832,32 @@ describe('health.*', () => {
 });
 
 describe('incident.*', () => {
+	it('sends the urgent alert for a critical incident even at low severity, and keeps it off the board', async () => {
+		const r = await (
+			await as(CARA)
+		).incident.create({
+			clientId: PERSON,
+			type: 'Suspected abuse or neglect',
+			severity: 'Low',
+			occurredAt: new Date(Date.now() - 60_000),
+			description: 'Synthetic concern reported by a visitor'
+		});
+		const [alert] = await withService((t) =>
+			t
+				.select()
+				.from(s.notifications)
+				.where(and(eq(s.notifications.reference_id, r.id), eq(s.notifications.channel, 'in_app')))
+		);
+		expect(alert).toMatchObject({
+			type: 'incident_high_severity',
+			priority: 1,
+			title: 'Urgent incident reported'
+		});
+		const board = await withService((t) =>
+			t.select().from(s.messages).where(eq(s.messages.incident_id, r.id))
+		);
+		expect(board).toEqual([]);
+	});
 	it('files a report, notifies supervisors (urgent if high), and returns who must be told', async () => {
 		const r = await (
 			await as(CARA)

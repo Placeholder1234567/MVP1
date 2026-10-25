@@ -8,7 +8,8 @@ import {
 	parseReportDetails,
 	parseWitnessList,
 	witnessText,
-	reportDetailsError
+	reportDetailsError,
+	urgentIncident
 } from '../../../domain/index.ts';
 import type { Tx } from '../../db';
 import { ServiceError } from '../../errors';
@@ -91,12 +92,17 @@ export async function createIncident(
 		report_details: i.reportDetails
 	});
 	if (row) {
-		const high = i.severity === 'High';
+		const urgent = urgentIncident(i.severity, i.type);
 		await notifyHomeSupervisors(tx, agencyId, client.homeId, {
-			type: high ? 'incident_high_severity' : 'incident_reported',
-			priority: high ? 1 : 2,
+			type: urgent ? 'incident_high_severity' : 'incident_reported',
+			priority: urgent ? 1 : 2,
 			// PHI-free: no incident type, it can identify the person in a small home.
-			title: high ? 'High-severity incident reported' : 'New incident reported',
+			title:
+				i.severity === 'High'
+					? 'High-severity incident reported'
+					: urgent
+						? 'Urgent incident reported'
+						: 'New incident reported',
 			referenceId: i.id,
 			referenceType: 'incidents'
 		});
