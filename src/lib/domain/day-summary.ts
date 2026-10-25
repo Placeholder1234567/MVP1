@@ -125,3 +125,16 @@ export function plainBriefing(text: string): string {
 		.replace(/\s{2,}/g, ' ')
 		.trim();
 }
+
+// Wording that turns a briefing into clinical advice (research/product-2026-10.md
+// §D "Forbidden content"): a suggestion verb near a clinical action, or a
+// diagnosis. Facts such as "2 doses were refused" don't match.
+const ADVICE =
+	/\b(should|must|recommend(?:s|ed)?|consider(?:ing)?|suggest(?:s|ed)?|advise[sd]?|try|please)\b[^.!?]{0,80}\b(give|giving|administer(?:ing)?|dos(?:e|es|age|ing)|medicat(?:e|ion|ions)|mg|prn|increase|decrease|reduce|double|start(?:ing)?|stop(?:ping)?|withhold|treat(?:ing|ment)?|therapy|antibiotics?|ibuprofen|acetaminophen|tylenol|insulin|fluids?|diet)\b/i;
+const DIAGNOSIS =
+	/\b(diagnos(?:is|e|ed|ing)|(?:likely|probably|possibly|may|might|could) (?:have|has|(?:be )?having) (?:a |an )?(?:infection|uti|pneumonia|sepsis|stroke|dehydration|seizure disorder|flu|covid)|(?:is|are) (?:septic|dehydrated|having a stroke))\b/i;
+
+/** Whether model text gives clinical advice or a diagnosis rather than stating facts. */
+export function isClinicalAdvice(text: string): boolean {
+	return ADVICE.test(text) || DIAGNOSIS.test(text);
+}
