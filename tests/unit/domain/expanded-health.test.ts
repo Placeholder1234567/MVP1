@@ -8,7 +8,7 @@ import {
 	vitalFieldWarning
 } from '../../../src/lib/domain/clinical';
 import { parseHealthData, NewHealthEntry } from '../../../src/lib/server/services/health';
-import { VITAL_LIMITS } from '../../../src/lib/domain/vitals';
+import { parseVitalLimits, VITAL_LIMITS } from '../../../src/lib/domain/vitals';
 
 describe('entered expanded health readings', () => {
 	it('preserves explicit finite decimal readings and identifies their units', () => {
@@ -24,7 +24,7 @@ describe('entered expanded health readings', () => {
 		expect(healthSummary('vitals', fields)).toContain('SpO2 97.2%');
 		expect(healthSummary('vitals', fields)).toContain('Blood glucose 104 mg/dL');
 	});
-	it('bounds input without inventing clinical limits or converting blanks/booleans into readings', () => {
+	it('bounds input and never converts blanks or booleans into readings', () => {
 		for (const [key, max] of [
 			['respiration', 1000],
 			['oxygen', 100]
@@ -32,8 +32,6 @@ describe('entered expanded health readings', () => {
 			for (const value of [0, max]) {
 				expect(healthReading(key, value)).toEqual({ ok: true, value });
 				expect(parseHealthData('vitals', { [key]: value })).toEqual({ [key]: value });
-				expect(healthFlags('vitals', { [key]: value })).toEqual([]);
-				expect(vitalFieldWarning(key, value)).toBeNull();
 			}
 			for (const value of [-1, max + 0.1, Infinity, NaN, true, false, [], [1], {}, '0x10', '1e2']) {
 				expect(healthReading(key, value).ok).toBe(false);
@@ -48,11 +46,20 @@ describe('entered expanded health readings', () => {
 		expect(healthSummary('vitals', { respiration: 0, oxygen: 0, glucose: 0 })).toBe(
 			'Respiratory rate 0 breaths/min · SpO2 0% · Blood glucose 0 mg/dL'
 		);
-		expect(
-			HEALTH_FIELDS.vitals
-				.filter((field) => field.alertConfigured === false)
-				.map((field) => field.key)
-		).toEqual(['respiration', 'oxygen']);
+		expect(HEALTH_FIELDS.vitals.filter((field) => field.alertConfigured === false)).toEqual([]);
+	});
+	it('flags breathing rate and SpO2 at the NEWS2 urgent bands, or a person’s own limits', () => {
+		expect(healthFlags('vitals', { respiration: 16, oxygen: 97 })).toEqual([]);
+		expect(healthFlags('vitals', { respiration: 9, oxygen: 92 })).toEqual([]);
+		expect(healthFlags('vitals', { respiration: 8 })).toEqual(['respiration']);
+		expect(healthFlags('vitals', { respiration: 25 })).toEqual(['respiration']);
+		expect(healthFlags('vitals', { oxygen: 91 })).toEqual(['oxygen']);
+		expect(healthFlags('vitals', { oxygen: 100 })).toEqual([]);
+		expect(vitalFieldWarning('oxygen', 88)).toBe('SpO2 is outside the normal range.');
+		// Someone with COPD whose nurse set an 88% target.
+		const copd = parseVitalLimits({ oxygenLo: 88 });
+		expect(healthFlags('vitals', { oxygen: 89 }, copd)).toEqual([]);
+		expect(healthFlags('vitals', { oxygen: 87 }, copd)).toEqual(['oxygen']);
 	});
 	it('flags blood glucose at 250 or above or below 70, and a 5 lb weight change', () => {
 		expect(healthFlags('vitals', { glucose: 249 })).toEqual([]);

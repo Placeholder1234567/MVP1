@@ -155,3 +155,33 @@ Researched 2026-10-25 for three open questions. **Product research, not legal ad
 - **Fallback:** devices without PRF keep the current scheme. `security.md` records the residual risk:
   - offline guessing of a 6-digit PIN is feasible against copied storage;
   - mitigations are the 12-hour offline window, keys revoked server-side when a device is reported lost, and wiping on sign-out.
+
+---
+
+## 5. Alert limits for breathing rate and SpO2
+
+**Decision:**
+- Flag breathing at **8 or fewer, or 25 or more, breaths a minute**.
+- Flag SpO2 **below 92%**.
+- A nurse or supervisor can set a person's own limits.
+
+Before this, both readings were recorded with no alert at all ("none are specified").
+
+### Standards
+
+- **NEWS2 (Royal College of Physicians), the standard UK early-warning score:**
+  - A single parameter scoring 3 calls for urgent clinical review.
+  - Respiration ≤ 8 or ≥ 25 scores 3.
+  - SpO2 scale 1 scores 3 at ≤ 91% (2 at 92–93, 1 at 94–95).
+  - Sources: https://gloshospitals.nhs.uk/media/documents/NEWS_2_CHART.pdf, https://www.iatrox.com/blog/news2-scoring-escalation-guide
+- **Scale 2 is for confirmed hypercapnic respiratory failure.**
+  - The target is 88–92% and must be a clinician's recorded decision.
+  - That is why the SpO2 limit is per person, not changed for everyone with COPD.
+  - Sources: https://thorax.bmj.com/content/74/10/941, https://pmc.ncbi.nlm.nih.gov/articles/PMC6817986
+- **Consumer and caregiver guidance:** treats SpO2 below 90% as needing medical attention, and notes that targets shift with lung disease. Source: https://ubiehealth.com/doctors-note/normal-blood-oxygen-level-toolow-call-emergency-34101q7
+
+### Why the urgent bands
+
+- Guad's alerts go to supervisors in real time, so a limit should mean "act now".
+- NEWS2's score-3 bands are the most widely used single-reading triggers.
+- The 1- and 2-point bands are left to the person's care plan and the trend chart.
