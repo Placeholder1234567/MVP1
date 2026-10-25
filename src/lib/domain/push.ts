@@ -17,16 +17,5 @@ export const PUSH_NOTICE = {
 };
 export function pushNotice(value: unknown) {
 	const id = pushNotificationId(value);
-	return id
-		? {
-				id,
-				title: PUSH_NOTICE.title,
-				options: {
-					body: PUSH_NOTICE.body,
-					icon: PUSH_NOTICE.icon,
-					tag: `guad-${id}`,
-					data: { notificationId: id }
-				}
-			}
-		: null;
+	return id ? { id, title: PUSH_NOTICE.title, options: { body: PUSH_NOTICE.body, icon: PUSH_NOTICE.icon, tag: `guad-${id}`, data: { notificationId: id } } } : null;
 }
