@@ -370,12 +370,11 @@
 			return;
 		if (app.db) {
 			await flushCareDrafts(app.db);
-			const queue = await app.db.getUploadQueueStats();
-			if (queue.count) {
+			const lockUntilSynced = async () => {
 				await lock();
 				message = 'This device is locked. Unlock and let your changes sync before signing out.';
-				return;
-			}
+			};
+			if ((await app.db.getUploadQueueStats()).count) return lockUntilSynced();
 			// Signing out clears the device: changes the server refused (waiting
 			// for Try again) and unfinished drafts go with it.
 			const left = await app.db
@@ -420,6 +419,10 @@
 				)
 			)
 				return;
+			// Again just before clearing: a save (a note's debounced autosave, say)
+			// may have queued while the prompts above were open, and clearing now
+			// would delete it unsent.
+			if ((await app.db.getUploadQueueStats()).count) return lockUntilSynced();
 			await app.db.disconnectAndClear();
 		}
 		// Also from the lock screen (no database open): the saved PIN goes, so
