@@ -8,6 +8,8 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+Quiet-hours responses now use account/context generations and abort controllers. Submitted times are captured before awaiting. Privacy, unavailability, navigation start and disposal invalidate late feedback, while offline choices and cancelled-navigation edits remain in memory. Interrupted server saves may still complete; explicit reload reconciles them. Six desktop/phone real-response cases cover load/save lock and cancelled navigation with offline retention, explicit committed-save recovery and restoration, axe and overflow. No shared privacy/session/device-key or server notification changes. All four final-head gates remain required before merge.
+
 Messaging usage now labels its existing list as saved preferences, explicitly distinguishes carrier consent/delivery, and explains that settings cannot clear carrier STOP. No query, RLS, consent, provider or dispatch change. All four final-head gates remain required.
 
 PR253 merged after all four final-head gates passed: 529 units, 327 integration plus SQL RLS, 199 production and 2 development browser passes, and performance. Setup save-confirmation and disposed-callback fixes passed without weakening assertions.
