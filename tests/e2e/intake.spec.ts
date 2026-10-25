@@ -74,4 +74,17 @@ test('a supervisor adds notes as a referral moves through its stages', async ({ 
 	await expect(items).toHaveCount(2);
 	await expect(items.nth(1)).toContainText('Touring');
 	await expect(items.nth(1)).toContainText('Toured Oak House.');
+
+	// Moving back a stage asks why and keeps the answer as a note at the new stage.
+	await page.getByRole('combobox', { name: /^Stage/ }).selectOption('inquiry');
+	const why = page.getByRole('textbox', { name: 'Why is it moving back?', exact: true });
+	await expect(why).toBeVisible();
+	await why.fill('Family wants to compare another home first.');
+	await page.getByRole('button', { name: 'Save referral', exact: true }).click();
+	await expect(page.getByText('Referral saved.', { exact: true })).toBeVisible();
+	await expect(items).toHaveCount(3);
+	await expect(items.nth(2)).toContainText('Inquiry');
+	await expect(items.nth(2)).toContainText(
+		'Moved from touring: Family wants to compare another home first.'
+	);
 });

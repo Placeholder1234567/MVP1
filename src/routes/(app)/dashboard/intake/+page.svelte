@@ -5,9 +5,13 @@
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { PLACEMENT_GUIDANCE, type PlacementNeeds } from '#lib/domain/placement.ts';
+	import {
+		nextStages,
+		REFERRAL_STAGES as stages,
+		stageMove,
+		type ReferralStage as Stage
+	} from '#lib/domain/referral-stage.ts';
 	const app = useSession();
-	const stages = ['inquiry', 'touring', 'accepted', 'waitlist', 'declined', 'placed'] as const;
-	type Stage = (typeof stages)[number];
 	type Referral = Awaited<ReturnType<typeof trpc.intake.getReferral.query>>;
 	let referrals = $state<Awaited<ReturnType<typeof trpc.intake.listReferrals.query>>>([]);
 	let rooms = $state<Awaited<ReturnType<typeof trpc.intake.listRooms.query>>>([]);
@@ -27,6 +31,10 @@
 	let notes = $state('');
 	let medicationNeed = $state<PlacementNeeds['medicationCertifiedStaff']>('unknown');
 	let stage = $state<Stage>('inquiry');
+	// Moving back a stage or reopening a declined referral needs a reason.
+	let reason = $state('');
+	const move = $derived(selected ? stageMove(selected.status, stage) : null);
+	const needsReason = $derived(!!move?.ok && move.needsReason);
 	let homeId = $state('');
 	let admissionName = $state('');
 	let firstName = $state('');
@@ -86,6 +94,7 @@
 			notes = row.notes ?? '';
 			medicationNeed = row.placement_needs.medicationCertifiedStaff;
 			stage = row.status;
+			reason = '';
 			homeId = row.assigned_home_id ?? '';
 			admissionName = row.client_name ?? '';
 			firstName = '';
@@ -133,8 +142,11 @@
 					...details,
 					id: selected.id,
 					status: stage,
-					assignedHomeId: homeId || undefined
+					assignedHomeId: homeId || undefined,
+					reason: needsReason ? reason : undefined
 				});
+				reason = '';
+				stageNotes = await trpc.intake.listReferralNotes.query({ referralId: selected.id });
 				dirty = false;
 			}
 			await load();
@@ -360,10 +372,26 @@
 								/></label
 							>
 						</div>
-						{#if !creating}<label for="referral-stage">Stage</label><select id="referral-stage" class="input" bind:value={stage}
-									>{#each stages.filter((s) => s !== 'placed' || selected?.status === 'placed') as value (value)}<option
-											{value}>{value}</option
-										>{/each}</select><label
+						{#if !creating}<label for="referral-stage">Stage</label><select
+								id="referral-stage"
+								class="input"
+								bind:value={stage}
+								>{#each selected ? nextStages(selected.status) : [] as value (value)}<option {value}
+										>{value}</option
+									>{/each}</select
+							>{#if needsReason}<label
+									>Why is it moving {selected?.status === 'declined'
+										? 'out of declined'
+										: 'back'}?<textarea
+										class="input"
+										rows="2"
+										maxlength="4000"
+										required
+										bind:value={reason}></textarea></label
+								>
+								<p class="muted">
+									Saved as a note at the new stage, so the referral's history shows why.
+								</p>{/if}<label
 								>Proposed home<select
 									class="input"
 									bind:value={homeId}
@@ -495,14 +523,16 @@
 								bind:value={admissionName}
 							/></label
 						><label>First name<input class="input" maxlength="100" bind:value={firstName} /></label>
-						<label for="admission-home">Admission home</label><select id="admission-home"
-								class="input"
-								required
-								bind:value={homeId}
-								onchange={() => (roomId = '')}
-								><option value="">Choose a home</option
-								>{#each app.openHomes as home (home.id)}<option value={home.id}>{home.name}</option
-									>{/each}</select>
+						<label for="admission-home">Admission home</label><select
+							id="admission-home"
+							class="input"
+							required
+							bind:value={homeId}
+							onchange={() => (roomId = '')}
+							><option value="">Choose a home</option>{#each app.openHomes as home (home.id)}<option
+									value={home.id}>{home.name}</option
+								>{/each}</select
+						>
 						<label
 							>Available room<select class="input" bind:value={roomId}
 								><option value="">Assign a room later</option

@@ -5,6 +5,7 @@ import { requireOpenHome } from '../home/index.ts';
 import { notifyHomeSupervisors } from '../notification/index.ts';
 import * as q from './intake.queries';
 import { matchPlacement, placementNeeds, type PlacementNeeds } from '#lib/domain/placement.ts';
+import { stageMove } from '#lib/domain/referral-stage.ts';
 export { listReferrals, listRooms } from './intake.queries';
 
 async function requireReferral(tx: Tx, agencyId: string, id: string) {
@@ -100,14 +101,23 @@ export async function updateReferral(
 		contactEmail?: string;
 		notes?: string;
 		placementNeeds?: PlacementNeeds;
+		/** Why a referral moves back a stage or is reopened; kept as a stage note. */
+		reason?: string;
 	},
-	viewerId: string
+	author: Author
 ) {
 	const before = await requireReferral(tx, agencyId, input.id);
-	if (before.status === 'placed' || input.status === 'placed')
+	const move = stageMove(before.status, input.status ?? before.status);
+	if (!move.ok || before.status === 'placed' || input.status === 'placed')
 		throw new ServiceError(
 			'RULE_VIOLATION',
 			'Use admission to place an accepted referral; placed referrals cannot be reopened'
+		);
+	const reason = input.reason?.trim();
+	if (move.needsReason && !reason)
+		throw new ServiceError(
+			'VALIDATION_FAILED',
+			'Say why this referral is moving back a stage or being reopened'
 		);
 	if (input.assignedHomeId) requireOpenHome(await q.home(tx, agencyId, input.assignedHomeId));
 	const row = await q.saveReferral(tx, agencyId, input.id, {
@@ -119,8 +129,18 @@ export async function updateReferral(
 		notes: input.notes,
 		placement_needs: input.placementNeeds
 	});
+	if (move.needsReason && reason)
+		await q.insertReferralNote(tx, {
+			agency_id: agencyId,
+			referral_id: row.id,
+			status: row.status,
+			body: `Moved from ${before.status}: ${reason}`,
+			author_id: author.profileId,
+			author_name: author.name,
+			created_by: author.profileId
+		});
 	if (before.status !== row.status) await changed(tx, agencyId, row);
-	return getReferral(tx, agencyId, row.id, viewerId);
+	return getReferral(tx, agencyId, row.id, author.profileId);
 }
 export async function convertToClient(
 	tx: Tx,

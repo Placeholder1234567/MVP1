@@ -293,6 +293,41 @@ it('keeps notes at each stage, oldest first, for the agency only', async () => {
 		outsiderApi.addReferralNote({ referralId: row.id, body: 'x' })
 	).rejects.toMatchObject({ code: 'NOT_FOUND' });
 });
+it('moves forward freely, but moving back or reopening needs a reason kept as a note', async () => {
+	const api = (await as(supervisor)).intake;
+	const row = await api.createReferral({ clientName: 'Synthetic Stage Moves' });
+	// Skipping the tour (an emergency placement) and accepted <-> waitlist need no reason.
+	await api.updateReferral({ id: row.id, status: 'accepted' });
+	await api.updateReferral({ id: row.id, status: 'waitlist' });
+	await api.updateReferral({ id: row.id, status: 'accepted' });
+	await expect(api.updateReferral({ id: row.id, status: 'touring' })).rejects.toMatchObject({
+		code: 'BAD_REQUEST'
+	});
+	await expect(
+		api.updateReferral({ id: row.id, status: 'touring', reason: '   ' })
+	).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+	await api.updateReferral({
+		id: row.id,
+		status: 'touring',
+		reason: 'Family asked for a second visit (synthetic).'
+	});
+	await api.updateReferral({ id: row.id, status: 'declined' });
+	await expect(api.updateReferral({ id: row.id, status: 'inquiry' })).rejects.toMatchObject({
+		code: 'BAD_REQUEST'
+	});
+	const reopened = await api.updateReferral({
+		id: row.id,
+		status: 'inquiry',
+		reason: 'Appeal granted (synthetic).'
+	});
+	expect(reopened.status).toBe('inquiry');
+	expect(
+		(await api.listReferralNotes({ referralId: row.id })).map((n) => [n.status, n.body])
+	).toEqual([
+		['touring', 'Moved from accepted: Family asked for a second visit (synthetic).'],
+		['inquiry', 'Moved from declined: Appeal granted (synthetic).']
+	]);
+});
 it('requires acceptance and prevents direct placement or reopening', async () => {
 	const api = (await as(supervisor)).intake,
 		row = await api.createReferral({});
