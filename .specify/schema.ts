@@ -1927,3 +1927,47 @@ export const coverageOfferEvidence = pgTable(
     ),
   ],
 );
+
+// ─── 48. disclosures ─────────────────────────────────────────────────────────
+// Disclosures of a person's records that HIPAA requires an accounting of
+// (45 CFR 164.528): reports to APS or the state, court orders, law
+// enforcement, surveyors and the like. Not treatment, payment, operations,
+// the person or guardian, or anything they authorized. Supervisors and
+// admins record them; append-only, never synced (security.md "Accounting of
+// disclosures"). State reports ticked on incidents are added to the
+// accounting from the incident itself, not copied here.
+export const disclosures = pgTable(
+  'disclosures',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    client_id: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    disclosed_on: date('disclosed_on').notNull(),
+    recipient: text('recipient').notNull(),
+    recipient_address: text('recipient_address'),
+    // What was shared, briefly: "Incident report and MAR for March 2026"
+    description: text('description').notNull(),
+    // domain/disclosure.ts DISCLOSURE_PURPOSES
+    purpose: text('purpose').notNull(),
+    // Optional free text: the request or order it answered
+    purpose_detail: text('purpose_detail'),
+    recorded_by: uuid('recorded_by').references(() => profiles.id, {
+      onDelete: 'restrict',
+    }),
+    recorded_by_name: text('recorded_by_name'),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('disclosures_agency_id_idx').on(t.agency_id),
+    index('disclosures_client_id_idx').on(t.client_id, t.disclosed_on),
+  ],
+);

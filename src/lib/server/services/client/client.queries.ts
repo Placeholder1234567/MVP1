@@ -1,6 +1,15 @@
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
-import type { Tx } from '../../db';
-import { caseNotes, clientHealthInfo, clients, goals, rooms } from '../../db/schema';
+import { and, arrayContains, asc, desc, eq, gte, isNull } from 'drizzle-orm';
+import type { RequestInfo, Tx } from '../../db';
+import {
+	auditLog,
+	caseNotes,
+	clientHealthInfo,
+	clients,
+	disclosures,
+	goals,
+	incidents,
+	rooms
+} from '../../db/schema';
 
 const columns = {
 	id: clients.id,
@@ -161,4 +170,83 @@ export async function releaseRooms(tx: Tx, agencyId: string, clientId: string) {
 		.update(rooms)
 		.set({ occupied_by: null, status: 'available', updated_at: new Date() })
 		.where(and(eq(rooms.agency_id, agencyId), eq(rooms.occupied_by, clientId)));
+}
+
+// ─── Accounting of disclosures ─────────────────────────────────────────────
+
+const disclosureColumns = {
+	id: disclosures.id,
+	date: disclosures.disclosed_on,
+	recipient: disclosures.recipient,
+	address: disclosures.recipient_address,
+	description: disclosures.description,
+	purpose: disclosures.purpose,
+	detail: disclosures.purpose_detail,
+	recordedBy: disclosures.recorded_by_name,
+	createdAt: disclosures.created_at
+};
+
+export async function insertDisclosure(tx: Tx, row: typeof disclosures.$inferInsert) {
+	const [created] = await tx.insert(disclosures).values(row).returning(disclosureColumns);
+	return created;
+}
+
+/** Disclosures recorded for a person on or after `from` (YYYY-MM-DD), newest first. */
+export function selectDisclosures(tx: Tx, agencyId: string, clientId: string, from: string) {
+	return tx
+		.select(disclosureColumns)
+		.from(disclosures)
+		.where(
+			and(
+				eq(disclosures.agency_id, agencyId),
+				eq(disclosures.client_id, clientId),
+				gte(disclosures.disclosed_on, from)
+			)
+		)
+		.orderBy(desc(disclosures.disclosed_on), desc(disclosures.created_at));
+}
+
+/** A person's incidents marked as reported to the state (day filtering is the caller's). */
+export function selectStateReportedIncidents(
+	tx: Tx,
+	agencyId: string,
+	clientId: string,
+	party: string
+) {
+	return tx
+		.select({
+			id: incidents.id,
+			type: incidents.type,
+			occurredAt: incidents.occurred_at,
+			createdAt: incidents.created_at,
+			authorName: incidents.author_name
+		})
+		.from(incidents)
+		.where(
+			and(
+				eq(incidents.agency_id, agencyId),
+				eq(incidents.client_id, clientId),
+				arrayContains(incidents.notified_parties, [party])
+			)
+		);
+}
+
+/** The accounting given out, for the audit log (IDs and counts only). Runs as app_service. */
+export async function recordAccountingExport(
+	tx: Tx,
+	agencyId: string,
+	profileId: string,
+	request: RequestInfo,
+	scope: { clientId: string; fromDay: string; toDay: string; rows: number }
+) {
+	await tx.insert(auditLog).values({
+		agency_id: agencyId,
+		table_name: 'report_exports',
+		record_id: crypto.randomUUID(),
+		action: 'INSERT',
+		performed_by: profileId,
+		ip_address: request.ip,
+		user_agent: request.user_agent,
+		new_values: { type: 'disclosure_accounting', format: 'csv', ...scope }
+	});
 }

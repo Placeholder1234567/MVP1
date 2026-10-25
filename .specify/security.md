@@ -230,7 +230,7 @@ Every INSERT, UPDATE, and DELETE on PHI-containing tables is captured in `audit_
 
 ### Audited Tables
 
-All PHI tables trigger audit logging: `clients`, `client_health_info`, `goals`, `medications`, `medication_history`, `notes`, `note_goals`, `incidents`, `mar_records`, `health_entries`, `attendance`, `case_notes`, `referrals`, `messages`. Non-PHI operational tables (`schedule_slots`, `clock_records`, `coverage_requests`) are also audited for operational accountability. AI invocations are logged with `table_name: 'ai_invocations'` (virtual — metadata only, no prompt content; see ai-pipeline.md for fields logged).
+All PHI tables trigger audit logging: `clients`, `client_health_info`, `goals`, `medications`, `medication_history`, `notes`, `note_goals`, `incidents`, `mar_records`, `health_entries`, `attendance`, `case_notes`, `referrals`, `messages`, `disclosures`. Non-PHI operational tables (`schedule_slots`, `clock_records`, `coverage_requests`) are also audited for operational accountability. AI invocations are logged with `table_name: 'ai_invocations'` (virtual — metadata only, no prompt content; see ai-pipeline.md for fields logged).
 
 ### Tamper Resistance
 
@@ -251,6 +251,12 @@ All PHI tables trigger audit logging: `clients`, `client_health_info`, `goals`, 
 - Supervisors can view audit logs for their agency.
 - Caregivers have no access to audit logs.
 - Export of audit logs requires admin role and is itself logged.
+
+### Accounting of Disclosures
+
+A person or their personal representative may ask for an accounting of disclosures of their PHI in the six years before the request (45 CFR 164.528). The agency (the covered entity) must answer within 60 days, with one 30-day extension, and the first accounting in any 12 months is free. Each entry gives the date, the recipient and their address if known, a brief description of what was disclosed, and the purpose (or a copy of the request). Disclosures for treatment, payment and operations, to the person or their representative, to family involved in care, and under the person's authorization are not included. The business associate agreement requires Guad to make this information available (164.504(e)(2)(ii)(G)), so it is on every plan, never behind a feature flag (research/product-2026-10.md §E).
+
+**As built:** supervisors and admins record disclosures on the person's dashboard page (`DisclosureLog.svelte`; `client.recordDisclosure`): date, recipient, address, what was shared, a purpose from `domain/disclosure.ts` (abuse report, state incident report, health oversight, court, law enforcement, coroner, public health, serious threat, research, other required by law), and the request or order. Entries live in `disclosures` (supervisors and admins of the agency only, insert-only for app users, audited; never synced to devices). Incidents whose notified parties include the state reporting system are added to the accounting from the incident, as abuse reports for suspected abuse, neglect or exploitation and as state incident reports otherwise. "Download accounting (CSV)" (`client.disclosureAccounting`) gives the six-year list with a heading that says what is left out, and is audited like other exports. Bulk exports through the OpenAPI to the agency's own systems are the agency's operations and not listed. Disclosures made outside Guad (a phone call to APS, papers handed to a surveyor) only appear if someone records them.
 
 ---
 
