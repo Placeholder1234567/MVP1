@@ -209,7 +209,7 @@ PS_DEV_JWT_KEY=                  # Local dev only: signs PowerSync tokens while 
 - **Shifts:** AM 07-15, PM 15-23, ON 23-07
 - **Note lifecycle:** draft -> submitted (caregiver signs) -> approved | returned (supervisor)
 - **Prompt levels:** Independent, Verbal prompt, Gestural prompt, Model, Partial physical, Full physical, Refused
-- **Vital thresholds:** temp 95-100.4, pulse 50-100, systolic 90-140, diastolic 60-90
+- **Vital thresholds:** temp 95-100.4, pulse 50-100, systolic 90-140, diastolic 60-90, glucose 70-250, breathing 9-25, SpO2 92+ (per-person overrides in `domain/vitals.ts`)
 - **Charting presets:** `"therap"` (T-Log, GER, ISP Data, eMAR) vs `"default"` (Shift Note, Behavior Note, Goals, Medications)
 
 ## What to Read When
