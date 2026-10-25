@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import * as intake from '../../services/intake/index.ts';
 import { featureRoleProcedure, router } from '../middleware.ts';
-const status = z.enum(['inquiry', 'touring', 'accepted', 'waitlist', 'declined', 'placed']);
+import { REFERRAL_STAGES } from '#lib/domain/referral-stage.ts';
+const status = z.enum(REFERRAL_STAGES);
 const roomStatus = z.enum(['available', 'occupied', 'reserved']);
 const details = z.object({
 	contactName: z.string().trim().max(200).optional(),
@@ -46,11 +47,15 @@ export const intakeRouter = router({
 			details.extend({
 				id: z.uuid(),
 				status: status.optional(),
-				assignedHomeId: z.uuid().optional()
+				assignedHomeId: z.uuid().optional(),
+				reason: z.string().trim().max(4000).optional()
 			})
 		)
 		.mutation(({ ctx, input }) =>
-			intake.updateReferral(ctx.db, ctx.user.agencyId, input, ctx.user.profileId)
+			intake.updateReferral(ctx.db, ctx.user.agencyId, input, {
+				profileId: ctx.user.profileId,
+				name: ctx.user.name
+			})
 		),
 	addReferralNote: supervisor
 		.input(z.object({ referralId: z.uuid(), body: z.string().trim().min(1).max(4000) }))

@@ -281,7 +281,7 @@ Agency-wide offboarding is an operator-only orchestration exported by the Agency
 
 **Key functions:**
 - `createReferral(agencyId, data): Referral` — log a new referral/inquiry with contact info and source.
-- `updateReferralStatus(agencyId, referralId, status, notes?): Referral` — advance referral through pipeline (inquiry -> touring -> accepted | waitlist | declined -> placed; values per `referral_status` in schema.ts).
+- `updateReferral(agencyId, input, author): Referral` — moves a referral between stages (`src/lib/domain/referral-stage.ts`, decided in `research/decisions-2026-10.md` §2). Normal order inquiry -> touring -> accepted | waitlist -> placed; forward moves and skips (e.g. no tour for an emergency placement), accepted <-> waitlist, and declining from any open stage need nothing extra. Moving back a stage or reopening a declined referral needs `reason`, saved as a `referral_notes` row at the new stage ("Moved from <stage>: <reason>"). `placed` is reached only through `convertToClient` and never left.
 - `listReferrals(agencyId, status?): Referral[]` — filter referrals by status.
 - `listAvailableRooms(agencyId): Room[]` — rooms with status `available` across all homes.
 - `getRoomsByHome(agencyId, homeId): Room[]` — room inventory for a specific home.
