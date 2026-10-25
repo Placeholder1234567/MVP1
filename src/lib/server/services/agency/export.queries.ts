@@ -61,6 +61,7 @@ export const SKIPPED_TABLES: Record<string, string> = {
 	report_jobs: 'temporary export jobs',
 	notification_preferences: 'per-user alert settings',
 	user_settings: 'per-user app settings',
+	report_schedules: 'per-user report delivery settings',
 	email_suppressions: 'delivery bookkeeping',
 	email_bounces: 'delivery bookkeeping',
 	sms_inbound_messages: 'raw SMS replies, already applied to coverage and opt-outs',
