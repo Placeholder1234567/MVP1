@@ -13,7 +13,14 @@ export const VITAL_LIMITS = {
 	diaLo: 60,
 	// charting-guide.md "Vital Sign Alerts": blood glucose 250 or above, or below 70
 	glucoseHi: 250,
-	glucoseLo: 70
+	glucoseLo: 70,
+	// NEWS2 (Royal College of Physicians) single-parameter "3" bands, each of
+	// which alone calls for urgent review: breathing 8 or less or 25 or more a
+	// minute, SpO2 91% or less (research/decisions-2026-10.md §5). A nurse can
+	// set a person's own target, e.g. 88% for someone with COPD.
+	respLo: 9,
+	respHi: 25,
+	oxygenLo: 92
 } as const;
 
 /** A weight this far from the person's last weight is flagged (charting-guide.md). */
@@ -36,12 +43,15 @@ export function weightChanged(
 export type VitalLimits = { -readonly [K in keyof typeof VITAL_LIMITS]: number };
 export type VitalLimitKey = keyof VitalLimits;
 
-/** The pairs a person's limits are set in, with the range a limit may take. */
+/**
+ * The pairs a person's limits are set in, with the range a limit may take.
+ * SpO2 has only a low limit: a high reading is never a concern.
+ */
 export const VITAL_LIMIT_PAIRS: readonly {
 	label: string;
 	unit: string;
 	lo: VitalLimitKey;
-	hi: VitalLimitKey;
+	hi?: VitalLimitKey;
 	min: number;
 	max: number;
 }[] = [
@@ -49,7 +59,9 @@ export const VITAL_LIMIT_PAIRS: readonly {
 	{ label: 'Pulse', unit: 'bpm', lo: 'pulseLo', hi: 'pulseHi', min: 20, max: 220 },
 	{ label: 'Blood pressure, top', unit: 'mmHg', lo: 'sysLo', hi: 'sysHi', min: 50, max: 250 },
 	{ label: 'Blood pressure, bottom', unit: 'mmHg', lo: 'diaLo', hi: 'diaHi', min: 30, max: 150 },
-	{ label: 'Blood glucose', unit: 'mg/dL', lo: 'glucoseLo', hi: 'glucoseHi', min: 20, max: 600 }
+	{ label: 'Blood glucose', unit: 'mg/dL', lo: 'glucoseLo', hi: 'glucoseHi', min: 20, max: 600 },
+	{ label: 'Breathing rate', unit: 'breaths/min', lo: 'respLo', hi: 'respHi', min: 4, max: 60 },
+	{ label: 'SpO2', unit: '%', lo: 'oxygenLo', min: 70, max: 100 }
 ];
 
 /**
@@ -74,6 +86,10 @@ export function parseVitalLimits(raw: unknown): VitalLimits {
 				? (set[k] as number)
 				: VITAL_LIMITS[k];
 		const lo = num(p.lo);
+		if (!p.hi) {
+			limits[p.lo] = lo;
+			continue;
+		}
 		const hi = num(p.hi);
 		if (lo < hi) {
 			limits[p.lo] = lo;
@@ -89,9 +105,12 @@ export interface Vitals {
 	sys?: number | null;
 	dia?: number | null;
 	glucose?: number | null;
+	resp?: number | null;
+	oxygen?: number | null;
 }
 
-export type VitalFlag = 'temperature' | 'pulse' | 'blood_pressure' | 'glucose';
+export type VitalFlag =
+	'temperature' | 'pulse' | 'blood_pressure' | 'glucose' | 'respiration' | 'oxygen';
 
 /**
  * Which readings are outside the limits. Matches the MVP exactly: temperature,
@@ -112,5 +131,7 @@ export function vitalFlags(v: Vitals, lim: VitalLimits = VITAL_LIMITS): VitalFla
 	}
 	if (has(v.glucose) && (v.glucose >= lim.glucoseHi || v.glucose < lim.glucoseLo))
 		flags.push('glucose');
+	if (has(v.resp) && (v.resp >= lim.respHi || v.resp < lim.respLo)) flags.push('respiration');
+	if (has(v.oxygen) && v.oxygen < lim.oxygenLo) flags.push('oxygen');
 	return flags;
 }

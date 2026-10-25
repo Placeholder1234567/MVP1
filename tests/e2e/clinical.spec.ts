@@ -15,10 +15,13 @@ test('expanded health readings and explicit bowel observations survive offline s
 	await signIn(page, 'supervisor@guad.test');
 	await openPerson(page, person, true);
 	await page.getByRole('link', { name: /^Health Vitals/ }).click();
-	// Respiratory rate and SpO2; blood glucose has limits (charting-guide.md).
+	// Every vital with a range now has alert limits (charting-guide.md), SpO2 included.
 	await expect(
 		page.getByText('No alert limits configured; follow the care plan', { exact: true })
-	).toHaveCount(2);
+	).toHaveCount(0);
+	await page.getByLabel('SpO2', { exact: true }).fill('88');
+	await page.getByLabel('SpO2', { exact: true }).blur();
+	await expect(page.getByText('SpO2 is outside the normal range.', { exact: true })).toBeVisible();
 	await context.setOffline(true);
 	await page.getByLabel('Respiratory rate', { exact: true }).fill('18');
 	await page.getByLabel('SpO2', { exact: true }).fill('97');

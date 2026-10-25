@@ -69,7 +69,7 @@ beforeAll(async () => {
 });
 afterAll(closeDb);
 
-it('persists expanded numeric readings through online and queued writes and exports without inferred alerts', async () => {
+it('persists expanded numeric readings through online and queued writes and exports, alerting only outside the limits', async () => {
 	const care = await as(staff),
 		office = await as(supervisor);
 	const data = { respiration: 12.5, oxygen: 97.2, glucose: 104 };
@@ -95,7 +95,10 @@ it('persists expanded numeric readings through online and queued writes and expo
 	expect(upload.rejected).toEqual([]);
 	expect(
 		(await care.health.list({ clientId: person })).find((row) => row.id === queued)
-	).toMatchObject({ data: { respiration: 0, oxygen: 0, glucose: 0 }, flags: ['glucose'] });
+	).toMatchObject({
+		data: { respiration: 0, oxygen: 0, glucose: 0 },
+		flags: ['glucose', 'respiration', 'oxygen']
+	});
 	for (const data of [{ oxygen: 101 }, { respiration: false }, { glucose: ' ' }, { glucose: 'HI' }])
 		await expect(
 			care.health.create({ clientId: person, kind: 'vitals', data })

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	fallbackSummary,
 	nextSteps,
+	isClinicalAdvice,
 	plainBriefing,
 	type DaySnapshot
 } from '../../../src/lib/domain/day-summary';
@@ -98,5 +99,31 @@ describe('nextSteps', () => {
 		expect(text).not.toMatch(/diagnos|dosage|increase|decrease|prescri|treat|administer|mg\b/i);
 		// No names of health readings or medications either, only counts.
 		expect(text).not.toMatch(/Temperature/);
+	});
+});
+
+describe('isClinicalAdvice', () => {
+	it('catches advice and diagnoses the briefing must never give', () => {
+		for (const text of [
+			'You should give her an extra dose of Tylenol tonight.',
+			'Consider increasing his insulin before dinner.',
+			'I recommend starting antibiotics.',
+			'Staff should withhold the 8 pm medication.',
+			'Try pushing fluids for the rest of the day.',
+			'She may have a UTI given the fever.',
+			'He is probably having a stroke.',
+			'Based on the readings, a diagnosis of pneumonia is likely.'
+		])
+			expect(isClinicalAdvice(text), text).toBe(true);
+	});
+	it('lets plain facts through', () => {
+		for (const text of [
+			'2 doses were refused at Oak House this morning.',
+			'One out-of-range vital (temperature) has not been acknowledged.',
+			'The PM shift is still open and 3 notes are waiting for review.',
+			'An incident was reported at 9:40 and is still open.',
+			'Medication was held for one person; follow your protocol.'
+		])
+			expect(isClinicalAdvice(text), text).toBe(false);
 	});
 });
