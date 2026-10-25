@@ -340,6 +340,7 @@ If a breach of unsecured PHI is discovered, the following timeline applies:
 - Five wrong PINs delete the wrapped key; the database can then only be reopened by signing in online. Deactivating the user or device deletes the server copy of the key.
 - Offline PIN guessing (`research/decisions-2026-10.md` §3):
   - **Where the device supports it, the wrapping key also needs a platform passkey's WebAuthn PRF secret.** The PIN check is then enforced by the device's secure hardware and screen lock, as NIST SP 800-63B-4 expects for locally verified activation secrets. A copied OPFS file is useless without the device.
+  - **Privacy lock within a session:** the PIN alone, against a PIN-wrapped copy of the key held only in memory for up to 12 hours (NIST partial reauthentication). Opening the app again always needs the full check.
   - **Without passkey support:**
     - The 5-try limit is a counter in the same file, so it only stops someone using the app.
     - Someone who copies the browser storage can guess a 6-digit PIN offline in hours to days against PBKDF2-600k.

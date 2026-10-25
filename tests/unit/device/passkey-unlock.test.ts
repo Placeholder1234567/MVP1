@@ -3,7 +3,10 @@
 // derives its secret from a device-only seed and the salt, like hmac-secret.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
+	forgetPin,
+	forgetSessionUnlock,
 	PasskeyError,
+	SESSION_UNLOCK_MS,
 	unwrapKey,
 	usesPasskey,
 	wrapKey,
@@ -23,6 +26,7 @@ async function prf(salt: BufferSource) {
 }
 
 beforeEach(() => {
+	forgetSessionUnlock(); // each test starts like a freshly opened app
 	files.clear();
 	available = true;
 	cancelGet = false;
@@ -67,12 +71,16 @@ beforeEach(() => {
 		}
 	});
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.useRealTimers();
+});
 
 const KEY = new Uint8Array(32).fill(7);
 
 it('needs both the passkey and the PIN', async () => {
 	await wrapKey(KEY, '123456', 'p', { passkey: true });
+	forgetSessionUnlock(); // reopening the app
 	expect(await usesPasskey('p')).toBe(true);
 	expect(await unwrapKey('123456', 'p')).toEqual(KEY);
 	expect(gets).toHaveBeenCalledTimes(2); // once while setting up, once to unlock
@@ -81,6 +89,7 @@ it('needs both the passkey and the PIN', async () => {
 
 it('a copy of the stored file cannot be opened with the PIN alone', async () => {
 	await wrapKey(KEY, '123456', 'p', { passkey: true });
+	forgetSessionUnlock();
 	const [name, json] = [...files].find(([n]) => n.includes('-p.json'))!;
 	const record = JSON.parse(json);
 	delete record.passkey; // an attacker without the device's authenticator
@@ -90,6 +99,7 @@ it('a copy of the stored file cannot be opened with the PIN alone', async () => 
 
 it('cancelling the passkey prompt is not a wrong PIN', async () => {
 	await wrapKey(KEY, '123456', 'p', { passkey: true });
+	forgetSessionUnlock();
 	cancelGet = true;
 	for (let i = 0; i < 6; i++)
 		await expect(unwrapKey('123456', 'p')).rejects.toBeInstanceOf(PasskeyError);
@@ -108,4 +118,28 @@ it('falls back to the PIN alone when the device has no passkey support or the us
 	expect(await unwrapKey('123456', 'a')).toEqual(KEY);
 	expect(await unwrapKey('654321', 'b')).toEqual(KEY);
 	expect(gets).not.toHaveBeenCalled();
+});
+
+it('within a session, a privacy-lock unlock needs only the PIN; reopening needs the passkey again', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	await wrapKey(KEY, '123456', 'p', { passkey: true });
+	gets.mockClear();
+	expect(await unwrapKey('123456', 'p')).toEqual(KEY);
+	expect(gets).not.toHaveBeenCalled();
+	// A wrong PIN still counts toward the five.
+	await expect(unwrapKey('000000', 'p')).rejects.toMatchObject({ attemptsLeft: 4 });
+	// After the session limit, the full check again.
+	vi.setSystemTime(Date.now() + SESSION_UNLOCK_MS + 1);
+	expect(await unwrapKey('123456', 'p')).toEqual(KEY);
+	expect(gets).toHaveBeenCalledTimes(1);
+});
+
+it('sign-out and five wrong PINs drop the in-memory unlock', async () => {
+	await wrapKey(KEY, '123456', 'p', { passkey: true });
+	await forgetPin('p');
+	await expect(unwrapKey('123456', 'p')).rejects.toBeInstanceOf(WrongPinError);
+	await wrapKey(KEY, '123456', 'q');
+	for (let i = 0; i < 5; i++)
+		await expect(unwrapKey('000000', 'q')).rejects.toBeInstanceOf(WrongPinError);
+	await expect(unwrapKey('123456', 'q')).rejects.toMatchObject({ attemptsLeft: 0 });
 });
