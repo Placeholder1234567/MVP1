@@ -240,3 +240,20 @@ SELECT check_eq('audit rows attribute note inserts to the caregiver',
   (SELECT count(*) FROM audit_log WHERE table_name = 'notes' AND action = 'INSERT' AND performed_by = 'c1000000-0000-0000-0000-000000000000'), 2);
 SELECT check_eq('audit rows attribute approval to the supervisor',
   (SELECT count(*) FROM audit_log WHERE table_name = 'notes' AND action = 'UPDATE' AND performed_by = 'c2000000-0000-0000-0000-000000000000'), 1);
+
+-- Staff visibility (sql-patches/0017): a caregiver sees the agency's
+-- supervisors and admins, even unassigned ones, but not other homes' caregivers.
+INSERT INTO profiles (id, agency_id, auth_uid, email, name, role, home_ids) VALUES
+  ('c5000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', gen_random_uuid()::text, 'lead@one.test', 'Unassigned Lead', 'supervisor', '{}'),
+  ('c6000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000000', gen_random_uuid()::text, 'maple@one.test', 'Maple Only', 'caregiver', '{b2000000-0000-0000-0000-000000000000}');
+SET ROLE app_user;
+SELECT set_config('app.claims', :'cg', false);
+SELECT check_eq('cg sees an unassigned supervisor',
+  (SELECT count(*) FROM profiles WHERE id = 'c5000000-0000-0000-0000-000000000000'), 1);
+SELECT check_eq('cg does not see a caregiver at another home',
+  (SELECT count(*) FROM profiles WHERE id = 'c6000000-0000-0000-0000-000000000000'), 0);
+SELECT check_eq('cg sees no other-agency staff',
+  (SELECT count(*) FROM profiles WHERE agency_id = 'a2000000-0000-0000-0000-000000000000'), 0);
+SELECT check_eq('cg sees only own homes',
+  (SELECT count(*) FROM homes), 1);
+RESET ROLE;

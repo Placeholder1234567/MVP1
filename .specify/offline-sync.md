@@ -280,7 +280,7 @@ Sync Streams define which rows each signed-in user receives. This section is the
 - **Role and home changes apply immediately** for the same reason. No custom claims, no token refresh.
 - **Caregivers** get home-scoped data for the homes in their `home_ids`. **Supervisors and admins** get every home in their agency. This mirrors the RLS policies in rls.sql.
 
-Synced to everyone in the agency (reference data, small): the agency, its homes, goal templates and staff profiles. `mfa_enabled` is deliberately not synced.
+Synced to everyone in the agency (reference data, small): the agency and its goal templates. Homes and staff profiles follow the same rules as the RLS policies `homes_select` and `profiles_select` (minimum necessary, decided in `research/decisions-2026-10.md` §1): a caregiver's device gets only their own homes, the colleagues who share one of those homes, and the agency's supervisors and admins (named on returned notes and board posts, and eligible witnesses). Other homes' addresses and other homes' caregivers' contact details never reach a caregiver's phone. Supervisors and admins get every home and every staff profile in the agency. `mfa_enabled` is deliberately not synced.
 
 Time windows: tables with `device_sync = true` filters are windowed by `SyncWindowJob` (section 7); clinical data keeps 30 days on the device, transient data 7.
 
@@ -300,7 +300,7 @@ streams:
     auto_subscribe: true
     query: >-
       SELECT id, agency_id, name, address, lat, lng, radius, archived_at, created_at, updated_at FROM homes
-      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+      WHERE (id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
   goal_templates:
     auto_subscribe: true
     query: >-
@@ -310,7 +310,7 @@ streams:
     auto_subscribe: true
     query: >-
       SELECT id, agency_id, auth_uid, email, phone, name, initials, role, home_ids, med_certified, avatar_url, active, created_at, updated_at FROM profiles
-      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true) AND (role = 'supervisor' OR role = 'admin' OR id IN (SELECT p2.id FROM profiles p2, json_each(p2.home_ids) AS h2 WHERE h2.value IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true)) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
   clients:
     auto_subscribe: true
     query: >-
