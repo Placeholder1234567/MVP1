@@ -93,6 +93,14 @@ const OAK_CALLOUT = randomUUID();
 const CG = `sync-cg-${randomUUID()}`;
 const SUP = `sync-sup-${randomUUID()}`;
 const OTHER_CG = `sync-other-${randomUUID()}`;
+const OAK_PEER = `sync-oak-peer-${randomUUID()}`;
+const MAPLE_CG = `sync-maple-cg-${randomUUID()}`;
+const ID = {
+	[CG]: randomUUID(),
+	[SUP]: randomUUID(),
+	[OAK_PEER]: randomUUID(),
+	[MAPLE_CG]: randomUUID()
+};
 
 beforeAll(async () => {
 	await withService(async (tx) => {
@@ -116,6 +124,7 @@ beforeAll(async () => {
 			role: 'caregiver' | 'supervisor',
 			home_ids: string[]
 		) => ({
+			id: ID[auth_uid],
 			agency_id,
 			auth_uid,
 			email: `${auth_uid}@example.test`,
@@ -128,6 +137,8 @@ beforeAll(async () => {
 			.values([
 				staff(CG, A, 'caregiver', [OAK]),
 				staff(SUP, A, 'supervisor', []),
+				staff(OAK_PEER, A, 'caregiver', [OAK]),
+				staff(MAPLE_CG, A, 'caregiver', [MAPLE]),
 				staff(OTHER_CG, OTHER, 'caregiver', [PINE])
 			]);
 		await tx.insert(clients).values([
@@ -175,11 +186,22 @@ describe('sync streams', () => {
 		});
 	});
 
+	it('a caregiver gets only their own homes and the staff they work with', async () => {
+		await eventually(async () => {
+			const rows = await syncedRows(CG);
+			expect(rows.homes).toEqual([OAK]);
+			// Colleagues sharing a home, plus the agency's supervisors and admins
+			// (named on returned notes, witnesses), never other homes' caregivers.
+			expect(rows.profiles).toEqual([ID[CG], ID[OAK_PEER], ID[SUP]].sort());
+		});
+	});
+
 	it('a supervisor gets every home in their agency, even with no assigned homes', async () => {
 		await eventually(async () => {
 			const rows = await syncedRows(SUP);
 			expect(rows.clients).toEqual([OAK_PERSON, MAPLE_PERSON].sort());
 			expect(rows.homes).toEqual([OAK, MAPLE].sort());
+			expect(rows.profiles).toEqual(Object.values(ID).sort());
 		});
 	});
 
@@ -231,7 +253,10 @@ describe('sync streams', () => {
 				.where(eq(profiles.auth_uid, CG))
 		);
 		await eventually(async () => {
-			expect((await syncedRows(CG)).clients).toEqual([MAPLE_PERSON]);
+			const rows = await syncedRows(CG);
+			expect(rows.clients).toEqual([MAPLE_PERSON]);
+			expect(rows.homes).toEqual([MAPLE]);
+			expect(rows.profiles).toEqual([ID[CG], ID[MAPLE_CG], ID[SUP]].sort());
 		});
 	});
 

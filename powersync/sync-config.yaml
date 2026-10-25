@@ -12,7 +12,7 @@ streams:
     auto_subscribe: true
     query: >-
       SELECT id, agency_id, name, address, lat, lng, radius, archived_at, created_at, updated_at FROM homes
-      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+      WHERE (id IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
   goal_templates:
     auto_subscribe: true
     query: >-
@@ -22,7 +22,7 @@ streams:
     auto_subscribe: true
     query: >-
       SELECT id, agency_id, auth_uid, email, phone, name, initials, role, home_ids, med_certified, avatar_url, active, created_at, updated_at FROM profiles
-      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true)
+      WHERE agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true) AND (role = 'supervisor' OR role = 'admin' OR id IN (SELECT p2.id FROM profiles p2, json_each(p2.home_ids) AS h2 WHERE h2.value IN (SELECT h.value FROM profiles p, json_each(p.home_ids) AS h WHERE p.auth_uid = auth.user_id() AND p.active = true)) OR agency_id IN (SELECT agency_id FROM profiles WHERE auth_uid = auth.user_id() AND active = true AND (role = 'supervisor' OR role = 'admin')))
   clients:
     auto_subscribe: true
     query: >-
