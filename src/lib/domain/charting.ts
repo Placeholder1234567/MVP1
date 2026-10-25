@@ -194,6 +194,17 @@ export function incidentNotifyRules(
 }
 
 /**
+ * Critical incidents under the federal HCBS minimum (42 CFR 441.302(a)(6)):
+ * supervisors get the urgent alert whatever severity the reporter picked.
+ */
+export const CRITICAL_INCIDENT_TYPES: readonly IncidentType[] = [...MANDATED_REPORT_TYPES, 'Death'];
+
+/** Whether an incident sends the urgent alert (high severity, or a critical type). */
+export function urgentIncident(severity: IncidentSeverity, type: IncidentType): boolean {
+	return severity === 'High' || CRITICAL_INCIDENT_TYPES.includes(type);
+}
+
+/**
  * Incidents Lomi doesn't announce on the team board. A report of suspected
  * abuse, neglect or exploitation may concern a coworker who reads the board,
  * and reporters are kept confidential; a death is told by a supervisor.

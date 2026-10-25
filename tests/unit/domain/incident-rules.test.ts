@@ -4,7 +4,8 @@ import {
 	incidentBoardText,
 	incidentNotifyRules,
 	mandatedReportNotice,
-	parseIncidentRules
+	parseIncidentRules,
+	urgentIncident
 } from '../../../src/lib/domain/charting';
 import { missingNotifications, overdueContacts } from '../../../src/lib/domain/clinical';
 
@@ -136,5 +137,15 @@ describe('incidentBoardText', () => {
 	it('stays off the board for abuse, neglect, exploitation and death', () => {
 		for (const type of ['Suspected abuse or neglect', 'Suspected exploitation', 'Death'] as const)
 			expect(incidentBoardText('Cara Giver', type, 'High')).toBeNull();
+	});
+});
+
+describe('urgentIncident', () => {
+	it('is urgent for high severity, and for critical types at any severity', () => {
+		expect(urgentIncident('High', 'Fall')).toBe(true);
+		expect(urgentIncident('Low', 'Fall')).toBe(false);
+		expect(urgentIncident('Medium', 'Medication error')).toBe(false);
+		for (const type of ['Suspected abuse or neglect', 'Suspected exploitation', 'Death'] as const)
+			expect(urgentIncident('Low', type)).toBe(true);
 	});
 });
