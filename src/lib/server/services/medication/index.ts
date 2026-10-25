@@ -131,6 +131,14 @@ export async function recordDose(
 					: 'Say why the as-needed dose was given'
 		);
 	}
+	// The app hides stopped medications, but a device that hadn't synced the
+	// stop can still record one. A dose that was given is a fact and is kept;
+	// supervisors are told at once, as it may be a medication error.
+	const givenAfterStop =
+		!dose.amendsId &&
+		dose.status === 'given' &&
+		!!med.stopped_at &&
+		(dose.recordedAt ?? new Date()) >= med.stopped_at;
 	const row = {
 		id: dose.id,
 		agency_id: agencyId,
@@ -154,6 +162,7 @@ export async function recordDose(
 		const inserted = await tx.transaction((sp) => insertMarRecord(sp, row));
 		if (inserted && (dose.status === 'refused' || dose.status === 'held'))
 			await medRefused(tx, agencyId, med.homeId, dose.status, dose.id);
+		if (inserted && givenAfterStop) await alertGivenAfterStop(tx, agencyId, med.homeId, dose.id);
 		return { result: inserted ? 'recorded' : 'already-recorded' };
 	} catch (e) {
 		if (pgCode(e) !== '23505' || pgConstraint(e) !== SLOT_INDEX) throw e;
@@ -167,6 +176,7 @@ export async function recordDose(
 	});
 	if (!first) throw new ServiceError('RULE_VIOLATION', 'This dose slot is already recorded');
 	await insertMarRecord(tx, { ...row, conflict_with: first.id });
+	if (givenAfterStop) await alertGivenAfterStop(tx, agencyId, med.homeId, dose.id);
 	await notifyHomeSupervisors(tx, agencyId, med.homeId, {
 		type: 'med_possible_double_dose',
 		priority: 1,
@@ -176,6 +186,17 @@ export async function recordDose(
 		referenceType: 'mar_records'
 	});
 	return { result: 'conflict', conflictWith: first.id, otherName: first.recordedByName };
+}
+
+function alertGivenAfterStop(tx: Tx, agencyId: string, homeId: string | null, doseId: string) {
+	return notifyHomeSupervisors(tx, agencyId, homeId, {
+		type: 'med_given_after_stop',
+		priority: 1,
+		// PHI-free: no medication or person (notifications.md §1).
+		title: 'A stopped medication was recorded as given',
+		referenceId: doseId,
+		referenceType: 'mar_records'
+	});
 }
 
 /**

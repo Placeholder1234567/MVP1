@@ -22,6 +22,8 @@ export const DEFAULT_CHANNELS = {
 	note_sent_back: r(['push'], [], []),
 	med_refusal: r([], ['push'], ['push']),
 	med_possible_double_dose: r([], ['push', 'sms'], ['push', 'sms']),
+	// A dose recorded as given after its medication was stopped (§2.7d).
+	med_given_after_stop: r([], ['push', 'sms'], ['push', 'sms']),
 	med_due_reminder: r(['push'], [], []),
 	// A controlled medication count doesn't match the record (§2.7b), and a
 	// named witness asked to countersign a count book entry (§2.7c).
@@ -64,6 +66,7 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	note_sent_back: 'Returned notes',
 	med_refusal: 'Medication refusals',
 	med_possible_double_dose: 'Possible duplicate doses',
+	med_given_after_stop: 'Stopped medications given',
 	med_due_reminder: 'Medication reminders',
 	med_overdue: 'Overdue medications',
 	prn_followup: 'As-needed dose follow-ups',
@@ -88,6 +91,7 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 export const MANDATORY = new Set([
 	'med_refusal',
 	'med_possible_double_dose',
+	'med_given_after_stop',
 	'controlled_count_discrepancy',
 	'health_alert',
 	'incident_reported',

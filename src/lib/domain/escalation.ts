@@ -32,6 +32,7 @@ export const ESCALATION_CHAINS: Record<string, EscalationStep[]> = {
 	],
 	coverage_unfilled: [{ afterMinutes: 30, to: 'admins', channel: 'sms' }],
 	med_possible_double_dose: [{ afterMinutes: 15, to: 'admins', channel: 'sms' }],
+	med_given_after_stop: [{ afterMinutes: 15, to: 'admins', channel: 'sms' }],
 	note_submitted: [{ afterMinutes: 24 * 60, to: 'same', channel: 'push' }],
 	note_sent_back: [
 		{ afterMinutes: 8 * 60, to: 'same', channel: 'push' },

@@ -535,6 +535,75 @@ describe('mar.* and medication.list', () => {
 		expect(await cara.medication.list({ clientId: PERSON, includeStopped: true })).toHaveLength(3);
 	});
 
+	it('keeps a dose given after its medication stopped, and alerts supervisors at once', async () => {
+		const medicationId = randomUUID();
+		const stoppedAt = new Date(Date.now() - 60 * 60_000);
+		await withService((t) =>
+			t.insert(s.medications).values({
+				id: medicationId,
+				agency_id: AGENCY,
+				client_id: PERSON,
+				name: 'Synthetic stopped as-needed med',
+				stopped_at: stoppedAt
+			})
+		);
+		const cara = await as(CARA);
+		const alerts = (id: string) =>
+			withService((t) =>
+				t
+					.select({ type: s.notifications.type, priority: s.notifications.priority })
+					.from(s.notifications)
+					.where(
+						and(
+							eq(s.notifications.reference_id, id),
+							eq(s.notifications.channel, 'in_app'),
+							eq(s.notifications.type, 'med_given_after_stop')
+						)
+					)
+			);
+		// Given before the stop, recorded offline and uploaded later: nothing to flag.
+		const before = { id: randomUUID() };
+		const queued = await cara.sync.upload({
+			transactionId: 30,
+			ops: [
+				{
+					op: 'PUT' as const,
+					table: 'mar_records',
+					id: before.id,
+					data: {
+						client_id: PERSON,
+						medication_id: medicationId,
+						day: TODAY,
+						status: 'given',
+						reason: 'Synthetic headache',
+						recorded_at: new Date(stoppedAt.getTime() - 60_000).toISOString()
+					}
+				}
+			]
+		});
+		expect(queued.rejected).toEqual([]);
+		expect(await alerts(before.id)).toEqual([]);
+		// Given after the stop: kept as recorded, supervisors told.
+		const after = await cara.mar.record({
+			clientId: PERSON,
+			medicationId,
+			day: TODAY,
+			status: 'given',
+			reason: 'Synthetic headache'
+		});
+		expect(after.result).toBe('recorded');
+		expect(await alerts(after.id)).toContainEqual({ type: 'med_given_after_stop', priority: 1 });
+		// A refusal after the stop gave nothing, so it doesn't raise this alert.
+		const refused = await cara.mar.record({
+			clientId: PERSON,
+			medicationId,
+			day: TODAY,
+			status: 'refused',
+			reason: 'Synthetic refusal'
+		});
+		expect(await alerts(refused.id)).toEqual([]);
+	});
+
 	it('requires a correction reason online and in queued writes, preserving valid append-only corrections', async () => {
 		const cara = await as(CARA);
 		const medicationId = randomUUID();
