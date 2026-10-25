@@ -8,6 +8,10 @@ Core care records, explicit review/signatures, goal trials, MAR and controlled c
 
 ## Current increments
 
+Personal delivery-preference saves capture the submitted snapshot and reject late UI feedback after account/context, privacy, unavailability, navigation or disposal changes. Same-account offline selections and cancelled-navigation edits remain in memory; the locked preference form is removed from the DOM. Interrupted mutations may still complete. Six desktop/phone real-response cases cover save-lock, save during held destination navigation, cancelled navigation and offline retention, synced committed-save recovery and restoration, axe and overflow. Browser execution remains pending in GitHub CI; all four exact final-head gates are required. Children and server consent/delivery rules are unchanged.
+
+PR255 merged after all four final-head gates passed: 538 units, 329 integration tests plus SQL RLS, 206 production and 2 development browser passes, and performance. All six quiet-hours cases passed. The 18 production exclusions include the desktop-only passkey case. Claude’s PR259 sign-out queue recheck is also merged; this increment does not edit that area.
+
 Quiet-hours responses now use account/context generations and abort controllers. Submitted times are captured before awaiting. Privacy, unavailability, navigation start and disposal invalidate late feedback, while offline choices and cancelled-navigation edits remain in memory. Interrupted server saves may still complete; explicit reload reconciles them. Six desktop/phone real-response cases cover load/save lock and cancelled navigation with offline retention, explicit committed-save recovery and restoration, axe and overflow. No shared privacy/session/device-key or server notification changes. All four final-head gates remain required before merge.
 
 Messaging usage now labels its existing list as saved preferences, explicitly distinguishes carrier consent/delivery, and explains that settings cannot clear carrier STOP. No query, RLS, consent, provider or dispatch change. All four final-head gates remain required.
