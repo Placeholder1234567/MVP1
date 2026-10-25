@@ -171,3 +171,9 @@ export async function provisionAgency(tx: Tx, input: z.input<typeof NewAgency>) 
 
 export { PlanChange, setAgencyPlan } from './plan';
 export { OffboardingInput, offboardAgency } from './offboarding';
+export {
+	AgencyExportInput,
+	exportAgency,
+	type AgencyExportManifest,
+	type TableManifest
+} from './export';

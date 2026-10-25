@@ -457,6 +457,10 @@ Identity Platform disabling and refresh-token revocation run after the database 
 
 The application hold is not proof of infrastructure retention enforcement. Operators must verify storage/backups, legal holds and eventual disposal separately. This workflow does not provision infrastructure, erase a device that is already offline, delete clinical/audit history, calculate a legal retention deadline, perform cryptographic destruction or issue a destruction certificate. No production offboarding or provider operation has been performed by the implementation tests, which use synthetic isolated databases and a recording identity adapter.
 
+### Agency data export
+
+When an agency leaves, its business associate agreement requires returning or destroying its PHI (45 CFR 164.504(e)(2)(ii)(J)); since records are kept for the retention period, Guad returns a copy. An agency can also ask for one at any time. **As built:** `npm run agency:export -- --slug <slug> --operator <operator> --out <new folder>` (`scripts/agency-export.ts`, `services/agency/export.ts`) reads every agency table in one repeatable-read snapshot and writes one CSV per table plus `manifest.json` (row counts and SHA-256 of each file). There is no app or API endpoint. The folder must not exist yet; it is created owner-only (0700, files 0600) and removed if the export fails. Sign-in identifiers, key hashes, sealed secrets, device keys and witness sign-in hashes are dropped, also from inside `audit_log` before/after values. Integration, device and delivery bookkeeping tables are skipped with a stated reason, and a unit test fails when a new agency table is neither exported nor skipped. The export is recorded in the agency's audit log (`agency_export`, with the operator, counts and checksums). Board photo files stay in `MEDIA_BUCKET` and are copied separately. Delivering the folder (over the channel agreed with the agency) and deleting the operator's copy are manual steps.
+
 ---
 
 ## Contingency Plan
