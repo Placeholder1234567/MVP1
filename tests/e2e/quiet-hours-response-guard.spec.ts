@@ -16,6 +16,10 @@ for (const kind of ['load-lock', 'save-lock', 'cancel-navigation'] as const) {
 		await page.getByRole('button', { name: 'Save PIN and open', exact: true }).click();
 		await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 		await page.goto('/me/notifications');
+		// Full navigation reopens the encrypted device store with its PIN.
+		await page.getByLabel('Device PIN', { exact: true }).fill('654321');
+		await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+		await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 		const form = page.getByRole('form', { name: 'Quiet hours', exact: true });
 		await expect(form.getByLabel('Start time', { exact: true })).toBeVisible();
 		const initialStart = await form.getByLabel('Start time', { exact: true }).inputValue();
