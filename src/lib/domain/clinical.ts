@@ -72,16 +72,14 @@ export const HEALTH_FIELDS: Record<HealthKind, readonly HealthField[]> = {
 			label: 'Respiratory rate',
 			input: 'number',
 			unit: 'breaths/min',
-			decimal: true,
-			alertConfigured: false
+			decimal: true
 		},
 		{
 			key: 'oxygen',
 			label: 'SpO2',
 			input: 'number',
 			unit: '%',
-			decimal: true,
-			alertConfigured: false
+			decimal: true
 		},
 		{
 			key: 'glucose',
@@ -278,7 +276,9 @@ export function healthFlags(
 			pulse: n(data.pulse),
 			sys: n(data.systolic),
 			dia: n(data.diastolic),
-			glucose: n(data.glucose)
+			glucose: n(data.glucose),
+			resp: n(data.respiration),
+			oxygen: n(data.oxygen)
 		},
 		limits
 	);
@@ -291,7 +291,9 @@ const FIELD_NAME: Record<string, string> = {
 	pulse: 'Pulse',
 	systolic: 'Blood pressure (top)',
 	diastolic: 'Blood pressure (bottom)',
-	glucose: 'Blood glucose'
+	glucose: 'Blood glucose',
+	respiration: 'Breathing rate',
+	oxygen: 'SpO2'
 };
 
 /** Inline warning for one vitals field (charting-ux.md §4.6), or null. */
@@ -316,6 +318,8 @@ const FLAG_LABEL: Record<string, string> = {
 	pulse: 'Pulse',
 	blood_pressure: 'Blood pressure',
 	glucose: 'Blood glucose',
+	respiration: 'Breathing rate',
+	oxygen: 'SpO2',
 	weight_change: 'Weight change'
 };
 export function flagLabel(flag: string): string {

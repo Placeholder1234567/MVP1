@@ -59,17 +59,18 @@ export const ClientFilter = z.object({
 const VitalLimitsInput = z
 	.object(
 		Object.fromEntries(
-			VITAL_LIMIT_PAIRS.flatMap((p) => [
-				[p.lo, z.number().min(p.min).max(p.max).optional()],
-				[p.hi, z.number().min(p.min).max(p.max).optional()]
-			])
+			VITAL_LIMIT_PAIRS.flatMap((p) =>
+				[p.lo, p.hi]
+					.filter((k) => k !== undefined)
+					.map((k) => [k, z.number().min(p.min).max(p.max).optional()])
+			)
 		) as Record<VitalLimitKey, z.ZodOptional<z.ZodNumber>>
 	)
 	.strict()
 	.refine(
 		(v) =>
 			VITAL_LIMIT_PAIRS.every(
-				(p) => (v[p.lo] ?? VITAL_LIMITS[p.lo]) < (v[p.hi] ?? VITAL_LIMITS[p.hi])
+				(p) => !p.hi || (v[p.lo] ?? VITAL_LIMITS[p.lo]) < (v[p.hi] ?? VITAL_LIMITS[p.hi])
 			),
 		'Each low limit must be below its high limit (the default where only one end is set)'
 	);

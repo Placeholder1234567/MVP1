@@ -24,6 +24,8 @@ export interface RequestInfo {
 
 export type Db = NodePgDatabase<typeof schema>;
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+/** e.g. one consistent snapshot across many reads: { isolationLevel: 'repeatable read' } */
+export type TransactionConfig = Parameters<Db['transaction']>[1];
 
 let pool: pg.Pool | undefined;
 let db: Db | undefined;
@@ -95,11 +97,11 @@ export async function asService<T>(tx: Tx, fn: (tx: Tx) => Promise<T>): Promise<
  * Runs fn as app_service, which bypasses RLS. Only for job handlers and the
  * cross-user writes listed at the end of rls.sql; never for a user's own request.
  */
-export function withService<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+export function withService<T>(fn: (tx: Tx) => Promise<T>, config?: TransactionConfig): Promise<T> {
 	return inTransaction(async (tx) => {
 		await tx.execute(sql`SET LOCAL ROLE app_service`);
 		return fn(tx);
-	});
+	}, config);
 }
 
 // ─── After-commit hooks ──────────────────────────────────────────────────────
@@ -109,11 +111,14 @@ export function withService<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
 
 const pending = new AsyncLocalStorage<Array<() => unknown>>();
 
-async function inTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+async function inTransaction<T>(
+	fn: (tx: Tx) => Promise<T>,
+	config?: TransactionConfig
+): Promise<T> {
 	const outer = pending.getStore();
 	if (outer) return getDb().transaction(fn); // nested: the outermost commit runs the hooks
 	const hooks: Array<() => unknown> = [];
-	const result = await pending.run(hooks, () => getDb().transaction(fn));
+	const result = await pending.run(hooks, () => getDb().transaction(fn, config));
 	for (const hook of hooks) {
 		try {
 			await hook();

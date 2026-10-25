@@ -26,6 +26,7 @@ npm run dev                 # SvelteKit dev server at http://localhost:5173
 | `npm run test:integration` | Database and sign-in tests (local Docker Postgres; starts its own Auth emulator) |
 | `npm run agency:provision -- --name … --slug … --tier … --admin-email … --admin-name …` | Create a new agency with default goal templates and invite its first admin (operator tool; add `--print-setup-link` when email isn't set up) |
 | `npm run agency:set-plan -- --slug … [--tier …] [--feature … \| --clear-features] --operator … [--dry-run]` | Change an agency's plan: tier and extra features (operator tool; recorded in the agency's audit log with the operator, devices pick it up on next sync) |
+| `npm run agency:export -- --slug … --operator … --out <new folder>` | Full copy of one agency's records: a CSV per table plus a manifest with row counts and SHA-256 checksums, from one snapshot (operator tool; recorded in the agency's audit log; the folder holds PHI) |
 | `npm run maintenance:announce -- --start … --end … --impact unavailable\|slow\|sync_paused [--id …] [--dry-run]` | Announce a maintenance window to every agency (operator tool; repeat with the same `--id` to retry without duplicates) |
 | `npm run dev:auth` / `db:seed` | Auth emulator / synthetic demo data with emulator-only accounts |
 | `npm run db:up` / `db:down` | Start / stop the local stack |
@@ -209,7 +210,7 @@ PS_DEV_JWT_KEY=                  # Local dev only: signs PowerSync tokens while 
 - **Shifts:** AM 07-15, PM 15-23, ON 23-07
 - **Note lifecycle:** draft -> submitted (caregiver signs) -> approved | returned (supervisor)
 - **Prompt levels:** Independent, Verbal prompt, Gestural prompt, Model, Partial physical, Full physical, Refused
-- **Vital thresholds:** temp 95-100.4, pulse 50-100, systolic 90-140, diastolic 60-90
+- **Vital thresholds:** temp 95-100.4, pulse 50-100, systolic 90-140, diastolic 60-90, glucose 70-250, breathing 9-25, SpO2 92+ (per-person overrides in `domain/vitals.ts`)
 - **Charting presets:** `"therap"` (T-Log, GER, ISP Data, eMAR) vs `"default"` (Shift Note, Behavior Note, Goals, Medications)
 
 ## What to Read When

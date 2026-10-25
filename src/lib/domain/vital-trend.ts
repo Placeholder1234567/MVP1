@@ -1,9 +1,9 @@
 // Vital sign trends (frontend-spec-3.md §5.5 "Line Chart (vital sign
 // trends)"; Codex's list item "care trends"). One series per measurement
 // from saved vitals entries, with the normal range only where Guad has alert
-// limits (the person's own, else VITAL_LIMITS). SpO2 and respiration have no
-// configured limits yet, and weight alerts on change rather than a range, so
-// they get no band.
+// limits (the person's own, else VITAL_LIMITS). Weight alerts on change
+// rather than a range, so it gets no band; SpO2 has only a low limit, so its
+// band runs to 100%.
 import { VITAL_LIMITS, type VitalLimits } from './vitals';
 
 export interface TrendSeries {
@@ -46,13 +46,13 @@ export const trendSeries = (lim: VitalLimits = VITAL_LIMITS): readonly TrendSeri
 		band: [lim.diaLo, lim.diaHi],
 		highInclusive: true
 	},
-	{ key: 'oxygen', label: 'SpO2', unit: '%', band: null, highInclusive: false },
+	{ key: 'oxygen', label: 'SpO2', unit: '%', band: [lim.oxygenLo, 100], highInclusive: false },
 	{
 		key: 'respiration',
 		label: 'Respiratory rate',
 		unit: 'breaths/min',
-		band: null,
-		highInclusive: false
+		band: [lim.respLo, lim.respHi],
+		highInclusive: true
 	},
 	{
 		key: 'glucose',

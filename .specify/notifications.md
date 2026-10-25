@@ -193,6 +193,19 @@ Update `notifications.sent_at`
 | **Deep Link** | `/controlled` |
 | **Escalation** | None; overdue countersigns show in the supervisor attention queue. |
 
+### 2.7d med_given_after_stop
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | `recordDose()` saves a new `given` record (not a correction) for a medication whose `stopped_at` is at or before the dose's time. The app hides stopped medications, so this comes from a device that hadn't synced the stop. The record is kept, since the dose was given; supervisors are told at once because it may be a medication error. Refused and held doses after a stop don't alert. |
+| **Recipients** | All supervisors for the client's home (admins when the home has none) |
+| **Channels** | Push + SMS (immediate) |
+| **Priority** | Urgent |
+| **Title** | `"A stopped medication was recorded as given"` |
+| **PHI Safety** | No client name, medication name, dose or time in push or SMS. |
+| **Deep Link** | `/mar/{marRecordId}` |
+| **Escalation** | If not read within 15 min, SMS to agency admin. Mandatory. |
+
 ### 2.8 med_due_reminder
 
 | Field | Value |
@@ -405,6 +418,7 @@ Update `notifications.sent_at`
 | `note_sent_back` | Normal | Y | N | N | N | 8 hr, 24 hr reminders |
 | `med_refusal` | High | Y | Y* | N | Y | 1 hr SMS, 2 hr admin SMS |
 | `med_possible_double_dose` | Urgent | Y | Y | N | Y | 15 min admin SMS |
+| `med_given_after_stop` | Urgent | Y | Y | N | Y | 15 min admin SMS |
 | `controlled_count_discrepancy` | Urgent | Y | Y | N | Y | None |
 | `controlled_countersign` | High | Y | N | N | N | None |
 | `med_due_reminder` | Normal | Y | N | N | N | 30 min overdue alert |
@@ -600,6 +614,7 @@ type NotificationType =
   | 'note_sent_back'
   | 'med_refusal'
   | 'med_possible_double_dose'
+  | 'med_given_after_stop'
   | 'controlled_count_discrepancy'
   | 'controlled_countersign'
   | 'med_due_reminder'
@@ -891,6 +906,7 @@ The escalation engine uses delayed Cloud Tasks tasks. When a notification is sen
 | `note_sent_back` | Push to caregiver at 0 min | Push reminder at 8 hr | Push reminder at 24 hr |
 | `incident_review_needed` | Push + SMS at 0 hr | Repeat daily | Stop after 3 days (escalation_exhausted) |
 | `med_possible_double_dose` | Push + SMS to supervisors at 0 min | SMS to agency admin at 15 min | -- (max 2 levels) |
+| `med_given_after_stop` | Push + SMS to supervisors at 0 min | SMS to agency admin at 15 min | -- (max 2 levels) |
 | `med_due_reminder` | Push to caregiver at -30 min | Push to supervisor at +30 min (overdue) | -- (max 2 levels) |
 
 ### Escalation State Tracking
@@ -945,6 +961,7 @@ When a profile is created, default notification preferences are seeded based on 
 | `note_sent_back` | Y | N | N | N | N | N | N | N | N |
 | `med_refusal` | N | N | N | Y | N | N | Y | N | N |
 | `med_possible_double_dose` | N | N | N | Y | Y | N | Y | Y | N |
+| `med_given_after_stop` | N | N | N | Y | Y | N | Y | Y | N |
 | `controlled_count_discrepancy` | N | N | N | Y | Y | N | Y | Y | N |
 | `controlled_countersign` | Y | N | N | Y | N | N | Y | N | N |
 | `med_due_reminder` | Y | N | N | N | N | N | N | N | N |

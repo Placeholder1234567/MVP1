@@ -11,6 +11,7 @@ import {
 	fallbackSummary,
 	hhmm,
 	localInstant,
+	isClinicalAdvice,
 	nextSteps,
 	localTime,
 	plainBriefing,
@@ -144,9 +145,12 @@ export async function summarizeDay(
 				true
 			)
 		);
+		// The prompt asks for facts only; anything that still reads as clinical
+		// advice falls back to the rules-based text instead of reaching a supervisor.
+		const summary = plainBriefing(value.summary);
 		return {
-			summary: plainBriefing(value.summary),
-			highlights: enhanced ? value.highlights : [],
+			summary: isClinicalAdvice(summary) ? fallback.summary : summary,
+			highlights: enhanced ? value.highlights.filter((h) => !isClinicalAdvice(h.text)) : [],
 			recommendations,
 			fallback: false,
 			snapshot

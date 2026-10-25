@@ -250,17 +250,17 @@
 										placeholder={String(VITAL_LIMITS[p.lo])}
 										bind:value={form.limits[p.lo]}
 									/></label
-								><label
-									>{p.label}, high ({p.unit})<input
-										class="input"
-										type="number"
-										step="any"
-										min={p.min}
-										max={p.max}
-										placeholder={String(VITAL_LIMITS[p.hi])}
-										bind:value={form.limits[p.hi]}
-									/></label
-								>
+								>{#if p.hi}<label
+										>{p.label}, high ({p.unit})<input
+											class="input"
+											type="number"
+											step="any"
+											min={p.min}
+											max={p.max}
+											placeholder={String(VITAL_LIMITS[p.hi])}
+											bind:value={form.limits[p.hi]}
+										/></label
+									>{/if}
 							</div>{/each}
 					</fieldset>{/if}
 				<div class="actions">

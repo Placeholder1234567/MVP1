@@ -66,3 +66,19 @@ export async function recordPlanChange(
 		new_values: { ...after, operator }
 	});
 }
+
+/** A full data export by the operator, with row counts and file checksums. */
+export async function recordAgencyExport(
+	tx: Tx,
+	agencyId: string,
+	manifest: { operationId: string; tables: Record<string, { rows: number; sha256: string }> },
+	operator: string
+) {
+	await tx.insert(auditLog).values({
+		agency_id: agencyId,
+		table_name: 'agency_export',
+		record_id: manifest.operationId,
+		action: 'INSERT',
+		new_values: { format: 'csv', tables: manifest.tables, operator }
+	});
+}
