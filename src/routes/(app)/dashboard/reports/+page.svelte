@@ -6,7 +6,11 @@
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { addDays, localTime } from '#lib/domain/index.ts';
-	import { CLINICAL_TYPES, type ClinicalType } from '#lib/domain/clinical-export.ts';
+	import {
+		CLINICAL_TYPE_FEATURE,
+		CLINICAL_TYPES,
+		type ClinicalType
+	} from '#lib/domain/clinical-export.ts';
 	import CoverageExport from '#lib/app/CoverageExport.svelte';
 	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	const app = useSession();
@@ -84,13 +88,26 @@
 		goals: 'Goal progress and trial history'
 	};
 	// Without care reports on the plan, admins can still give one person their
-	// record (right of access, HIPAA 164.524): exportPersonRecord.
+	// record (right of access, HIPAA 164.524): exportPersonRecord, which covers
+	// every home the person lived in, including people no longer served.
 	const personRecordOnly = $derived(
 		!app.user.features.includes('reports') && app.user.role === 'admin'
 	);
+	// Admins also get one person's record of a kind their plan no longer has.
+	const usePersonRecord = $derived(
+		personRecordOnly ||
+			(app.user.role === 'admin' &&
+				!!clientId &&
+				!app.user.features.includes(CLINICAL_TYPE_FEATURE[type]))
+	);
+	const everyone = $derived(
+		[...app.people].sort(
+			(a, b) => Number(!a.active) - Number(!b.active) || (a.name ?? '').localeCompare(b.name ?? '')
+		)
+	);
 	async function download(event: SubmitEvent) {
 		event.preventDefault();
-		if (busy || !app.homeId || !canConnect || (personRecordOnly && !clientId)) return;
+		if (busy || !canConnect || (personRecordOnly ? !clientId : !app.homeId)) return;
 		guard.change(context());
 		const stillCurrent = guard.capture();
 		const original = context();
@@ -98,7 +115,7 @@
 		const p = {
 			type,
 			format,
-			homeId: app.homeId,
+			homeId: app.homeId ?? '',
 			clientId: clientId || undefined,
 			fromDay,
 			toDay,
@@ -116,9 +133,9 @@
 					'Wait for this device’s saved changes to finish syncing before downloading a care report.';
 				return;
 			}
-			const file = personRecordOnly
+			const file = usePersonRecord
 				? await trpc.report.exportPersonRecord.mutate(
-						{ ...p, clientId },
+						{ type, format, clientId, fromDay, toDay, approvedOnly },
 						{ signal: request.signal }
 					)
 				: await trpc.report.exportClinical.mutate(p, { signal: request.signal });
@@ -158,7 +175,8 @@
 	<a class="textbtn" href={resolve('/(app)/dashboard/imports')}>Review CSV imports →</a>
 	<p class="muted">
 		Download an audited report from the server. Dates include both selected days in {app.user
-			.timeZone}. Available reports follow your agency’s plan. Connect and choose a home to export.
+			.timeZone}. Available reports follow your agency’s plan; a person’s own record is always
+		available to admins. Connect and choose a home to export.
 	</p>
 	<a class="textbtn" href={resolve('/(app)/dashboard/timesheets')}>Payroll and timesheets →</a>
 	{#if page.data.user?.features?.includes('mar')}<a
@@ -181,10 +199,10 @@
 			<select id="clinical-report-type" class="input" bind:value={type}>
 				{#each CLINICAL_TYPES as item (item)}<option value={item}>{labels[item]}</option>{/each}
 			</select>
-			<p class="muted">
-				Home: {app.homes.find((h) => h.id === app.homeId)?.name ??
-					'Choose a home in the app navigation'}
-			</p>
+			{#if !personRecordOnly}<p class="muted">
+					Home: {app.homes.find((h) => h.id === app.homeId)?.name ??
+						'Choose a home in the app navigation'}
+				</p>{/if}
 			<label for="clinical-report-person">Person</label>
 			<select
 				id="clinical-report-person"
@@ -193,8 +211,8 @@
 				required={personRecordOnly}
 			>
 				<option value="">{personRecordOnly ? 'Choose a person' : 'Everyone in this home'}</option>
-				{#each app.currentPeople as person (person.id)}<option value={person.id}
-						>{person.name}</option
+				{#each personRecordOnly ? everyone : app.currentPeople as person (person.id)}<option
+						value={person.id}>{person.name}{person.active ? '' : ' (no longer served)'}</option
 					>{/each}
 			</select>
 			<div class="grid">
@@ -248,11 +266,9 @@
 				class="btn"
 				disabled={busy ||
 					!canConnect ||
-					!app.homeId ||
+					(personRecordOnly ? !clientId : !app.homeId) ||
 					!!app.pending ||
-					app.checkingSync ||
-					(personRecordOnly && !clientId)}
-				>{busy ? 'Preparing report…' : 'Download care report'}</button
+					app.checkingSync}>{busy ? 'Preparing report…' : 'Download care report'}</button
 			>
 		</form>
 		{#if message}<p class="callout" role="status">{message}</p>{/if}

@@ -6,19 +6,21 @@ import { and, eq } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 
-const { closeDb, withService } = await import('../../../src/lib/server/db');
+const { closeDb, withService, withUser } = await import('../../../src/lib/server/db');
+const { exportClinical } = await import('../../../src/lib/server/services/report/index.ts');
 const s = await import('../../../src/lib/server/db/schema');
 const { getCurrentUser } = await import('../../../src/lib/server/services/auth');
 const { appRouter } = await import('../../../src/lib/server/trpc/router');
 const mw = await import('../../../src/lib/server/trpc/middleware');
 
 const createCaller = mw.createCallerFactory(appRouter);
-const [agency, home, person, admin, supervisor] = Array.from({ length: 5 }, () => randomUUID());
+const [agency, home, newHome, person, admin, supervisor] = Array.from({ length: 6 }, () =>
+	randomUUID()
+);
 const uid = (id: string) => `person-record-${id}`;
 const as = async (id: string) => createCaller({ user: await getCurrentUser(uid(id)), request: {} });
 const input = {
 	type: 'incidents' as const,
-	homeId: home,
 	clientId: person,
 	fromDay: '2026-03-01',
 	toDay: '2026-03-31',
@@ -35,7 +37,10 @@ beforeAll(async () => {
 			subscription_tier: 'starter',
 			timezone: 'UTC'
 		});
-		await t.insert(s.homes).values({ id: home, agency_id: agency, name: 'Synthetic home' });
+		await t.insert(s.homes).values([
+			{ id: home, agency_id: agency, name: 'Synthetic home' },
+			{ id: newHome, agency_id: agency, name: 'Synthetic new home' }
+		]);
 		await t.insert(s.profiles).values(
 			(
 				[
@@ -63,14 +68,19 @@ beforeAll(async () => {
 			description: 'Synthetic fall before the downgrade.',
 			occurred_at: new Date('2026-03-10T12:00:00Z')
 		});
+		// Since then they moved home (incidents stay with the old home) and left.
+		await t
+			.update(s.clients)
+			.set({ home_id: newHome, active: false })
+			.where(eq(s.clients.id, person));
 	});
 });
 
 afterAll(closeDb);
 
-it('lets an admin download one person’s record without care reports on the plan', async () => {
+it('lets an admin download one person’s record from every home, after a downgrade and after they left', async () => {
 	const adminCaller = await as(admin);
-	await expect(adminCaller.report.exportClinical(input)).rejects.toThrow();
+	await expect(adminCaller.report.exportClinical({ ...input, homeId: home })).rejects.toThrow();
 	const file = await adminCaller.report.exportPersonRecord(input);
 	expect(file.rows).toBe(1);
 	expect(file.content).toContain('Synthetic fall before the downgrade.');
@@ -91,4 +101,11 @@ it('is for admins and one person only', async () => {
 			clientId: undefined as unknown as string
 		})
 	).rejects.toThrow();
+	// The service checks the role itself, whatever the caller.
+	const user = await getCurrentUser(uid(supervisor));
+	await expect(
+		withUser(user!.claims, {}, (tx) =>
+			exportClinical(tx, user!, input, {}, { rightOfAccess: true })
+		)
+	).rejects.toThrow('for admins');
 });
