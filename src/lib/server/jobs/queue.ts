@@ -119,38 +119,52 @@ function queuePath(queue: string) {
 	return client.queuePath(project, location, `${prefix}${queue}`);
 }
 
+/** gRPC DEADLINE_EXCEEDED and UNAVAILABLE: worth another try. */
+const TRANSIENT = new Set([4, 14]);
+const CREATE_ATTEMPTS = 3;
+const CREATE_BACKOFF_MS = 250;
+
 const cloudTasks: Driver = {
 	async enqueue(job, queue, payload, opts) {
 		const parent = queuePath(queue);
 		const { maxAttemptsFor } = await import('./registry.ts');
 		const workerUrl = env('WORKER_URL');
-		try {
-			await client!.createTask({
-				parent,
-				task: {
-					name: opts.taskName ? `${parent}/tasks/${opts.taskName}` : undefined,
-					scheduleTime: opts.delaySeconds
-						? { seconds: Math.floor(Date.now() / 1000) + opts.delaySeconds }
-						: undefined,
-					httpRequest: {
-						httpMethod: 'POST',
-						url: `${workerUrl}/api/jobs/${job}`,
-						headers: {
-							'content-type': 'application/json',
-							// Lets the handler know its last attempt (Cloud Tasks only sends the retry count).
-							'x-guad-max-attempts': String(maxAttemptsFor(job))
-						},
-						body: Buffer.from(JSON.stringify(payload ?? {})).toString('base64'),
-						// Google signs a token for the worker's service account; the
-						// endpoint accepts nothing else (jobs/oidc.ts).
-						oidcToken: { serviceAccountEmail: env('WORKER_SERVICE_ACCOUNT'), audience: workerUrl }
-					}
+		const request = {
+			parent,
+			task: {
+				name: opts.taskName ? `${parent}/tasks/${opts.taskName}` : undefined,
+				scheduleTime: opts.delaySeconds
+					? { seconds: Math.floor(Date.now() / 1000) + opts.delaySeconds }
+					: undefined,
+				httpRequest: {
+					httpMethod: 'POST' as const,
+					url: `${workerUrl}/api/jobs/${job}`,
+					headers: {
+						'content-type': 'application/json',
+						// Lets the handler know its last attempt (Cloud Tasks only sends the retry count).
+						'x-guad-max-attempts': String(maxAttemptsFor(job))
+					},
+					body: Buffer.from(JSON.stringify(payload ?? {})).toString('base64'),
+					// Google signs a token for the worker's service account; the
+					// endpoint accepts nothing else (jobs/oidc.ts).
+					oidcToken: { serviceAccountEmail: env('WORKER_SERVICE_ACCOUNT'), audience: workerUrl }
 				}
-			});
-		} catch (e) {
-			// ALREADY_EXISTS: a task with this name was queued already. That's the point of naming it.
-			if ((e as { code?: number }).code === 6) return;
-			throw e;
+			}
+		};
+		for (let attempt = 1; ; attempt++) {
+			try {
+				await client!.createTask(request);
+				return;
+			} catch (e) {
+				const code = (e as { code?: number }).code;
+				// ALREADY_EXISTS: a task with this name was queued already. That's the point of naming it.
+				if (code === 6) return;
+				// The client doesn't retry createTask, since an unnamed task could be
+				// created twice. A named one can't, so a brief outage is retried:
+				// a lost escalation step or delivery would otherwise end its chain.
+				if (!opts.taskName || !TRANSIENT.has(code ?? -1) || attempt >= CREATE_ATTEMPTS) throw e;
+				await new Promise((r) => setTimeout(r, CREATE_BACKOFF_MS * 4 ** (attempt - 1)));
+			}
 		}
 	},
 	async cancel(queue, taskName) {
