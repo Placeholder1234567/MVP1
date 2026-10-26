@@ -12,6 +12,7 @@
 	import VitalTrend from '#lib/app/VitalTrend.svelte';
 	import HealthWatch from '#lib/app/HealthWatch.svelte';
 	import GoalGlance from '#lib/app/GoalGlance.svelte';
+	import DisclosureLog from '#lib/app/DisclosureLog.svelte';
 	import { parseJson } from '#lib/app/session.svelte.ts';
 	import {
 		CASE_NOTE_CATEGORIES,
@@ -204,6 +205,8 @@
 		{#if more}<button class="btn sec" disabled={busy} onclick={() => load(true)}>Older notes</button
 			>{/if}
 	{/if}
+
+	<DisclosureLog clientId={id} today={localTime(new Date(), app.user.timeZone).day} />
 </section>
 
 <style>
