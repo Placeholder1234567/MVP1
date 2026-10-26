@@ -113,3 +113,48 @@ it('fails closed for development inspection and fire when a real delivery provid
 	expect(runJob).not.toHaveBeenCalled();
 	await cancel('notifications-escalate', 'guarded');
 });
+
+function cloudEnv() {
+	vi.stubEnv('JOBS_DRIVER', 'cloud-tasks');
+	vi.stubEnv('GOOGLE_CLOUD_PROJECT', 'test');
+	vi.stubEnv('GOOGLE_CLOUD_REGION', 'test');
+	vi.stubEnv('WORKER_URL', 'https://worker.example.test');
+	vi.stubEnv('WORKER_SERVICE_ACCOUNT', 'worker@test.iam.gserviceaccount.com');
+}
+const grpcError = (code: number) => Object.assign(new Error('Synthetic gRPC error'), { code });
+
+it('retries a named Cloud Task through a brief outage', async () => {
+	vi.useFakeTimers();
+	cloudEnv();
+	cloud.createTask
+		.mockRejectedValueOnce(grpcError(14))
+		.mockRejectedValueOnce(grpcError(4))
+		.mockResolvedValueOnce({});
+	const { enqueue } = await import('../../../src/lib/server/jobs/queue');
+	const done = enqueue('sync-window', {}, { taskName: 'named' });
+	await vi.runAllTimersAsync();
+	await done;
+	expect(cloud.createTask).toHaveBeenCalledTimes(3);
+});
+
+it('gives up after three tries, and never retries an unnamed task or a lasting error', async () => {
+	vi.useFakeTimers();
+	cloudEnv();
+	const { enqueue } = await import('../../../src/lib/server/jobs/queue');
+
+	cloud.createTask.mockRejectedValue(grpcError(14));
+	const named = enqueue('sync-window', {}, { taskName: 'named' }).catch((e) => e);
+	await vi.runAllTimersAsync();
+	expect((await named).code).toBe(14);
+	expect(cloud.createTask).toHaveBeenCalledTimes(3);
+
+	cloud.createTask.mockClear();
+	await expect(enqueue('sync-window', {})).rejects.toMatchObject({ code: 14 });
+	expect(cloud.createTask).toHaveBeenCalledTimes(1);
+
+	cloud.createTask.mockClear().mockRejectedValue(grpcError(7));
+	await expect(enqueue('sync-window', {}, { taskName: 'named' })).rejects.toMatchObject({
+		code: 7
+	});
+	expect(cloud.createTask).toHaveBeenCalledTimes(1);
+});
