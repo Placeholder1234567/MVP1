@@ -8,12 +8,21 @@
 // Every account below uses DEV_PASSWORD. It exists only in the emulator.
 import { randomUUID } from 'node:crypto';
 import { closeDb, withService } from './db';
-import { agencies, clients, homes, medications, profiles, rooms } from './db/schema';
+import { agencies, clients, deviceTokens, homes, medications, profiles, rooms } from './db/schema';
 import { DEMO_STAFF, DEV_PASSWORD } from './demo-accounts';
 import { createIdentity, deleteIdentity } from './identity';
 
 export { DEV_PASSWORD } from './demo-accounts';
-const STAFF = DEMO_STAFF;
+// Only the guarded browser runner requests these disposable accounts. Separate
+// profiles keep destructive desktop/phone tests independent of suite order.
+const PUSH_FIXTURES = ['desktop', 'phone'].map((project) => ({
+	name: `Synthetic Push ${project}`,
+	email: `push-${project}@guad.test`,
+	role: 'caregiver' as const,
+	homes: ['oak'] as const,
+	med: false
+}));
+const STAFF = [...DEMO_STAFF, ...(process.env.GUAD_E2E === '1' ? PUSH_FIXTURES : [])];
 
 async function main() {
 	if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
@@ -84,6 +93,19 @@ async function main() {
 				med_certified: s.med
 			}))
 		);
+		if (process.env.GUAD_E2E === '1') {
+			await tx.insert(deviceTokens).values(
+				staff
+					.filter((s) => PUSH_FIXTURES.some((f) => f.email === s.email))
+					.map((s) => ({
+						agency_id: agencyId,
+						profile_id: s.profileId,
+						// Opaque synthetic registration; never provisioned with a provider.
+						token: `synthetic-e2e-${randomUUID()}`,
+						platform: 'web'
+					}))
+			);
+		}
 		const people = [
 			{ name: 'Marcus Demo', first: 'Marcus', home: homeIds.oak },
 			{ name: 'Rosa Demo', first: 'Rosa', home: homeIds.oak },
