@@ -70,6 +70,11 @@ export async function setScheduleSlot(
 ) {
 	if (user.role === 'caregiver') throw new ServiceError('FORBIDDEN', 'Supervisor access required');
 	requireOpenHome(await scheduleHome(tx, user.agencyId, input.homeId));
+	// The staff member first, then the slot: the same order as accepting a
+	// coverage offer (respondCoverage), so the two can't deadlock.
+	const staff = input.profileId
+		? await asService(tx, (t) => scheduleStaff(t, user.agencyId, input.profileId!))
+		: null;
 	// Locked like a coverage reply, so an offer accepted meanwhile isn't silently replaced.
 	const current = await asService(tx, (t) => lockSlot(t, user.agencyId, input));
 	if (input.seen !== undefined && (current?.assigned_to ?? null) !== input.seen)
@@ -81,7 +86,6 @@ export async function setScheduleSlot(
 	if (input.onlyOpen && (current?.assigned_to || current?.status === 'filling'))
 		throw new ServiceError('RULE_VIOLATION', 'This shift is no longer open');
 	if (input.profileId) {
-		const staff = await asService(tx, (t) => scheduleStaff(t, user.agencyId, input.profileId!));
 		if (!staff?.active || !staff.home_ids?.includes(input.homeId))
 			throw new ServiceError(
 				'VALIDATION_FAILED',
