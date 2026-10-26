@@ -207,15 +207,26 @@ export function overDailyLimit(channel: Channel, priority: number, sentLastDay: 
 }
 
 /**
+ * Sent only to staff working right now, about work due now (a dose coming
+ * up, the effect of one just given). Quiet hours are for time off, so they
+ * never hold these: held until 06:00, an overnight caregiver's reminder for
+ * a 02:00 dose would arrive hours after it was due.
+ */
+export const ON_SHIFT_TYPES: ReadonlySet<string> = new Set(['med_due_reminder', 'prn_followup']);
+
+/**
  * Whether a send can go out now. Urgent (1) and high (2) priorities ignore
- * quiet hours; email ignores them too (notifications.md "Quiet Hours").
+ * quiet hours, as do on-shift reminders (ON_SHIFT_TYPES); email ignores them
+ * too (notifications.md "Quiet Hours").
  */
 export function canSendNow(
 	channel: Channel,
 	priority: number,
 	localTimeHHMM: string,
-	window?: { start: string; end: string }
+	window?: { start: string; end: string },
+	type?: string
 ): boolean {
 	if (channel === 'email' || priority <= 2) return true;
+	if (type && ON_SHIFT_TYPES.has(type)) return true;
 	return !inQuietHours(localTimeHHMM, window);
 }

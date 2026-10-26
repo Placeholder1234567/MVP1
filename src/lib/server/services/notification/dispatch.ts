@@ -83,7 +83,7 @@ export async function dispatchNotifications(
 			overrides.quietHours ??
 			(row.quietStart && row.quietEnd ? { start: row.quietStart, end: row.quietEnd } : undefined);
 		// Held for quiet hours: stays pending, and the sweeper sends it later.
-		if (!canSendNow(channel, row.priority, `${now.hour}:${now.minute}`, window)) {
+		if (!canSendNow(channel, row.priority, `${now.hour}:${now.minute}`, window, row.type)) {
 			stats.held++;
 			continue;
 		}
