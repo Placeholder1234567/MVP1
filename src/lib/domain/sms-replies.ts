@@ -6,6 +6,7 @@ export type SmsReply =
 	| { kind: 'answer'; reply: 'accepted' | 'declined'; code?: string }
 	| { kind: 'stop' }
 	| { kind: 'start' }
+	| { kind: 'help' }
 	| { kind: 'unknown' };
 
 const YES = new Set(['YES', 'Y', 'SURE', 'OK', 'YEP']);
@@ -14,6 +15,8 @@ const NO = new Set(['NO', 'N', 'NOPE', 'CANT', "CAN'T"]);
 // choosing SMS for the person too.
 const STOP = new Set(['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT']);
 const START = new Set(['START', 'UNSTOP']);
+// Carrier help keywords (CTIA): always answered with who we are and how to opt out.
+const HELP = new Set(['HELP', 'INFO']);
 
 export function parseSmsReply(body: string): SmsReply {
 	const words = body
@@ -26,6 +29,7 @@ export function parseSmsReply(body: string): SmsReply {
 	if (!first) return { kind: 'unknown' };
 	if (STOP.has(first)) return { kind: 'stop' };
 	if (START.has(first)) return { kind: 'start' };
+	if (HELP.has(first)) return { kind: 'help' };
 	const reply = YES.has(first) ? 'accepted' : NO.has(first) ? 'declined' : null;
 	if (!reply) return { kind: 'unknown' };
 	const code = rest.find((w) => /^\d{4}$/.test(w));
@@ -59,5 +63,6 @@ export const SMS_REPLY_TEXT = {
 	closed: 'Guad: This offer is closed. Open the app or contact your supervisor.',
 	accepted: 'Guad: Thanks! The shift is yours. Details are in the app.',
 	declined: "Guad: Thanks, we've noted you can't cover this shift.",
-	started: 'Guad: Text messages are back on. Reply STOP to opt out.'
+	started: 'Guad: Text messages are back on. Reply STOP to opt out.',
+	help: 'Guad: Work alerts from your agency. Reply YES or NO to shift offers, STOP to opt out. Msg&data rates may apply. For help, ask your supervisor.'
 } as const;
