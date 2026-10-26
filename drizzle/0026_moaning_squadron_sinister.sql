@@ -18,7 +18,7 @@ CREATE TABLE "report_schedules" (
 --> statement-breakpoint
 ALTER TABLE "report_schedules" ADD CONSTRAINT "report_schedules_agency_id_agencies_id_fk" FOREIGN KEY ("agency_id") REFERENCES "public"."agencies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_schedules" ADD CONSTRAINT "report_schedules_profile_id_profiles_id_fk" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "report_schedules" ADD CONSTRAINT "report_schedules_home_id_homes_id_fk" FOREIGN KEY ("home_id") REFERENCES "public"."homes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "report_schedules" ADD CONSTRAINT "report_schedules_home_id_homes_id_fk" FOREIGN KEY ("home_id") REFERENCES "public"."homes"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "report_schedules_agency_id_idx" ON "report_schedules" USING btree ("agency_id");--> statement-breakpoint
 CREATE INDEX "report_schedules_profile_id_idx" ON "report_schedules" USING btree ("profile_id");--> statement-breakpoint
 CREATE INDEX "report_schedules_due_idx" ON "report_schedules" USING btree ("active","next_run_on");

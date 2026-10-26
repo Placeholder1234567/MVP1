@@ -10,7 +10,13 @@ export type ReportFrequency = (typeof REPORT_FREQUENCIES)[number];
 /** Formats a scheduled report can come in (the ones meant for people, not systems). */
 export const SCHEDULED_FORMATS = ['csv', 'pdf'] as const;
 
-/** How many schedules one person may have. */
+/**
+ * Local hour from which a due report is built: after the overnight shift
+ * (23:00-07:00) ends, so its notes and doses have had time to sync.
+ */
+export const REPORT_RUN_HOUR = 9;
+
+/** How many schedules one person may have running. */
 export const MAX_SCHEDULES = 10;
 
 /** How long a scheduled report stays downloadable. */

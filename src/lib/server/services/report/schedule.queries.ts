@@ -1,6 +1,6 @@
 import { and, asc, eq, lte } from 'drizzle-orm';
 import type { Tx } from '../../db';
-import { agencies, reportSchedules } from '../../db/schema';
+import { agencies, profiles, reportSchedules } from '../../db/schema';
 
 const columns = {
 	id: reportSchedules.id,
@@ -13,6 +13,7 @@ const columns = {
 	active: reportSchedules.active,
 	nextRunOn: reportSchedules.next_run_on,
 	lastRunOn: reportSchedules.last_run_on,
+	lastReportId: reportSchedules.last_report_id,
 	createdAt: reportSchedules.created_at
 };
 
@@ -76,6 +77,28 @@ export async function claimRun(tx: Tx, id: string, expected: string, next: strin
 	return rows.length > 0;
 }
 
+/** A stopped schedule of this owner, on again from `next`. Runs as app_service. */
+export async function reactivateSchedule(
+	tx: Tx,
+	agencyId: string,
+	profileId: string,
+	id: string,
+	next: string
+) {
+	const [row] = await tx
+		.update(reportSchedules)
+		.set({ active: true, next_run_on: next, updated_at: new Date() })
+		.where(
+			and(
+				eq(reportSchedules.agency_id, agencyId),
+				eq(reportSchedules.profile_id, profileId),
+				eq(reportSchedules.id, id)
+			)
+		)
+		.returning(columns);
+	return row;
+}
+
 /** Undoes a claim whose report could not be queued, so the next sweep tries again. */
 export async function releaseRun(
 	tx: Tx,
@@ -104,4 +127,16 @@ export async function finishRun(
 				: { active: false, updated_at: new Date() }
 		)
 		.where(eq(reportSchedules.id, id));
+}
+
+/** The role of a report's owner, for their alert (null once they have left). */
+export async function ownerRole(tx: Tx, agencyId: string, profileId: string) {
+	const [row] = await tx
+		.select({ role: profiles.role })
+		.from(profiles)
+		.where(
+			and(eq(profiles.agency_id, agencyId), eq(profiles.id, profileId), eq(profiles.active, true))
+		)
+		.limit(1);
+	return row?.role ?? null;
 }

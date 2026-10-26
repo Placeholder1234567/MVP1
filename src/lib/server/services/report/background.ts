@@ -20,7 +20,7 @@ import {
 	recentCareReports
 } from './background.queries';
 import { clinicalScope } from './clinical.queries';
-import { scheduledReportReady } from './schedule-notify';
+import { scheduledReportFailed, scheduledReportReady } from './schedule-notify';
 
 export const BackgroundRequest = ClinicalExport.extend({ expectedProfileId: z.uuid() });
 export const BackgroundId = z.object({ id: z.uuid(), expectedProfileId: z.uuid() });
@@ -115,6 +115,7 @@ export async function queueCareReport(
 					error: 'Could not queue this report. Request a new report when connected.'
 				})
 			);
+			if (options.scheduleId) await scheduledReportFailed(user, id, p);
 		}
 	});
 	return {
@@ -287,6 +288,12 @@ export async function generateCareReport(input: { id: string }): Promise<{ statu
 				error: 'Could not generate this report. Try a smaller period or a different format.'
 			})
 		);
+		if (parsed.data.scheduleId && job.requested_by)
+			await scheduledReportFailed(
+				{ agencyId: job.agency_id, profileId: job.requested_by },
+				job.id,
+				parsed.data.input
+			);
 		return { status: 'failed' };
 	};
 	if (

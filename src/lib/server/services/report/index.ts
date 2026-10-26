@@ -103,5 +103,6 @@ export {
 	listReportSchedules,
 	NewReportSchedule,
 	ReportScheduleId,
+	resumeReportSchedule,
 	sweepReportSchedules
 } from './schedule';

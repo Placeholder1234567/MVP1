@@ -15,6 +15,7 @@
 	import {
 		MAX_SCHEDULES,
 		REPORT_FREQUENCIES,
+		REPORT_RUN_HOUR,
 		SCHEDULED_REPORT_DAYS,
 		scheduleLabel,
 		WEEKDAY_LABEL,
@@ -62,10 +63,62 @@
 			message = 'Scheduled. You’ll get an alert when each report is ready.';
 			await load();
 		} catch (e) {
-			message =
-				(e as { data?: { code?: string } })?.data?.code === 'BAD_REQUEST' && e instanceof Error
-					? e.message
-					: 'Could not schedule this report. Connect and check your access to this home.';
+			message = serviceMessage(
+				e,
+				'Could not schedule this report. Connect and check your access to this home.'
+			);
+		} finally {
+			busy = false;
+		}
+	}
+
+	/** The server's own wording for rule and input problems (no care details). */
+	function serviceMessage(e: unknown, fallback: string) {
+		const code = (e as { data?: { code?: string } })?.data?.code;
+		return (code === 'BAD_REQUEST' || code === 'CONFLICT') && e instanceof Error
+			? e.message
+			: fallback;
+	}
+
+	async function resume(id: string) {
+		busy = true;
+		message = '';
+		try {
+			await trpc.report.resumeSchedule.mutate({ id });
+			message = 'Scheduled report turned back on.';
+			await load();
+		} catch (e) {
+			message = serviceMessage(
+				e,
+				'Could not turn it back on. You may still not have access to this home or report.'
+			);
+		} finally {
+			busy = false;
+		}
+	}
+
+	/** The latest report a schedule made, from any home (it's listed under its own home too). */
+	async function downloadLatest(id: string) {
+		busy = true;
+		message = '';
+		try {
+			const file = await trpc.report.downloadBackground.mutate({
+				id,
+				expectedProfileId: app.user.profileId
+			});
+			const body =
+				file.encoding === 'base64'
+					? Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0))
+					: file.content;
+			const url = URL.createObjectURL(new Blob([body], { type: file.contentType }));
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = file.filename;
+			link.click();
+			setTimeout(() => URL.revokeObjectURL(url), 1000);
+			message = 'Downloaded. Keep exports in approved agency storage.';
+		} catch {
+			message = 'That report isn’t ready yet, or it has expired (reports are kept 7 days).';
 		} finally {
 			busy = false;
 		}
@@ -91,7 +144,8 @@
 	<p class="muted">
 		Get the same report every week or month, for the period just ended, for the home chosen above.
 		Each is ready to download here for {SCHEDULED_REPORT_DAYS} days, and you get an alert (no care details
-		in it). Up to {MAX_SCHEDULES}. It stops if you lose access to the home.
+		in it). Up to {MAX_SCHEDULES} running. Reports are built from {REPORT_RUN_HOUR}:00, after the
+		overnight shift. It stops if you lose access to the home.
 	</p>
 	<form class="card pad stack" onsubmit={add} aria-label="Schedule a report">
 		<label
@@ -143,9 +197,23 @@
 						><span class="muted"
 							>{s.active
 								? `Next: ${s.nextRunOn}`
-								: 'Stopped: you no longer have access to this report'}</span
+								: 'Stopped: you lost access to this report. Turn it back on once you have it again.'}</span
 						></span
 					>
+					{#if s.lastReportId}<button
+							class="textbtn"
+							disabled={busy}
+							onclick={() => downloadLatest(s.lastReportId!)}
+							aria-label={`Download the latest ${CLINICAL_TYPE_LABEL[s.type as ClinicalType] ?? s.type} report for ${homeName(s.homeId)}`}
+							>Download latest</button
+						>{/if}
+					{#if !s.active}<button
+							class="textbtn"
+							disabled={busy}
+							onclick={() => resume(s.id)}
+							aria-label={`Turn back on the ${CLINICAL_TYPE_LABEL[s.type as ClinicalType] ?? s.type} schedule for ${homeName(s.homeId)}`}
+							>Turn back on</button
+						>{/if}
 					<button
 						class="textbtn"
 						disabled={busy}

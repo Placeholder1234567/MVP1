@@ -6,6 +6,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import { addDays, localTime } from '#lib/domain/index.ts';
 	import {
+		CLINICAL_TYPE_LABEL,
 		CLINICAL_TYPES,
 		clinicalPeriod,
 		type ClinicalType
@@ -51,14 +52,7 @@
 		app.homes.filter((home) => app.user.role === 'admin' || app.user.homeIds.includes(home.id))
 	);
 	const allowedHome = $derived(availableHomes.some((home) => home.id === app.homeId));
-	const labels: Record<ClinicalType, string> = {
-		notes: 'Signed notes',
-		mar: 'Medication administration',
-		health: 'Health entries',
-		incidents: 'Incident log',
-		attendance: 'Attendance',
-		goals: 'Goal progress and trial history'
-	};
+	const labels = CLINICAL_TYPE_LABEL;
 	function scopeLabel(item: Job) {
 		return item.clientId
 			? (app.people.find((person) => person.id === item.clientId && person.home_id === item.homeId)

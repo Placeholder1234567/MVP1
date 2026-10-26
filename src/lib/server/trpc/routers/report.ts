@@ -17,6 +17,7 @@ import {
 	createReportSchedule,
 	deleteReportSchedule,
 	listReportSchedules,
+	resumeReportSchedule,
 	NewReportSchedule,
 	ReportScheduleId
 } from '../../services/report/index.ts';
@@ -33,6 +34,9 @@ export const reportRouter = router({
 	deleteSchedule: scheduler
 		.input(ReportScheduleId)
 		.mutation(({ ctx, input }) => deleteReportSchedule(ctx.db, ctx.user, input)),
+	resumeSchedule: scheduler
+		.input(ReportScheduleId)
+		.mutation(({ ctx, input }) => resumeReportSchedule(ctx.db, ctx.user, input)),
 	exportCoverage: featureRoleProcedure(['reports_basic', 'reports'], 'supervisor')
 		.input(CoverageExport)
 		.mutation(({ ctx, input }) => exportCoverage(ctx.db, ctx.user, input, ctx.request)),

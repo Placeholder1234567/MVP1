@@ -1990,7 +1990,7 @@ export const reportSchedules = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     home_id: uuid('home_id')
       .notNull()
-      .references(() => homes.id, { onDelete: 'cascade' }),
+      .references(() => homes.id, { onDelete: 'restrict' }),
     // domain/clinical-export.ts CLINICAL_TYPES
     type: text('type').notNull(),
     // csv | pdf

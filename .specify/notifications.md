@@ -414,7 +414,7 @@ Update `notifications.sent_at`
 | **Recipients** | The schedule's owner only |
 | **Channels** | In-app + push + email |
 | **Priority** | Normal |
-| **Template** | `"Your scheduled report is ready: {report type}, {from} to {to}"`. No home, person or contents. The file is downloaded in the app after sign-in, kept 7 days. |
+| **Template** | `"Your scheduled report is ready: {report type}, {from} to {to}"`, or `"Your scheduled report could not be built: {report type}, {from} to {to}. Download it by hand from Reports."` when building or queueing it failed. No home, person or contents. The file is downloaded in the app after sign-in, kept 7 days. |
 | **PHI Safety** | Safe. Report type and dates only. |
 | **Deep Link** | `/dashboard/reports/background` |
 | **Escalation** | None |

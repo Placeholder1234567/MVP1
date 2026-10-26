@@ -116,9 +116,12 @@ it('runs each due schedule once, as its owner, for the week before, and says whe
 		created.id
 	);
 
-	// Due on Monday 2026-10-19 (UTC), swept that morning.
+	// Due on Monday 2026-10-19 (UTC). Not built before 09:00, after the
+	// overnight shift; then built once that morning.
 	await makeDue(created.id, '2026-10-19');
-	const monday = new Date('2026-10-19T06:00:00Z');
+	await sweepReportSchedules(new Date('2026-10-19T06:00:00Z'));
+	expect(await jobsFor(created.id)).toHaveLength(0);
+	const monday = new Date('2026-10-19T10:00:00Z');
 	expect((await sweepReportSchedules(monday)).queued).toBeGreaterThanOrEqual(1);
 	await sweepReportSchedules(monday);
 	const jobs = await jobsFor(created.id);
@@ -164,17 +167,52 @@ it('switches a schedule off when its owner loses access to the home', async () =
 			.where(eq(s.profiles.id, owner))
 	);
 	await makeDue(created.id, '2026-10-19');
-	await sweepReportSchedules(new Date('2026-10-19T06:00:00Z'));
+	await sweepReportSchedules(new Date('2026-10-19T10:00:00Z'));
 	expect(await jobsFor(created.id)).toHaveLength(0);
 	expect((await scheduleRow(created.id)).active).toBe(false);
+	// Still stopped while access is missing; back on once it returns.
+	await expect((await as(owner)).report.resumeSchedule({ id: created.id })).rejects.toThrow();
 	await withService((tx) =>
 		tx
 			.update(s.profiles)
 			.set({ home_ids: [home] })
 			.where(eq(s.profiles.id, owner))
 	);
+	const resumed = await (await as(owner)).report.resumeSchedule({ id: created.id });
+	expect(resumed.active).toBe(true);
+	expect(resumed.nextRunOn > '2026-10-19').toBe(true);
 	await (await as(owner)).report.deleteSchedule({ id: created.id });
 	await expect((await as(owner)).report.deleteSchedule({ id: created.id })).rejects.toThrow(
 		'not found'
+	);
+});
+
+it('tells the owner when a scheduled report could not be built', async () => {
+	const created = await (
+		await as(owner)
+	).report.createSchedule({
+		...weekly,
+		homeId: home,
+		type: 'health'
+	});
+	await makeDue(created.id, '2026-10-19');
+	await sweepReportSchedules(new Date('2026-10-19T10:00:00Z'));
+	const [job] = await jobsFor(created.id);
+	setStorageForTests({
+		put: async () => {
+			throw new Error('Synthetic storage failure');
+		},
+		get: async () => null,
+		remove: async () => {}
+	});
+	expect(await generateCareReport({ id: job.id })).toEqual({ status: 'failed' });
+	const [alert] = await withService((tx) =>
+		tx
+			.select()
+			.from(s.notifications)
+			.where(and(eq(s.notifications.profile_id, owner), eq(s.notifications.reference_id, job.id)))
+	);
+	expect(alert.title).toBe(
+		'Your scheduled report could not be built: Health entries, 2026-10-12 to 2026-10-18. Download it by hand from Reports.'
 	);
 });
