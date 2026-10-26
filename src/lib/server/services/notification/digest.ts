@@ -6,6 +6,7 @@
 // only, never client names or clinical detail.
 import { localTime } from '../../../domain/index.ts';
 import { withService } from '../../db';
+import { forEachIsolated } from '../../jobs/isolate.ts';
 import { enqueue } from '../../jobs/queue.ts';
 import { agencyClocks, digestCounts, digestRecipients, homeNames } from './escalation.queries';
 import { notify } from './index';
@@ -19,12 +20,17 @@ export function digestDay(now: Date, timeZone: string): string | null {
 export async function sweepDigests(now = new Date()): Promise<{ queued: number }> {
 	const agencies = await withService((tx) => agencyClocks(tx));
 	let queued = 0;
-	for (const a of agencies) {
-		const day = digestDay(now, a.timeZone);
-		if (!day) continue;
-		await enqueue('daily-digest', { agencyId: a.id }, { taskName: `digest-${a.id}-${day}` });
-		queued++;
-	}
+	await forEachIsolated(
+		'digest agency',
+		agencies,
+		(a) => a.id,
+		async (a) => {
+			const day = digestDay(now, a.timeZone);
+			if (!day) return;
+			await enqueue('daily-digest', { agencyId: a.id }, { taskName: `digest-${a.id}-${day}` });
+			queued++;
+		}
+	);
 	return { queued };
 }
 

@@ -21,6 +21,7 @@ import {
 } from '../../../domain/index.ts';
 import { resolveFeatures } from '../../../entitlements/tier-features.ts';
 import { withService, type Tx } from '../../db';
+import { forEachIsolated } from '../../jobs/isolate.ts';
 import { agencyClocks } from './escalation.queries';
 import { notify, notifyHomeSupervisors } from './index';
 import {
@@ -56,15 +57,20 @@ export async function sweepMedReminders(
 	let due = 0;
 	let overdue = 0;
 	let followups = 0;
-	for (const a of agencies) {
-		// Without the MAR on its plan an agency can't record doses, so every
-		// dose would read as missed.
-		if (!resolveFeatures(a.tier, a.enabledFeatures).has('mar')) continue;
-		const sent = await withService((tx) => remindAgency(tx, a.id, a.timeZone, now));
-		due += sent.due;
-		overdue += sent.overdue;
-		followups += await withService((tx) => prnFollowups(tx, a.id, now));
-	}
+	// Without the MAR on its plan an agency can't record doses, so every
+	// dose would read as missed.
+	const withMar = agencies.filter((a) => resolveFeatures(a.tier, a.enabledFeatures).has('mar'));
+	await forEachIsolated(
+		'med-reminder agency',
+		withMar,
+		(a) => a.id,
+		async (a) => {
+			const sent = await withService((tx) => remindAgency(tx, a.id, a.timeZone, now));
+			due += sent.due;
+			overdue += sent.overdue;
+			followups += await withService((tx) => prnFollowups(tx, a.id, now));
+		}
+	);
 	return { due, overdue, followups };
 }
 
