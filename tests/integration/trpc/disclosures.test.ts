@@ -23,6 +23,7 @@ const PERSON = randomUUID(),
 	STARTER_PERSON = randomUUID(),
 	OTHER_PERSON = randomUUID();
 const [SUP, CARER, STARTER_SUP] = [randomUUID(), randomUUID(), randomUUID()];
+const [ABUSE, FALL, OLD_FALL] = [randomUUID(), randomUUID(), randomUUID()];
 const uid = (id: string) => `disc-${id}`;
 const as = async (id: string) => createCaller({ user: await getCurrentUser(uid(id)), request: {} });
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
@@ -78,6 +79,7 @@ beforeAll(async () => {
 		// reported to the state more than six years ago.
 		await t.insert(s.incidents).values([
 			{
+				id: ABUSE,
 				agency_id: AGENCY,
 				client_id: PERSON,
 				home_id: HOME,
@@ -89,6 +91,7 @@ beforeAll(async () => {
 				notified_parties: ['Supervisor', 'State reporting system']
 			},
 			{
+				id: FALL,
 				agency_id: AGENCY,
 				client_id: PERSON,
 				home_id: HOME,
@@ -98,6 +101,7 @@ beforeAll(async () => {
 				notified_parties: ['Supervisor', 'Family or guardian']
 			},
 			{
+				id: OLD_FALL,
 				agency_id: AGENCY,
 				client_id: PERSON,
 				home_id: HOME,
@@ -105,6 +109,27 @@ beforeAll(async () => {
 				description: 'Synthetic old fall.',
 				occurred_at: daysAgo(7 * 365),
 				notified_parties: ['State reporting system']
+			}
+		]);
+		// When they were saved: the accounting takes the date the state was
+		// marked as told, and who saved it, from the audit history.
+		await t.insert(s.auditLog).values([
+			{
+				agency_id: AGENCY,
+				table_name: 'incidents',
+				record_id: ABUSE,
+				action: 'INSERT',
+				performed_by: CARER,
+				new_values: { notified_parties: ['Supervisor', 'State reporting system'] },
+				created_at: daysAgo(10)
+			},
+			{
+				agency_id: AGENCY,
+				table_name: 'incidents',
+				record_id: OLD_FALL,
+				action: 'INSERT',
+				new_values: { notified_parties: ['State reporting system'] },
+				created_at: daysAgo(7 * 365)
 			}
 		]);
 	});
@@ -205,4 +230,54 @@ it('entries cannot be changed or deleted by app users', async () => {
 			.returning({ id: s.disclosures.id });
 		expect(removed).toEqual([]);
 	});
+});
+
+it('dates a state report by when the state was marked as told, and credits who did it', async () => {
+	// The guardian-only fall is later reported to the state by a supervisor.
+	await (await as(SUP)).incident.markNotified({ id: FALL, party: 'State reporting system' });
+	const { entries } = await (await as(SUP)).client.disclosures({ clientId: PERSON });
+	const fall = entries.find((e) => e.description === 'Incident report (Fall)');
+	expect(fall).toMatchObject({
+		date: day(new Date()),
+		purpose: 'state_incident_report',
+		recordedBy: 'Sam Supervisor',
+		source: 'incident'
+	});
+});
+
+it('refuses dates older than the accounting and purposes it does not know', async () => {
+	await expect(
+		(await as(SUP)).client.recordDisclosure({
+			clientId: PERSON,
+			disclosedOn: day(daysAgo(7 * 365)),
+			recipient: 'Police',
+			description: 'Incident report',
+			purpose: 'law_enforcement'
+		})
+	).rejects.toThrow('last 6 years');
+	await expect(
+		withService((t) =>
+			t.insert(s.disclosures).values({
+				agency_id: AGENCY,
+				client_id: PERSON,
+				disclosed_on: day(new Date()),
+				recipient: 'Synthetic',
+				description: 'Synthetic',
+				purpose: 'court_order'
+			})
+		)
+	).rejects.toThrow();
+	// The database's list is the domain's list.
+	const { DISCLOSURE_PURPOSES } = await import('../../../src/lib/domain/disclosure');
+	for (const purpose of DISCLOSURE_PURPOSES)
+		await withService(async (t) => {
+			await t.insert(s.disclosures).values({
+				agency_id: OTHER,
+				client_id: OTHER_PERSON,
+				disclosed_on: day(new Date()),
+				recipient: 'Synthetic',
+				description: 'Synthetic',
+				purpose
+			});
+		});
 });

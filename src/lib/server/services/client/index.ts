@@ -7,6 +7,7 @@ import { z } from 'zod';
 import {
 	accountingCsv,
 	accountingFrom,
+	ACCOUNTING_YEARS,
 	CASE_NOTE_CATEGORIES,
 	DISCLOSURE_PURPOSES,
 	incidentDisclosure,
@@ -38,6 +39,7 @@ import {
 	selectClients,
 	selectDisclosures,
 	selectStateReportedIncidents,
+	stateReportMarks,
 	selectHealthInfo,
 	updateClientRow,
 	upsertHealthInfo
@@ -296,6 +298,12 @@ export async function recordDisclosure(
 	const today = localTime(new Date(), author.timeZone).day;
 	if (d.disclosedOn > today)
 		throw new ServiceError('VALIDATION_FAILED', 'The date of a disclosure can’t be in the future');
+	// Older ones are outside every accounting, so would be saved but never shown.
+	if (d.disclosedOn < accountingFrom(today))
+		throw new ServiceError(
+			'VALIDATION_FAILED',
+			`Only disclosures from the last ${ACCOUNTING_YEARS} years are kept for the accounting`
+		);
 	const row = await insertDisclosure(tx, {
 		agency_id: agencyId,
 		client_id: d.clientId,
@@ -346,16 +354,29 @@ export async function listDisclosures(
 	const to = localTime(new Date(), user.timeZone).day;
 	const from = accountingFrom(to);
 	const recorded = (await selectDisclosures(tx, user.agencyId, clientId, from)).map(toEntry);
-	const reported = (
-		await selectStateReportedIncidents(tx, user.agencyId, clientId, STATE_REPORT_PARTY)
-	)
-		.map((i) =>
-			incidentDisclosure({
-				day: localTime(i.occurredAt ?? i.createdAt, user.timeZone).day,
+	const incidents = await selectStateReportedIncidents(
+		tx,
+		user.agencyId,
+		clientId,
+		STATE_REPORT_PARTY
+	);
+	// The disclosure is when the state was marked as told, by whoever saved
+	// it; without that history, the incident's own time and author.
+	const marks = await stateReportMarks(
+		tx,
+		user.agencyId,
+		incidents.map((i) => i.id),
+		STATE_REPORT_PARTY
+	);
+	const reported = incidents
+		.map((i) => {
+			const mark = marks.get(i.id);
+			return incidentDisclosure({
+				day: localTime(mark?.at ?? i.occurredAt ?? i.createdAt, user.timeZone).day,
 				type: i.type,
-				authorName: i.authorName
-			})
-		)
+				authorName: mark ? mark.by : i.authorName
+			});
+		})
 		.filter((e) => e.date >= from);
 	return { person: person.name, from, to, entries: sortAccounting([...recorded, ...reported]) };
 }
