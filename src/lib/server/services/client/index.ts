@@ -5,25 +5,39 @@
 // records with them (clients_home_change trigger).
 import { z } from 'zod';
 import {
+	accountingCsv,
+	accountingFrom,
 	CASE_NOTE_CATEGORIES,
+	DISCLOSURE_PURPOSES,
+	incidentDisclosure,
 	initialsOf,
+	localTime,
+	sortAccounting,
+	STATE_REPORT_PARTY,
+	type AccountingEntry,
+	type DisclosurePurpose,
 	VITAL_LIMIT_PAIRS,
 	VITAL_LIMITS,
 	type VitalLimitKey
 } from '../../../domain/index.ts';
 import type { FeatureFlag } from '../../../entitlements/tier-features.ts';
-import { asService, type Tx } from '../../db';
+import type { CurrentUser } from '../auth/index.ts';
+import { asService, type RequestInfo, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import { lockOpenHome } from '../home/index.ts';
 import { listMedications } from '../medication/index.ts';
 import {
 	insertCaseNote,
 	insertClient,
+	insertDisclosure,
+	recordAccountingExport,
 	releaseRooms,
 	selectActiveGoals,
 	selectClient,
 	selectCaseNotes,
 	selectClients,
+	selectDisclosures,
+	selectStateReportedIncidents,
 	selectHealthInfo,
 	updateClientRow,
 	upsertHealthInfo
@@ -247,4 +261,125 @@ export async function listCaseNotes(
 	if (!(await selectClient(tx, agencyId, f.clientId)))
 		throw new ServiceError('NOT_FOUND', 'Person not found');
 	return selectCaseNotes(tx, agencyId, f.clientId, f.limit, f.offset);
+}
+
+// ─── Accounting of disclosures (HIPAA 45 CFR 164.528) ──────────────────────
+// Supervisors record disclosures outside care, payment and operations (a
+// report to APS, a court order, a surveyor's copy); incidents marked as
+// reported to the state are added from the incident itself. On every plan:
+// an agency can't be charged for, or locked out of, what the law makes it
+// give (research/product-2026-10.md §E).
+
+const day = z.iso.date();
+
+export const NewDisclosure = z.object({
+	clientId: z.uuid(),
+	disclosedOn: day,
+	recipient: z.string().trim().min(1).max(200),
+	address: z.string().trim().max(500).optional(),
+	description: z.string().trim().min(1).max(1000),
+	purpose: z.enum(DISCLOSURE_PURPOSES),
+	detail: z.string().trim().max(1000).optional()
+});
+
+export const DisclosureFilter = z.object({ clientId: z.uuid() });
+
+export async function recordDisclosure(
+	tx: Tx,
+	agencyId: string,
+	author: { profileId: string; name: string; timeZone: string },
+	input: z.input<typeof NewDisclosure>
+) {
+	const d = NewDisclosure.parse(input);
+	if (!(await selectClient(tx, agencyId, d.clientId)))
+		throw new ServiceError('NOT_FOUND', 'Person not found');
+	const today = localTime(new Date(), author.timeZone).day;
+	if (d.disclosedOn > today)
+		throw new ServiceError('VALIDATION_FAILED', 'The date of a disclosure can’t be in the future');
+	const row = await insertDisclosure(tx, {
+		agency_id: agencyId,
+		client_id: d.clientId,
+		disclosed_on: d.disclosedOn,
+		recipient: d.recipient,
+		recipient_address: d.address || null,
+		description: d.description,
+		purpose: d.purpose,
+		purpose_detail: d.detail || null,
+		recorded_by: author.profileId,
+		recorded_by_name: author.name
+	});
+	return toEntry(row);
+}
+
+function toEntry(row: {
+	date: string;
+	recipient: string;
+	address: string | null;
+	description: string;
+	purpose: string;
+	detail: string | null;
+	recordedBy: string | null;
+}): AccountingEntry {
+	return {
+		date: row.date,
+		recipient: row.recipient,
+		address: row.address,
+		description: row.description,
+		purpose: (DISCLOSURE_PURPOSES as readonly string[]).includes(row.purpose)
+			? (row.purpose as DisclosurePurpose)
+			: 'other_required',
+		detail: row.detail,
+		source: 'recorded',
+		recordedBy: row.recordedBy
+	};
+}
+
+/** The six-year accounting for one person, newest first. */
+export async function listDisclosures(
+	tx: Tx,
+	user: Pick<CurrentUser, 'agencyId' | 'timeZone'>,
+	input: z.input<typeof DisclosureFilter>
+) {
+	const { clientId } = DisclosureFilter.parse(input);
+	const person = await selectClient(tx, user.agencyId, clientId);
+	if (!person) throw new ServiceError('NOT_FOUND', 'Person not found');
+	const to = localTime(new Date(), user.timeZone).day;
+	const from = accountingFrom(to);
+	const recorded = (await selectDisclosures(tx, user.agencyId, clientId, from)).map(toEntry);
+	const reported = (
+		await selectStateReportedIncidents(tx, user.agencyId, clientId, STATE_REPORT_PARTY)
+	)
+		.map((i) =>
+			incidentDisclosure({
+				day: localTime(i.occurredAt ?? i.createdAt, user.timeZone).day,
+				type: i.type,
+				authorName: i.authorName
+			})
+		)
+		.filter((e) => e.date >= from);
+	return { person: person.name, from, to, entries: sortAccounting([...recorded, ...reported]) };
+}
+
+/** The accounting as a CSV file to give the person; the export is audited. */
+export async function disclosureAccounting(
+	tx: Tx,
+	user: Pick<CurrentUser, 'agencyId' | 'timeZone' | 'profileId'>,
+	input: z.input<typeof DisclosureFilter>,
+	request: RequestInfo
+) {
+	const { clientId } = DisclosureFilter.parse(input);
+	const a = await listDisclosures(tx, user, { clientId });
+	await asService(tx, (t) =>
+		recordAccountingExport(t, user.agencyId, user.profileId, request, {
+			clientId,
+			fromDay: a.from,
+			toDay: a.to,
+			rows: a.entries.length
+		})
+	);
+	return {
+		content: accountingCsv(a.person, a.from, a.to, a.entries),
+		filename: `guad-disclosures-${a.to}.csv`,
+		contentType: 'text/csv; charset=utf-8'
+	};
 }

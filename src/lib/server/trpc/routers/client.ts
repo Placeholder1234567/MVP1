@@ -4,10 +4,15 @@ import {
 	ClientChanges,
 	ClientFilter,
 	createClient,
+	DisclosureFilter,
+	disclosureAccounting,
 	getClient,
 	HealthChanges,
 	listClients,
+	listDisclosures,
 	NewClient,
+	NewDisclosure,
+	recordDisclosure,
 	updateClient,
 	updateHealth
 } from '../../services/client/index.ts';
@@ -45,5 +50,26 @@ export const clientRouter = router({
 
 	archive: roleProcedure('admin')
 		.input(z.object({ id: z.uuid() }))
-		.mutation(({ ctx, input }) => archiveClient(ctx.db, ctx.user.agencyId, input.id))
+		.mutation(({ ctx, input }) => archiveClient(ctx.db, ctx.user.agencyId, input.id)),
+
+	// Accounting of disclosures (HIPAA 164.528): supervisors, on every plan.
+	disclosures: roleProcedure('supervisor')
+		.input(DisclosureFilter)
+		.query(({ ctx, input }) => listDisclosures(ctx.db, ctx.user, input)),
+
+	recordDisclosure: roleProcedure('supervisor')
+		.input(NewDisclosure)
+		.mutation(({ ctx, input }) =>
+			recordDisclosure(
+				ctx.db,
+				ctx.user.agencyId,
+				{ profileId: ctx.user.profileId, name: ctx.user.name, timeZone: ctx.user.timeZone },
+				input
+			)
+		),
+
+	// A mutation, so the download is audited and nothing lands in a URL.
+	disclosureAccounting: roleProcedure('supervisor')
+		.input(DisclosureFilter)
+		.mutation(({ ctx, input }) => disclosureAccounting(ctx.db, ctx.user, input, ctx.request))
 });

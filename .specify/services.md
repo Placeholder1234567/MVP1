@@ -307,7 +307,7 @@ Agency-wide offboarding is an operator-only orchestration exported by the Agency
 
 **Responsibility:** Client master records, health profile info, case notes, client lifecycle management. Central entity that other Care Records services reference.
 
-**Owns tables:** `clients`, `client_health_info`, `case_notes`
+**Owns tables:** `clients`, `client_health_info`, `case_notes`, `disclosures`
 
 **Key functions:**
 - `createClient(agencyId, data): Client` — create a new client record with home assignment.
@@ -319,6 +319,7 @@ Agency-wide offboarding is an operator-only orchestration exported by the Agency
 - `updateHealthInfo(agencyId, clientId, data): ClientHealthInfo` — update allergies, conditions, diet, doctor, guardian, DOB.
 - `addCaseNote(agencyId, clientId, data): CaseNote` — add a freeform case note (distinct from shift/behavior notes).
 - `getCaseNotes(agencyId, clientId): CaseNote[]` — case note history.
+- `recordDisclosure(agencyId, author, input)` / `listDisclosures(user, { clientId })` / `disclosureAccounting(user, { clientId }, request)` — accounting of disclosures (HIPAA 164.528; security.md "Accounting of disclosures"). Recorded entries plus incidents reported to the state, six years back, as a list or an audited CSV. Rules and purposes in `src/lib/domain/disclosure.ts`. Not gated by plan.
 - `deactivateClient(agencyId, clientId): Client` — soft-delete (sets `active = false`); never hard-deletes.
 
 **Depends on:**

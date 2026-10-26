@@ -488,6 +488,7 @@ Every tRPC procedure is mapped to a feature flag and minimum role. Procedures ma
 | `report` | `status` | `reports` or `reports_basic` | supervisor | Report generation status |
 | `report` | `download` | `reports` or `reports_basic` | supervisor | Download report |
 | `report` | `schedules`, `createSchedule`, `deleteSchedule` | `reports_scheduled` | supervisor | The caller's own scheduled care reports |
+| `report` | `exportPersonRecord` | none (every plan) | admin | One person's record for a right-of-access request. Never gated: an agency can't be locked out of records it holds (research/product-2026-10.md §E). |
 
 ### Audit Log (Complete Only)
 

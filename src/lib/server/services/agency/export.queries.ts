@@ -29,6 +29,7 @@ export const EXPORT_TABLES = {
 	attendance: t(schema.attendance),
 	incidents: t(schema.incidents),
 	case_notes: t(schema.caseNotes),
+	disclosures: t(schema.disclosures),
 	referrals: t(schema.referrals),
 	referral_notes: t(schema.referralNotes),
 	messages: t(schema.messages),
