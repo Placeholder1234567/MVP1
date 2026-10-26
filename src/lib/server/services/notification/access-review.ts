@@ -10,6 +10,7 @@ import {
 	localTime
 } from '../../../domain/index.ts';
 import { withService, type Tx } from '../../db';
+import { forEachIsolated } from '../../jobs/isolate.ts';
 import { assignedSince, reviewProfiles, reviewSentSince } from './access-review.queries';
 import { agencyClocks } from './escalation.queries';
 import { notify, type Recipient } from './index';
@@ -19,9 +20,15 @@ const REPEAT_DAYS = 7;
 
 export async function sweepAccessReview(now = new Date()): Promise<{ alerts: number }> {
 	let alerts = 0;
-	for (const a of await withService((tx) => agencyClocks(tx))) {
-		if (await withService((tx) => reviewAgency(tx, a.id, a.timeZone, now))) alerts++;
-	}
+	const agencies = await withService((tx) => agencyClocks(tx));
+	await forEachIsolated(
+		'access-review agency',
+		agencies,
+		(a) => a.id,
+		async (a) => {
+			if (await withService((tx) => reviewAgency(tx, a.id, a.timeZone, now))) alerts++;
+		}
+	);
 	return { alerts };
 }
 
