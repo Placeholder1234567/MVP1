@@ -797,6 +797,7 @@ The `coverage_offer` SMS template (Section 2.1) instructs candidates to "Reply Y
 - **Reply normalization:**
   - `YES`, `Y`, `SURE`, `OK`, `YEP` -> `accepted`
   - `NO`, `N`, `NOPE`, `CANT`, `CAN'T` -> `declined`
+  - `HELP`, `INFO` -> reply with who is texting and how to opt out (`SMS_REPLY_TEXT.help`). AWS answers HELP itself by default; this reply covers a number set to self-managed opt-outs, where AWS forwards HELP and STOP instead and the sender must answer them (CTIA).
   - Anything else -> reply with `"Guad: Sorry, we didn't understand. Reply YES to accept or NO to decline."`
 - **Race condition handling:** If the coverage request `status` is already `filled` when the reply arrives, respond with `"Guad: This shift has already been filled. Thank you!"` and skip processing.
 - **On acceptance:** Call `recordCandidateReply(agencyId, candidateId, 'accepted')` followed by `fillShift()`. Trigger `coverage_accepted` notification.

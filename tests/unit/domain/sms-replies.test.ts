@@ -21,6 +21,13 @@ describe('parseSmsReply', () => {
 		expect(parseSmsReply('unsubscribe')).toEqual({ kind: 'stop' });
 		expect(parseSmsReply('Start')).toEqual({ kind: 'start' });
 	});
+
+	it('recognizes the carrier help keywords', () => {
+		expect(parseSmsReply('HELP')).toEqual({ kind: 'help' });
+		expect(parseSmsReply('info')).toEqual({ kind: 'help' });
+		expect(SMS_REPLY_TEXT.help).toMatch(/STOP/);
+		expect(SMS_REPLY_TEXT.help).toMatch(/^[\x20-\x7e]+$/);
+	});
 });
 
 describe('offer codes', () => {

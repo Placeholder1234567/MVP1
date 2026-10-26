@@ -100,6 +100,8 @@ it('answers a coverage offer by text, with the same rules as the app', async () 
 
 	expect(await text(phones[eli], 'maybe later')).toBe('unknown');
 	expect(lastReplyTo(phones[eli])?.body).toBe(SMS_REPLY_TEXT.unknown);
+	expect(await text(phones[eli], 'HELP')).toBe('help');
+	expect(lastReplyTo(phones[eli])?.body).toBe(SMS_REPLY_TEXT.help);
 
 	const wrong = code === '1234' ? '4321' : '1234';
 	expect(await text(phones[eli], `YES ${wrong}`)).toBe('no_such_code');

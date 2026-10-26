@@ -4,6 +4,8 @@
 //   YES/NO [code]  answers a coverage offer, through respondCoverage() run as
 //                  the sender, so it gets the same rules as accepting in the app
 //   STOP / START   turns SMS off / back on in the sender's preferences
+//   HELP / INFO    who is texting and how to opt out (AWS answers these
+//                  itself unless the number uses self-managed opt-outs)
 //
 // Replies are fixed PHI-free texts (domain/sms-replies.ts). Logs carry the
 // inbound message ID and outcome only, never the number or the text.
@@ -27,6 +29,7 @@ export type InboundOutcome =
 	| 'duplicate'
 	| 'opted_out'
 	| 'opted_in'
+	| 'help'
 	| 'accepted'
 	| 'declined'
 	| 'filled'
@@ -79,6 +82,10 @@ async function respond(
 		if (!optedOut) await reply(SMS_REPLY_TEXT.started);
 		return optedOut ? 'opted_out' : 'opted_in';
 	}
+	if (parsed.kind === 'help') {
+		await reply(SMS_REPLY_TEXT.help);
+		return 'help';
+	}
 	if (parsed.kind === 'unknown') {
 		await reply(SMS_REPLY_TEXT.unknown);
 		return 'unknown';
@@ -91,7 +98,7 @@ async function respond(
 type Answer = Extract<SmsReply, { kind: 'answer' }>;
 type AnswerOutcome = Exclude<
 	InboundOutcome,
-	'ignored' | 'duplicate' | 'opted_out' | 'opted_in' | 'unknown'
+	'ignored' | 'duplicate' | 'opted_out' | 'opted_in' | 'help' | 'unknown'
 >;
 
 const TEXT: Record<AnswerOutcome, (n: number) => string> = {
