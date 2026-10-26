@@ -115,7 +115,7 @@ it('dispatches email, keeps in-app rows, and does not resend completed deliverie
 	);
 });
 
-it('holds normal push during quiet hours but sends urgent push', async () => {
+it('holds normal push during quiet hours but sends urgent push and on-shift reminders', async () => {
 	// This window contains the current UTC minute, including across midnight.
 	const now = new Date();
 	const hhmm = (d: Date) => d.toISOString().slice(11, 16);
@@ -134,22 +134,23 @@ it('holds normal push during quiet hours but sends urgent push', async () => {
 			platform: 'web'
 		});
 	});
-	const ids = [randomUUID(), randomUUID()];
+	const ids = [randomUUID(), randomUUID(), randomUUID()];
 	await withService((tx) =>
 		tx.insert(s.notifications).values(
 			ids.map((id, i) => ({
 				id,
 				agency_id: agency,
 				profile_id: profile,
-				type: 'health_alert',
+				// The last is a dose reminder for someone on an overnight shift.
+				type: i === 2 ? 'med_due_reminder' : 'health_alert',
 				title: 'Review required',
 				channel: 'push',
-				priority: i ? 1 : 3
+				priority: i === 1 ? 1 : 3
 			}))
 		)
 	);
 	expect(await runJob('notifications-dispatch', { ids }, { attempt: 0, final: true })).toEqual({
-		sent: 1,
+		sent: 2,
 		held: 1,
 		failed: 0,
 		suppressed: 0,

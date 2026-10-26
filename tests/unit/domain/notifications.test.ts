@@ -46,6 +46,10 @@ describe('quiet hours', () => {
 		expect(canSendNow('email', 4, '02:00')).toBe(true);
 		expect(canSendNow('push', 3, '02:00')).toBe(false);
 		expect(canSendNow('push', 3, '09:00')).toBe(true);
+		// Reminders for staff on an overnight shift aren't held until morning.
+		expect(canSendNow('push', 3, '02:00', undefined, 'med_due_reminder')).toBe(true);
+		expect(canSendNow('push', 3, '02:00', undefined, 'prn_followup')).toBe(true);
+		expect(canSendNow('push', 3, '02:00', undefined, 'shift_reminder')).toBe(false);
 	});
 });
 

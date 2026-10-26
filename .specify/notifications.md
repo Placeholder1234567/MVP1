@@ -1028,6 +1028,7 @@ Opt-out and logout first revoke the worker's local opt-in, cancel pending enroll
 - Default quiet hours: **23:00 to 06:00** in the user's timezone (derived from agency timezone).
 - During quiet hours, **normal** and **low** priority notifications are held and delivered at 06:00 as a batch.
 - **High** and **urgent** priority notifications are delivered immediately regardless of quiet hours.
+- `med_due_reminder` and `prn_followup` are also never held (`ON_SHIFT_TYPES` in `domain/notifications.ts`). They go only to staff on shift, about a dose due now or one just given, so holding them until 06:00 would deliver an overnight shift's reminders after the doses were due.
 - Users can customize quiet hours start/end within a minimum window of 4 hours and maximum of 10 hours. Per-user quiet hours are stored in `user_settings.quiet_hours_start/end` (schema.ts #33). They are per-user, not per-notification-type.
 - Quiet hours apply to push and SMS only. Email delivery is not affected by quiet hours.
 
