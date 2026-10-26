@@ -22,13 +22,16 @@ test('a caregiver sees a missed punch their supervisor added, with the reason', 
 	await signIn(page, 'supervisor@guad.test');
 	await page.getByRole('link', { name: 'Timesheets', exact: true }).first().click();
 
-	// A ten-minute entry two hours ago (twenty for the phone run), so runs on
-	// the same database never overlap and it is Cara's most recent record.
+	// A ten-minute entry two hours ago (three for the phone run). Each run
+	// takes its slot from its own start time and the phone run starts later,
+	// so the gap must be longer than the time between them: 20 minutes was
+	// not (a run 20-30 minutes later landed on the desktop entry, and the
+	// server rightly refused the overlapping missed punch).
 	const slot = 10 * 60000;
 	const start =
 		Math.floor(Date.now() / slot) * slot -
 		2 * 3600000 -
-		(info.project.name === 'phone' ? 2 * slot : 0);
+		(info.project.name === 'phone' ? 3600000 : 0);
 	const local = (ms: number) =>
 		page.evaluate((t) => {
 			const d = new Date(t);
