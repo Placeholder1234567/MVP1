@@ -9,6 +9,7 @@ import {
 	type ShiftKey
 } from '../../../domain/index.ts';
 import { ServiceError } from '../../errors';
+import { forEachIsolated } from '../../jobs/isolate.ts';
 import { cancel, enqueue } from '../../jobs/queue.ts';
 import type { CurrentUser } from '../auth/index.ts';
 import { requireOpenHome } from '../home/index.ts';
@@ -278,11 +279,16 @@ export async function coverageTimer(input: { agencyId: string; id: string }, rem
 }
 export async function sweepCoverage() {
 	const pending = await withService(q.searchingRequests);
-	for (const row of pending) {
-		if (!row.startedAt) await enqueue('coverage-search', { agencyId: row.agencyId, id: row.id });
-		else if (Date.now() - row.startedAt.getTime() > 3600000)
-			await coverageTimer({ agencyId: row.agencyId, id: row.id });
-	}
+	await forEachIsolated(
+		'coverage request',
+		pending,
+		(row) => row.id,
+		async (row) => {
+			if (!row.startedAt) await enqueue('coverage-search', { agencyId: row.agencyId, id: row.id });
+			else if (Date.now() - row.startedAt.getTime() > 3600000)
+				await coverageTimer({ agencyId: row.agencyId, id: row.id });
+		}
+	);
 	return { checked: pending.length };
 }
 export async function settleCoverage(

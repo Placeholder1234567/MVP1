@@ -22,6 +22,7 @@ import {
 	shiftsStartingSoon
 } from '../../../domain/index.ts';
 import { withService, type Tx } from '../../db';
+import { forEachIsolated } from '../../jobs/isolate.ts';
 import {
 	agencySettingsFor,
 	assignedSlots,
@@ -42,11 +43,17 @@ export async function sweepCareReminders(
 	let shifts = 0;
 	let incidents = 0;
 	let contacts = 0;
-	for (const a of await withService((tx) => agencyClocks(tx))) {
-		shifts += await withService((tx) => remindShifts(tx, a.id, a.timeZone, now));
-		incidents += await withService((tx) => flagIncidents(tx, a.id, a.timeZone, now));
-		contacts += await withService((tx) => flagOverdueContacts(tx, a.id, a.timeZone, now));
-	}
+	const agencies = await withService((tx) => agencyClocks(tx));
+	await forEachIsolated(
+		'care-reminder agency',
+		agencies,
+		(a) => a.id,
+		async (a) => {
+			shifts += await withService((tx) => remindShifts(tx, a.id, a.timeZone, now));
+			incidents += await withService((tx) => flagIncidents(tx, a.id, a.timeZone, now));
+			contacts += await withService((tx) => flagOverdueContacts(tx, a.id, a.timeZone, now));
+		}
+	);
 	return { shifts, incidents, contacts };
 }
 
