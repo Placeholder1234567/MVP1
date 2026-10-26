@@ -60,6 +60,8 @@
 		if (type === 'referral_status_change' && app.user.role !== 'caregiver')
 			return '/(app)/dashboard/intake';
 		if (type === 'daily_summary' && app.user.role !== 'caregiver') return '/(app)/dashboard';
+		if (type === 'report_ready' && app.user.role !== 'caregiver')
+			return '/(app)/dashboard/reports/background';
 		if (
 			(type === 'access_review' || type === 'email_delivery_problem') &&
 			app.user.role === 'admin'

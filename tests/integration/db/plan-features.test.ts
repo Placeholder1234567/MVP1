@@ -1,4 +1,4 @@
-// The database copy of the plan rules (sql-patches/0001_plan_features.sql)
+// The database copy of the plan rules (sql-patches/0001_plan_features.sql, as replaced by 0019)
 // must agree with the app's resolveFeatures() for every tier and override,
 // or offline sync would gate differently from the API.
 import { afterAll, expect, it } from 'vitest';
@@ -27,6 +27,7 @@ it('matches resolveFeatures for every tier, override and prerequisite', async ()
 		['intake'],
 		['note_review'],
 		['analytics_advanced'],
+		['reports_scheduled'],
 		['not-a-flag', 'mar']
 	];
 	for (const tier of [...SUBSCRIPTION_TIERS, null, 'unknown-tier'])
@@ -36,5 +37,5 @@ it('matches resolveFeatures for every tier, override and prerequisite', async ()
 			].sort();
 			expect(await dbFeatures(tier, extra), `${tier} + ${extra.join(',')}`).toEqual(expected);
 		}
-	expect(FEATURE_FLAGS.length).toBe(19);
+	expect(FEATURE_FLAGS.length).toBe(20);
 });

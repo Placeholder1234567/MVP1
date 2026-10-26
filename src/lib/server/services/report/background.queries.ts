@@ -96,7 +96,9 @@ export async function publishCareReport(
 	user: CurrentUser,
 	id: string,
 	path: string,
-	params: typeof reportJobs.$inferInsert.params
+	params: typeof reportJobs.$inferInsert.params,
+	/** How long the ready file stays downloadable */
+	keepMs = 24 * 3600000
 ) {
 	const now = new Date();
 	return (
@@ -107,7 +109,7 @@ export async function publishCareReport(
 					status: 'ready',
 					params,
 					ready_at: now,
-					expires_at: new Date(now.getTime() + 24 * 3600000),
+					expires_at: new Date(now.getTime() + keepMs),
 					error: null,
 					updated_at: now
 				})

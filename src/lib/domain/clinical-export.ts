@@ -21,6 +21,16 @@ export const CLINICAL_TYPE_FEATURE = {
 	attendance: 'charting',
 	goals: 'goals'
 } as const satisfies Record<ClinicalType, string>;
+
+/** What each care report is called on the Reports pages and in alerts. */
+export const CLINICAL_TYPE_LABEL: Record<ClinicalType, string> = {
+	notes: 'Signed notes',
+	mar: 'Medication administration',
+	health: 'Health entries',
+	incidents: 'Incident log',
+	attendance: 'Attendance',
+	goals: 'Goal progress and trial history'
+};
 export type ClinicalRow = Record<string, unknown>;
 export interface ClinicalReport {
 	version: 1;

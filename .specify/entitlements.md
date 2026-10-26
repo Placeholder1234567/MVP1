@@ -59,6 +59,7 @@ Canonical list of 19 feature flags. Every gating decision references one of thes
 | 17 | `intake` | Client Intake | Referral pipeline, room management, client-home matching, `intake.*` procedures |
 | 18 | `messaging` | Cross-cutting | Home message board, shift handoff communication, `message.*` procedures |
 | 19 | `notifications` | Cross-cutting | Push/SMS/email notifications, preference management, `notification.*` procedures |
+| 20 | `reports_scheduled` | Care Records | Care reports built every week or month for their owner (`report.schedules`, `report.createSchedule`, `report.deleteSchedule`, the `report-schedule-sweep` job); Complete tier (research/product-2026-10.md §E: scheduled delivery is a convenience, not compliance access); requires `reports` (enforced dependency) |
 
 **Feature dependencies:** Some flags depend on others. The `resolveFeatures` function enforces these: if a dependent flag is present but its prerequisite is not, the prerequisite is auto-added.
 
@@ -66,6 +67,7 @@ Canonical list of 19 feature flags. Every gating decision references one of thes
 |------|----------|
 | `note_review` | `charting` |
 | `analytics_advanced` | `analytics` |
+| `reports_scheduled` | `reports` |
 
 ---
 
@@ -90,6 +92,7 @@ export const FEATURE_FLAGS = [
   'analytics_advanced',
   'reports',
   'reports_basic',
+  'reports_scheduled',
   'lomi_summary',
   'audit_log',
   'intake',
@@ -167,6 +170,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, readonly FeatureFlag[]> = {
     'analytics_advanced',
     'audit_log',
     'intake',
+    'reports_scheduled',
   ],
 } as const;
 ```
@@ -483,6 +487,7 @@ Every tRPC procedure is mapped to a feature flag and minimum role. Procedures ma
 | `report` | `generate` | `reports` or `reports_basic` | supervisor | Generate report. Starter agencies (via `reports_basic`) are restricted to `type: 'timesheets'` and `type: 'coverage'` only; the procedure rejects other types with `FORBIDDEN`. Professional+ agencies (via `reports`) can generate all types. Professional: Care Records reports only (notes, incidents, MAR, goals, attendance). Complete: all report types including intake and audit. |
 | `report` | `status` | `reports` or `reports_basic` | supervisor | Report generation status |
 | `report` | `download` | `reports` or `reports_basic` | supervisor | Download report |
+| `report` | `schedules`, `createSchedule`, `deleteSchedule` | `reports_scheduled` | supervisor | The caller's own scheduled care reports |
 | `report` | `exportPersonRecord` | none (every plan) | admin | One person's record for a right-of-access request. Never gated: an agency can't be locked out of records it holds (research/product-2026-10.md §E). |
 
 ### Audit Log (Complete Only)

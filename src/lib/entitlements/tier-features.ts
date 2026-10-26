@@ -17,6 +17,7 @@ export const FEATURE_FLAGS = [
 	'analytics_advanced',
 	'reports',
 	'reports_basic',
+	'reports_scheduled',
 	'lomi_summary',
 	'audit_log',
 	'intake',
@@ -32,7 +33,8 @@ export type SubscriptionTier = (typeof SUBSCRIPTION_TIERS)[number];
 /** If a flag is present without its prerequisite, the prerequisite is added. */
 export const FEATURE_DEPENDENCIES: Partial<Record<FeatureFlag, FeatureFlag[]>> = {
 	note_review: ['charting'],
-	analytics_advanced: ['analytics']
+	analytics_advanced: ['analytics'],
+	reports_scheduled: ['reports']
 };
 
 const STARTER: FeatureFlag[] = [
@@ -60,7 +62,8 @@ const COMPLETE: FeatureFlag[] = [
 	'analytics',
 	'analytics_advanced',
 	'audit_log',
-	'intake'
+	'intake',
+	'reports_scheduled'
 ];
 
 /** Baseline features per tier; each tier includes the ones below it. */

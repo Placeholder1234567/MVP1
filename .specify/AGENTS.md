@@ -11,7 +11,7 @@ Before writing any code, read the relevant `.specify/` files:
 | File | Contains |
 |------|----------|
 | `constitution.md` | Non-negotiable engineering principles (15 rules). Read this first. |
-| `schema.ts` | Drizzle pgTable definitions for all 48 tables. This is the single source of truth for the data model. |
+| `schema.ts` | Drizzle pgTable definitions for all 49 tables. This is the single source of truth for the data model. |
 | `services.md` | Service boundaries, data ownership matrix, dependency graph, job registry (Cloud Tasks). |
 | `infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, database session setup, jobs, local dev, cost. |
 | `trpc-router.md` | Every tRPC procedure: input/output types, required role, behavior. |

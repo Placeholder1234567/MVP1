@@ -7,6 +7,7 @@
 	import { trpc } from '#lib/trpc.ts';
 	import { addDays, localTime } from '#lib/domain/index.ts';
 	import {
+		CLINICAL_TYPE_LABEL as labels,
 		CLINICAL_TYPE_FEATURE,
 		CLINICAL_TYPES,
 		type ClinicalType
@@ -79,14 +80,6 @@
 		controller?.abort();
 		guard.change('disposed');
 	});
-	const labels = {
-		notes: 'Signed notes',
-		mar: 'Medication administration',
-		health: 'Health entries',
-		incidents: 'Incident log',
-		attendance: 'Attendance',
-		goals: 'Goal progress and trial history'
-	};
 	// Without care reports on the plan, admins can still give one person their
 	// record (right of access, HIPAA 164.524): exportPersonRecord, which covers
 	// every home the person lived in, including people no longer served.
