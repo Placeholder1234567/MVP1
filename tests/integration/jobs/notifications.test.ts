@@ -431,7 +431,12 @@ it('two dispatches of the same delivery at once send it once', async () => {
 		await new Promise((r) => setTimeout(r, 300));
 		return { providerMessageId: 'test-slow' };
 	});
-	setProvidersForTests({ email: slow, push });
+	// Earlier notify() tests also launch post-commit jobs. Only this delivery
+	// belongs to the slow recording fake; unrelated jobs retain their provider.
+	setProvidersForTests({
+		email: (to, delivery) => (delivery.notificationId === id ? slow() : email()),
+		push
+	});
 	try {
 		const [a, b] = await Promise.all([
 			runJob('notifications-dispatch', { ids: [id] }, { attempt: 0, final: true }),

@@ -84,12 +84,14 @@
 		};
 	});
 	async function remove(id: string) {
+		if (busy || loadingList || !online || !visible || app.privacyLocked) return;
 		if (
 			!confirm(
 				'Stop Guad push delivery to this device? Its saved notes and in-app alerts are unchanged.'
 			)
 		)
 			return;
+		interruptList();
 		busy = true;
 		message = '';
 		try {
@@ -136,8 +138,10 @@
 							: new Date(device.createdAt).toLocaleDateString()}
 					</p>
 				</div>
-				<button class="btn sec" disabled={busy} onclick={() => remove(device.id)}
-					>Remove device {index + 1}</button
+				<button
+					class="btn sec"
+					disabled={busy || loadingList || !online || !visible || app.privacyLocked}
+					onclick={() => remove(device.id)}>Remove device {index + 1}</button
 				>
 			</div>{/each}
 	{/if}
