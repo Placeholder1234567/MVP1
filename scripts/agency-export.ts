@@ -7,6 +7,7 @@
 // the agency's audit log with the operator.
 //
 //   npm run agency:export -- --slug sunrise-care --operator ops@example.org --out ./sunrise-export
+import { rmSync } from 'node:fs';
 import { mkdir, rm, writeFile, appendFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -22,6 +23,13 @@ const { values } = parseArgs({
 });
 
 let created: string | null = null;
+// Ctrl-C or a kill mid-export: don't leave part of the agency's records behind.
+for (const signal of ['SIGINT', 'SIGTERM'] as const)
+	process.once(signal, () => {
+		if (created) rmSync(created, { recursive: true, force: true });
+		console.error('Export stopped; the partial folder was removed.');
+		process.exit(130);
+	});
 try {
 	if (!values.out) throw new Error('--out: the folder to create for the export');
 	const out = resolve(values.out);
@@ -39,10 +47,6 @@ try {
 			} else await appendFile(path, chunk);
 		}
 	);
-	await writeFile(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', {
-		mode: 0o600,
-		flag: 'wx'
-	});
 	created = null;
 	const tables = Object.values(manifest.tables);
 	const rows = tables.reduce((sum, t) => sum + t.rows, 0);

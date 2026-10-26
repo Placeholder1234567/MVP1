@@ -72,14 +72,12 @@ export async function saveOffboarding(
 		.set({ settings: { ...settings, offboarding: state }, updated_at: new Date() })
 		.where(eq(agencies.id, agencyId));
 	// agencies has no audit trigger. Never alter clinical or existing audit rows.
-	await tx
-		.insert(auditLog)
-		.values({
-			agency_id: agencyId,
-			table_name: 'agency_offboarding',
-			record_id: agencyId,
-			action: 'UPDATE',
-			old_values: settings.offboarding ?? null,
-			new_values: { ...state, operator }
-		});
+	await tx.insert(auditLog).values({
+		agency_id: agencyId,
+		table_name: 'agency_offboarding',
+		record_id: agencyId,
+		action: 'UPDATE',
+		old_values: settings.offboarding ?? null,
+		new_values: { ...state, operator }
+	});
 }

@@ -1,6 +1,6 @@
 // Full agency export (security.md "Agency data export"): every table that
 // holds the agency's records, read page by page in primary-key order. Columns
-// that only serve sign-in, keys or device sync never leave (DROPPED_COLUMNS).
+// that only serve sign-in or witness checks never leave (DROPPED_COLUMNS).
 import { and, asc, eq, getTableColumns, gt, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Tx } from '../../db';
@@ -69,22 +69,20 @@ export const SKIPPED_TABLES: Record<string, string> = {
 	sms_carrier_consents: 'hashed phone numbers'
 };
 
-/** Secrets and sign-in identifiers, removed from rows and from audit_log values. */
-export const DROPPED_COLUMNS = new Set([
-	'auth_uid',
-	'key_hash',
-	'secret_hash',
-	'secret_sealed',
-	'key_ciphertext',
-	'witness_sign_in',
-	'phone_hash',
-	'token',
-	'checkpoint_token'
-]);
+/**
+ * Sign-in identifiers and secrets in exported tables, by table: removed from
+ * the rows and from the same table's audit_log values. (Tables made of
+ * secrets, like api_keys and webhooks, are skipped whole, audit values too.)
+ */
+export const DROPPED_COLUMNS: Record<string, readonly string[]> = {
+	profiles: ['auth_uid'],
+	controlled_counts: ['witness_sign_in']
+};
 
 export function exportColumns(table: ExportTable): Record<string, PgColumn> {
 	const all = getTableColumns(EXPORT_TABLES[table]) as Record<string, PgColumn>;
-	return Object.fromEntries(Object.entries(all).filter(([, c]) => !DROPPED_COLUMNS.has(c.name)));
+	const dropped = DROPPED_COLUMNS[table] ?? [];
+	return Object.fromEntries(Object.entries(all).filter(([, c]) => !dropped.includes(c.name)));
 }
 
 /** One page after `afterId` (keyset, so pages stay stable in one snapshot). */

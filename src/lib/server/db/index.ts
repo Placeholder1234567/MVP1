@@ -116,6 +116,10 @@ async function inTransaction<T>(
 	config?: TransactionConfig
 ): Promise<T> {
 	const outer = pending.getStore();
+	// A nested call runs in the outer transaction's isolation, so a requested
+	// one (a snapshot, say) could not be honoured.
+	if (outer && config)
+		throw new Error('Transaction settings need an outermost withService/withUser call');
 	if (outer) return getDb().transaction(fn); // nested: the outermost commit runs the hooks
 	const hooks: Array<() => unknown> = [];
 	const result = await pending.run(hooks, () => getDb().transaction(fn, config));
