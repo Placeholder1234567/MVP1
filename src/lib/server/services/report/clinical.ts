@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { addDays } from '../../../domain/time';
 import {
+	CLINICAL_TYPE_FEATURE,
 	CLINICAL_TYPES,
 	clinicalCsv,
 	clinicalHtml,
@@ -30,14 +31,7 @@ export const ClinicalExport = z.object({
 	format: z.enum(['csv', 'json', 'html', 'pdf']),
 	approvedOnly: z.boolean().default(false)
 });
-const REQUIRED_FEATURE = {
-	notes: 'charting',
-	mar: 'mar',
-	health: 'health',
-	incidents: 'incidents',
-	attendance: 'charting',
-	goals: 'goals'
-} as const;
+const REQUIRED_FEATURE = CLINICAL_TYPE_FEATURE;
 const DATE_BASIS = {
 	notes:
 		'Shift start calendar day in agency time zone; overnight notes remain on the shift start day',
@@ -56,6 +50,15 @@ const CONTENT_TYPES = {
 	html: 'text/html;charset=utf-8',
 	pdf: 'application/pdf'
 } as const;
+/**
+ * A person's own record for a right-of-access request (HIPAA 45 CFR 164.524;
+ * research/product-2026-10.md §E): admins, one person, every home they have
+ * lived in, on every plan, so an agency is never locked out of records it holds.
+ */
+export const PersonRecordExport = ClinicalExport.omit({ homeId: true }).extend({
+	clientId: z.uuid()
+});
+
 /** Validates the live role, features, period and RLS-scoped home/person without exporting. */
 export async function clinicalAccess(
 	tx: Tx,
@@ -73,6 +76,26 @@ export async function clinicalAccess(
 			'FORBIDDEN',
 			'This report is not available for your role or agency plan'
 		);
+	return { p, period: await checkedScope(tx, user, p) };
+}
+
+/** The same checks for PersonRecordExport, without the plan; scoped by person, not home. */
+async function personRecordAccess(
+	tx: Tx,
+	user: CurrentUser,
+	input: z.input<typeof PersonRecordExport>
+) {
+	const p = { ...PersonRecordExport.parse(input), homeId: null };
+	if (user.role !== 'admin')
+		throw new ServiceError('FORBIDDEN', 'A person’s full record is for admins');
+	return { p, period: await checkedScope(tx, user, p) };
+}
+
+async function checkedScope(
+	tx: Tx,
+	user: CurrentUser,
+	p: { fromDay: string; toDay: string; homeId: string | null; clientId?: string }
+) {
 	let period: { from: Date; to: Date };
 	try {
 		period = clinicalPeriod(p.fromDay, p.toDay, user.timeZone);
@@ -84,19 +107,28 @@ export async function clinicalAccess(
 	}
 	if (!(await clinicalScope(tx, user.agencyId, p.homeId, p.clientId)))
 		throw new ServiceError('NOT_FOUND', 'Report scope is unavailable');
-	return { p, period };
+	return period;
 }
 
 export async function exportClinical(
 	tx: Tx,
 	user: CurrentUser,
-	input: z.input<typeof ClinicalExport>,
+	input: z.input<typeof ClinicalExport> | z.input<typeof PersonRecordExport>,
 	request: RequestInfo,
-	options: { background?: boolean; onClients?: (ids: string[]) => void } = {}
+	options: {
+		background?: boolean;
+		onClients?: (ids: string[]) => void;
+		/** input is a PersonRecordExport: no plan check, every home (personRecordAccess) */
+		rightOfAccess?: boolean;
+	} = {}
 ) {
-	const { p, period } = await clinicalAccess(tx, user, input);
-	const rowLimit = options.background ? (p.format === 'pdf' ? 2000 : 10000) : 1000;
-	const historyLimit = options.background ? 50000 : 5000;
+	const { p, period } = options.rightOfAccess
+		? await personRecordAccess(tx, user, input as z.input<typeof PersonRecordExport>)
+		: await clinicalAccess(tx, user, input as z.input<typeof ClinicalExport>);
+	// One person's record gets the larger limits (a busy MAR passes 1,000 doses in 93 days).
+	const large = options.background || options.rightOfAccess;
+	const rowLimit = large ? (p.format === 'pdf' ? 2000 : 10000) : 1000;
+	const historyLimit = large ? 50000 : 5000;
 	const rows = await clinicalRows(tx, user.agencyId, {
 		...p,
 		toDayExclusive: addDays(p.toDay, 1),
@@ -186,7 +218,8 @@ export async function exportClinical(
 			fromDay: p.fromDay,
 			toDay: p.toDay,
 			approvedOnly: p.approvedOnly,
-			clientIds: [...new Set(rows.map((r) => String(r.clientId)))]
+			clientIds: [...new Set(rows.map((r) => String(r.clientId)))],
+			...(options.rightOfAccess ? { rightOfAccess: true } : {})
 		})
 	);
 	return {

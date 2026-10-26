@@ -4,6 +4,7 @@ import {
 	PayrollExport,
 	exportClinical,
 	ClinicalExport,
+	PersonRecordExport,
 	CoverageExport,
 	exportCoverage,
 	BackgroundRequest,
@@ -14,7 +15,7 @@ import {
 	recentBackground,
 	downloadBackground
 } from '../../services/report/index.ts';
-import { featureRoleProcedure, router } from '../middleware.ts';
+import { featureRoleProcedure, roleProcedure, router } from '../middleware.ts';
 
 export const reportRouter = router({
 	exportCoverage: featureRoleProcedure(['reports_basic', 'reports'], 'supervisor')
@@ -35,6 +36,12 @@ export const reportRouter = router({
 	exportClinical: featureRoleProcedure('reports', 'supervisor')
 		.input(ClinicalExport)
 		.mutation(({ ctx, input }) => exportClinical(ctx.db, ctx.user, input, ctx.request)),
+	// One person's record for a right-of-access request: admins, every plan.
+	exportPersonRecord: roleProcedure('admin')
+		.input(PersonRecordExport)
+		.mutation(({ ctx, input }) =>
+			exportClinical(ctx.db, ctx.user, input, ctx.request, { rightOfAccess: true })
+		),
 	// A mutation keeps report parameters out of query URLs and audits every export.
 	exportTimesheet: featureRoleProcedure(['reports_basic', 'reports'], 'supervisor')
 		.input(PayrollExport)

@@ -25,7 +25,22 @@ export async function clinicalAgencyName(tx: Tx, agencyId: string) {
 	return agency?.name;
 }
 
-export async function clinicalScope(tx: Tx, agencyId: string, homeId: string, clientId?: string) {
+export async function clinicalScope(
+	tx: Tx,
+	agencyId: string,
+	homeId: string | null,
+	clientId?: string
+) {
+	if (homeId === null) {
+		// One person wherever they live now, active or not.
+		if (!clientId) return false;
+		const client = await tx
+			.select({ id: clients.id })
+			.from(clients)
+			.where(and(eq(clients.agency_id, agencyId), eq(clients.id, clientId)))
+			.limit(1);
+		return client.length > 0;
+	}
 	const home = await tx
 		.select({ id: homes.id })
 		.from(homes)
@@ -45,7 +60,8 @@ export async function clinicalScope(tx: Tx, agencyId: string, homeId: string, cl
 
 export interface ClinicalFilter {
 	type: ClinicalType;
-	homeId: string;
+	/** null: one person's records at every home (a right-of-access export) */
+	homeId: string | null;
 	clientId?: string;
 	fromDay: string;
 	toDayExclusive: string;
@@ -101,7 +117,7 @@ export async function clinicalRows(
 						eq(noteGoals.agency_id, agencyId),
 						eq(notes.agency_id, agencyId),
 						eq(goals.agency_id, agencyId),
-						eq(notes.home_id, f.homeId),
+						f.homeId ? eq(notes.home_id, f.homeId) : undefined,
 						gte(notes.day, f.fromDay),
 						lt(notes.day, f.toDayExclusive),
 						f.approvedOnly
@@ -133,7 +149,7 @@ export async function clinicalRows(
 					and(
 						clientWhere,
 						eq(notes.agency_id, agencyId),
-						eq(notes.home_id, f.homeId),
+						f.homeId ? eq(notes.home_id, f.homeId) : undefined,
 						gte(notes.day, f.fromDay),
 						lt(notes.day, f.toDayExclusive),
 						f.approvedOnly
@@ -170,7 +186,7 @@ export async function clinicalRows(
 					and(
 						clientWhere,
 						eq(marRecords.agency_id, agencyId),
-						eq(marRecords.home_id, f.homeId),
+						f.homeId ? eq(marRecords.home_id, f.homeId) : undefined,
 						gte(marRecords.day, f.fromDay),
 						lt(marRecords.day, f.toDayExclusive)
 					)
@@ -197,7 +213,7 @@ export async function clinicalRows(
 					and(
 						clientWhere,
 						eq(healthEntries.agency_id, agencyId),
-						eq(healthEntries.home_id, f.homeId),
+						f.homeId ? eq(healthEntries.home_id, f.homeId) : undefined,
 						gte(healthEntries.recorded_at, f.from),
 						lt(healthEntries.recorded_at, f.to)
 					)
@@ -229,7 +245,7 @@ export async function clinicalRows(
 					and(
 						clientWhere,
 						eq(incidents.agency_id, agencyId),
-						eq(incidents.home_id, f.homeId),
+						f.homeId ? eq(incidents.home_id, f.homeId) : undefined,
 						gte(incidents.occurred_at, f.from),
 						lt(incidents.occurred_at, f.to)
 					)
@@ -255,7 +271,7 @@ export async function clinicalRows(
 					and(
 						clientWhere,
 						eq(attendance.agency_id, agencyId),
-						eq(attendance.home_id, f.homeId),
+						f.homeId ? eq(attendance.home_id, f.homeId) : undefined,
 						gte(attendance.day, f.fromDay),
 						lt(attendance.day, f.toDayExclusive)
 					)
