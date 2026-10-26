@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { asService, withService, type Tx } from '../../db';
+import { forEachIsolated } from '../../jobs/isolate.ts';
 import { ServiceError } from '../../errors';
 import type { CurrentUser } from '../auth/index.ts';
 import { requireOpenHome } from '../home/index.ts';
@@ -212,27 +213,32 @@ export async function timesheet(
 export async function checkMissedPunches() {
 	const rows = await withService(missedClocks);
 	let flagged = 0;
-	for (const row of rows)
-		await withService(async (tx) => {
-			await lockClockOwner(tx, row.agencyId, row.profileId);
-			const current = await findClock(tx, row.agencyId, row.id);
-			if (!current || current.clock_out_at || (await hasClockAlert(tx, row.agencyId, row.id)))
-				return;
-			await notify(tx, row.agencyId, [{ id: row.profileId, role: 'caregiver' }], {
-				type: 'clock_missed',
-				priority: 3,
-				title: 'Please check your clock-out',
-				referenceId: row.id,
-				referenceType: 'clock_records'
-			});
-			await notifyHomeSupervisors(tx, row.agencyId, row.homeId, {
-				type: 'clock_missed',
-				priority: 3,
-				title: 'A clock-out needs review',
-				referenceId: row.id,
-				referenceType: 'clock_records'
-			});
-			flagged++;
-		});
+	await forEachIsolated(
+		'missed-punch clock',
+		rows,
+		(row) => row.id,
+		(row) =>
+			withService(async (tx) => {
+				await lockClockOwner(tx, row.agencyId, row.profileId);
+				const current = await findClock(tx, row.agencyId, row.id);
+				if (!current || current.clock_out_at || (await hasClockAlert(tx, row.agencyId, row.id)))
+					return;
+				await notify(tx, row.agencyId, [{ id: row.profileId, role: 'caregiver' }], {
+					type: 'clock_missed',
+					priority: 3,
+					title: 'Please check your clock-out',
+					referenceId: row.id,
+					referenceType: 'clock_records'
+				});
+				await notifyHomeSupervisors(tx, row.agencyId, row.homeId, {
+					type: 'clock_missed',
+					priority: 3,
+					title: 'A clock-out needs review',
+					referenceId: row.id,
+					referenceType: 'clock_records'
+				});
+				flagged++;
+			})
+	);
 	return { flagged };
 }
