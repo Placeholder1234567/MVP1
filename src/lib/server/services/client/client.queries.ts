@@ -1,4 +1,4 @@
-import { and, arrayContains, asc, desc, eq, gte, isNull } from 'drizzle-orm';
+import { and, arrayContains, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import type { RequestInfo, Tx } from '../../db';
 import {
 	auditLog,
@@ -8,6 +8,7 @@ import {
 	disclosures,
 	goals,
 	incidents,
+	profiles,
 	rooms
 } from '../../db/schema';
 
@@ -229,6 +230,37 @@ export function selectStateReportedIncidents(
 				arrayContains(incidents.notified_parties, [party])
 			)
 		);
+}
+
+/**
+ * When each incident first had `party` among its notified parties, and who
+ * saved that change: the audit trigger's snapshots of the incident (the same
+ * history note versions come from). Oldest change per incident wins.
+ */
+export async function stateReportMarks(
+	tx: Tx,
+	agencyId: string,
+	incidentIds: string[],
+	party: string
+) {
+	if (!incidentIds.length) return new Map<string, { at: Date; by: string | null }>();
+	const rows = await tx
+		.select({ incidentId: auditLog.record_id, at: auditLog.created_at, by: profiles.name })
+		.from(auditLog)
+		.leftJoin(profiles, eq(profiles.id, auditLog.performed_by))
+		.where(
+			and(
+				eq(auditLog.agency_id, agencyId),
+				eq(auditLog.table_name, 'incidents'),
+				inArray(auditLog.record_id, incidentIds),
+				sql`(${auditLog.new_values} -> 'notified_parties') @> ${JSON.stringify([party])}::jsonb`
+			)
+		)
+		.orderBy(asc(auditLog.created_at));
+	const marks = new Map<string, { at: Date; by: string | null }>();
+	for (const r of rows)
+		if (!marks.has(r.incidentId)) marks.set(r.incidentId, { at: r.at, by: r.by });
+	return marks;
 }
 
 /** The accounting given out, for the audit log (IDs and counts only). Runs as app_service. */

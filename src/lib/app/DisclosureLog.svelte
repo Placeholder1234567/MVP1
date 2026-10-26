@@ -4,10 +4,11 @@
 	// care, payment and the agency's operations in the last six years, and
 	// the file to give them or their guardian when they ask. Needs a
 	// connection; never synced to devices. On every plan.
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
 	import {
+		accountingFrom,
 		DISCLOSURE_PURPOSES,
 		DISCLOSURE_PURPOSE_LABEL,
 		type DisclosurePurpose
@@ -30,14 +31,35 @@
 	});
 	let form = $state(blank());
 
+	let failed = $state(false);
 	async function load() {
+		const forPerson = clientId;
+		failed = false;
 		try {
-			accounting = await trpc.client.disclosures.query({ clientId });
-		} catch {
-			message = 'Connect to see disclosures.';
+			const result = await trpc.client.disclosures.query({ clientId: forPerson });
+			// Moved to another person meanwhile: their list is loading instead.
+			if (forPerson === clientId) accounting = result;
+		} catch (e) {
+			if (forPerson !== clientId) return;
+			failed = true;
+			message =
+				(e as { data?: { code?: string } })?.data?.code === 'NOT_FOUND'
+					? 'This person’s disclosures aren’t available to you.'
+					: 'Connect to see disclosures.';
 		}
 	}
-	onMount(load);
+	// The page stays mounted when moving from one person to another, so the
+	// list, form and messages are reset for each person.
+	$effect(() => {
+		void clientId;
+		untrack(() => {
+			accounting = null;
+			open = false;
+			message = '';
+			form = blank();
+			void load();
+		});
+	});
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
@@ -97,6 +119,7 @@
 			>Date shared<input
 				class="input"
 				type="date"
+				min={accountingFrom(today)}
 				max={today}
 				required
 				bind:value={form.disclosedOn}
@@ -155,7 +178,8 @@
 	</form>
 {/if}
 {#if message}<p class="callout" role="status">{message}</p>{/if}
-{#if !accounting}<Skeleton count={1} label="Loading disclosures" />{:else}
+{#if failed}<button class="btn sec" onclick={() => load()}>Try again</button
+	>{:else if !accounting}<Skeleton count={1} label="Loading disclosures" />{:else}
 	<div class="list card" role="group" aria-label="Disclosure history">
 		{#each accounting.entries as e, i (i)}
 			<div class="row">
