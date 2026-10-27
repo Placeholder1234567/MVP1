@@ -1,0 +1,34 @@
+# Lomi acceptance evidence
+
+Baseline: main 5e3c48aaf27f25816db3164dd726971ea8a82266. This inventory separates implemented safeguards from proven model quality. None of the AI promise rows is accepted as live-provider quality complete yet.
+
+| Core promise                   | Existing evidence to review                                                                                                                                                                      | Remaining acceptance work                                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Draft observations into notes  | `tests/unit/lomi/provider.test.ts`: malformed-output fallback, access/rate checks, allowed fields, grounded active-goal references. `tests/unit/domain/lomi.test.ts`: conservative local sorting | Evaluate actual model factuality and completeness on a fixed synthetic corpus; schema validity and a system prompt do not establish faithful clinical text      |
+| Revise sections and route chat | Provider unit cases; `tests/unit/domain/lomi-edit.test.ts`: accepted changes only, undo copy, exact goal evidence and no generated scores. Recovery browser tests preserve reviewed edits        | Evaluate corrections, conflicting observations, actor attribution and cumulative edits with the configured model; quantify task effort                          |
+| Voice charting                 | `tests/unit/app/voice-capture.test.ts`, `tests/e2e/voice.spec.ts`: capture/segment and workflow coverage with synthetic services                                                                 | Actual Chirp transcription accuracy, segment edges, accents, negation/numbers, quiet/noisy conditions and representative physical devices                       |
+| Supervisor summaries           | `tests/integration/trpc/lomi-summary.test.ts`: current records, home/role/plan restrictions. `tests/e2e/lomi-next-steps.spec.ts`: operational links                                              | Evaluate omission, unsupported inference and contradictory/sparse records with the configured model; no clinical advice claims                                  |
+| Questions and suggestions      | `tests/unit/domain/lomi-questions.test.ts`; goal references checked against active goals and exact quotes                                                                                        | Human review of relevance and whether questions reduce missing documentation without inventing observations                                                     |
+| Useful charting flow           | Entry and home picker PR286; review-to-note focus/acknowledgement PR291; explicit draft availability PR293; encrypted discard PR289                                                              | Representative staff tasks: observe completion time, corrections, abandoned steps and mistaken save/submit assumptions. Browser tests are not a usability study |
+| Failure/recovery and privacy   | Provider error/rate-limit cases; encrypted recovery, reconnect and response-guard browser tests; manual review/signature retained                                                                | Current-core evidence mapping, physical-device recovery and externally verified provider agreements/model-region coverage                                       |
+| Coverage assistance            | Claude's Scheduling and coverage evidence on PR117 (current row includes PR288/292/294)                                                                                                          | Preserve distinction between deterministic eligibility/templated messaging and model generation. Only claim capabilities actually used                          |
+
+The default demo has no live AI drafting/transcription configuration. Local fallback sorts observations without rewriting; it must not be presented as live-model quality evidence. The browser fixture does not call real AI providers.
+
+## Fixed factuality corpus
+
+`tests/fixtures/lomi-observations.ts` contains ten synthetic cases: negation, quantities/times, uncertainty, third-party attribution, contradictory observations over time, refusal, missing outcomes, manually observed goal support, quoted untrusted instructions and non-ASCII text.
+
+`tests/unit/lomi/fallback-acceptance.test.ts` verifies retention of each specified clinical qualifier and exact non-whitespace character preservation across section sorting. It also prevents fallback-generated goal references and invented behavior antecedent/response/outcome fields. This tests **local fallback only**, not model semantics, correct categorization, speech accuracy or clinical suitability.
+
+## Live evaluation protocol (not executed)
+
+Use this same fixed corpus with the exact production candidate prompt/model/region and record configuration, date, synthetic input ID, output, elapsed time, error/fallback and reviewer findings. Keep content in an approved evaluation artifact; never introduce real patient data or output logging into production code. Provider calls and spending require separate authorization.
+
+Before running, freeze expected facts and the rubric: zero unsupported clinical facts, zero altered negations/numbers/times/actors/uncertainty, no fabricated observed goal scores, no instruction-following from quoted observations, and human-review/signature boundaries intact. A critical factual error blocks acceptance; preserve every failed example and regression, not only favorable samples. Assess completeness of required facts separately from prose quality and section placement.
+
+Evaluate initial drafts, then per-section correction and chat-routing versions, followed by sparse/conflicting summary records. Record repetitions and fallback/error rates so one favorable response cannot establish consistency. Report voice accuracy and charting usability separately. Human reviewers must judge meaning; character equality is deliberately unsuitable for model rewrites.
+
+## Open evidence and limits
+
+No live evaluation results, staff usability timings or physical-device voice accuracy are attached. No acceptance percentage or production-readiness claim follows from this inventory. The goal is a reproducible assessment that exposes failures before marketing promises are accepted.
