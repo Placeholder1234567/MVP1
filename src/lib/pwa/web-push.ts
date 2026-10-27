@@ -126,7 +126,13 @@ function createController(profileId: string, serverConfigured: boolean): PushCon
 		exclusive
 	});
 }
-/** Logout never waits indefinitely for a provider. The worker opt-in is revoked first. */
+/**
+ * Logout never waits indefinitely for a provider: after 4 s this reports
+ * `false` (cleanup not confirmed) and the teardown carries on in the
+ * background. The teardown waits its turn behind any push setup already in
+ * progress on this browser, so the opt-in can be cleared after that point.
+ * Where Web Locks are missing, that ordering holds only within this tab.
+ */
 export async function stopWebPush(profileId: string): Promise<boolean> {
 	controls()?.postMessage({ off: profileId });
 	// Never cancel or replace a newer profile's controller to tear down an older one.

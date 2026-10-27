@@ -77,3 +77,27 @@ it('the newer profile’s own sign-out releases its controller', async () => {
 	await web.stopWebPush('newer');
 	expect(web.webPushController('newer', true)).not.toBe(newer);
 });
+
+it('sign-out reports uncertainty after 4 s behind a held setup, keeps its place and then finishes', async () => {
+	vi.useFakeTimers();
+	try {
+		vi.mocked(storage.readPushRegistration).mockResolvedValue({
+			profileId: 'newer',
+			id: 'registration-newer'
+		});
+		vi.mocked(storage.markPushEnabled).mockClear();
+		// Another push step (say a setup waiting on the provider) holds the lock.
+		let release!: () => void;
+		const holding = web.exclusive(() => new Promise<void>((r) => (release = r)));
+		const stopping = web.stopWebPush('newer');
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(await stopping).toBe(false);
+		// Still queued, not skipped: nothing has changed yet.
+		expect(storage.markPushEnabled).not.toHaveBeenCalled();
+		release();
+		await holding;
+		await vi.waitFor(() => expect(storage.markPushEnabled).toHaveBeenCalledWith(false));
+	} finally {
+		vi.useRealTimers();
+	}
+});

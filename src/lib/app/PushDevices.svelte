@@ -104,9 +104,12 @@
 		try {
 			await trpc.notification.removePushDevice.mutate({ id });
 			// Finish this device's cleanup only for the account that asked for it.
+			// This keeps going after navigation or a lock: the person asked to stop
+			// delivery to this device. Only another sign-in stops it.
 			if (sameAccount()) {
 				const local = await readPushRegistration();
-				if (local?.id === id && local.profileId === profileId) await stopWebPush(profileId);
+				if (sameAccount() && local?.id === id && local.profileId === profileId)
+					await stopWebPush(profileId);
 			}
 			if (!sameView()) return;
 			devices = devices.filter((device) => device.id !== id);
