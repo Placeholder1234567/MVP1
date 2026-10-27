@@ -3,6 +3,11 @@
 // `staff.saveCredential`, `staff.removeCredential`). Admins record and
 // renew them; supervisors see everyone's; caregivers see their own. The
 // credential-expiry sweep (notification service) sends the reminders.
+//
+// A medication administration credential decides profiles.med_certified,
+// the flag that MAR recording, coverage offers and witnessing check:
+// recording a valid one turns it on, a lapsed one (here or when the sweep
+// sees it lapse) turns it off.
 import { z } from 'zod';
 import {
 	CREDENTIAL_KINDS,
@@ -16,6 +21,7 @@ import type { CurrentUser } from './auth.types';
 import {
 	credentialOwner,
 	deleteCredential,
+	setMedCertified,
 	insertCredential,
 	sameName,
 	selectCredentials,
@@ -93,6 +99,15 @@ export async function saveCredential(
 		? await updateCredential(tx, user.agencyId, c.id, row)
 		: await insertCredential(tx, { ...row, agency_id: user.agencyId, profile_id: c.profileId });
 	if (!saved) throw new ServiceError('NOT_FOUND', 'Credential not found');
+	if (c.kind === 'med_admin') {
+		const today = localTime(new Date(), user.timeZone).day;
+		await setMedCertified(
+			tx,
+			user.agencyId,
+			c.profileId,
+			credentialStatus(c.expiresOn ?? null, today) !== 'expired'
+		);
+	}
 	return { id: saved.id };
 }
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, lt, sql } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import { profiles, staffCredentials } from '../../db/schema';
 
@@ -104,4 +104,44 @@ export async function deleteCredential(tx: Tx, agencyId: string, id: string) {
 		.where(and(eq(staffCredentials.agency_id, agencyId), eq(staffCredentials.id, id)))
 		.returning({ id: staffCredentials.id });
 	return rows.length > 0;
+}
+
+/** The last valid day of this person's lapsed medication certificate, or null. */
+export async function lapsedMedCertificate(
+	tx: Tx,
+	agencyId: string,
+	profileId: string,
+	today: string
+) {
+	const [row] = await tx
+		.select({ expiresOn: staffCredentials.expires_on })
+		.from(staffCredentials)
+		.where(
+			and(
+				eq(staffCredentials.agency_id, agencyId),
+				eq(staffCredentials.profile_id, profileId),
+				eq(staffCredentials.kind, 'med_admin'),
+				lt(staffCredentials.expires_on, today)
+			)
+		)
+		.limit(1);
+	return row?.expiresOn ?? null;
+}
+
+export async function setMedCertified(
+	tx: Tx,
+	agencyId: string,
+	profileId: string,
+	certified: boolean
+) {
+	await tx
+		.update(profiles)
+		.set({ med_certified: certified, updated_at: new Date() })
+		.where(
+			and(
+				eq(profiles.agency_id, agencyId),
+				eq(profiles.id, profileId),
+				sql`${profiles.med_certified} is distinct from ${certified}`
+			)
+		);
 }

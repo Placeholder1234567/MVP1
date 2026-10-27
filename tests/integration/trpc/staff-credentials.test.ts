@@ -259,3 +259,57 @@ it('lets admins remove a credential', async () => {
 	);
 	await expect(admin.staff.removeCredential({ id })).rejects.toThrow('not found');
 });
+
+it('keeps med certification in step with the medication administration certificate', async () => {
+	const admin = await as(ADMIN);
+	const certified = async (id: string) =>
+		(
+			await withService((t) =>
+				t.select({ on: s.profiles.med_certified }).from(s.profiles).where(eq(s.profiles.id, id))
+			)
+		)[0].on;
+	const NEW = randomUUID();
+	await withService((t) =>
+		t.insert(s.profiles).values({
+			id: NEW,
+			agency_id: AGENCY,
+			auth_uid: uid(NEW),
+			email: `${uid(NEW)}@example.test`,
+			name: 'New Giver',
+			role: 'caregiver',
+			home_ids: [HOME]
+		})
+	);
+	expect(await certified(NEW)).toBe(false);
+
+	// Recording a valid certificate certifies them; a lapsed one doesn't.
+	const { id } = await admin.staff.saveCredential({
+		profileId: NEW,
+		kind: 'med_admin',
+		expiresOn: addDays(today, 365)
+	});
+	expect(await certified(NEW)).toBe(true);
+	await admin.staff.saveCredential({
+		id,
+		profileId: NEW,
+		kind: 'med_admin',
+		expiresOn: addDays(today, -1)
+	});
+	expect(await certified(NEW)).toBe(false);
+	// The checkbox can't override a lapsed certificate.
+	await expect(admin.staff.update({ id: NEW, medCertified: true })).rejects.toThrow(
+		`expired on ${addDays(today, -1)}`
+	);
+	// Other changes still save.
+	await admin.staff.update({ id: NEW, medCertified: false, homeIds: [HOME] });
+
+	// The sweep turns certification off when a certificate lapses, before 09:00 too.
+	await admin.staff.saveCredential({ id, profileId: NEW, kind: 'med_admin', expiresOn: today });
+	expect(await certified(NEW)).toBe(true);
+	const tomorrow = addDays(today, 1);
+	const { revoked } = await sweepCredentialReminders(new Date(`${tomorrow}T02:00:00Z`));
+	expect(revoked).toBeGreaterThanOrEqual(1);
+	expect(await certified(NEW)).toBe(false);
+	// Signed-in permissions follow, so the server refuses their doses.
+	expect((await getCurrentUser(uid(NEW)))?.medCertified).toBe(false);
+});
