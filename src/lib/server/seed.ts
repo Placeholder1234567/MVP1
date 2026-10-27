@@ -15,13 +15,16 @@ import { createIdentity, deleteIdentity } from './identity';
 export { DEV_PASSWORD } from './demo-accounts';
 // Only the guarded browser runner requests these disposable accounts. Separate
 // profiles keep destructive desktop/phone tests independent of suite order.
-const PUSH_FIXTURES = ['desktop', 'phone'].map((project) => ({
-	name: `Synthetic Push ${project}`,
-	email: `push-${project}@guad.test`,
-	role: 'caregiver' as const,
-	homes: ['oak'] as const,
-	med: false
-}));
+// Each browser-test viewport gets one registered device per removal test.
+const PUSH_FIXTURES = ['push', 'push-held', 'push-nav'].flatMap((prefix) =>
+	['desktop', 'phone'].map((project) => ({
+		name: `Synthetic ${prefix} ${project}`,
+		email: `${prefix}-${project}@guad.test`,
+		role: 'caregiver' as const,
+		homes: ['oak'] as const,
+		med: false
+	}))
+);
 const STAFF = [...DEMO_STAFF, ...(process.env.GUAD_E2E === '1' ? PUSH_FIXTURES : [])];
 
 async function main() {

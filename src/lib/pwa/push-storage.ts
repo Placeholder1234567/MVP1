@@ -4,16 +4,28 @@ export interface PushRegistration {
 	profileId: string;
 	id: string;
 }
-export async function readPushRegistration(): Promise<PushRegistration | null> {
+/**
+ * The registration this browser holds: null when there is none, and an error
+ * when it exists but can't be read (blocked storage, a damaged file), so a
+ * caller never mistakes "unreadable" for "nobody's".
+ */
+export async function readPushOwner(): Promise<PushRegistration | null> {
+	let text: string;
 	try {
 		const file = await (await navigator.storage.getDirectory()).getFileHandle(FILE);
-		const value = JSON.parse(await (await file.getFile()).text());
-		return typeof value?.id === 'string' && typeof value?.profileId === 'string'
-			? { id: value.id, profileId: value.profileId }
-			: null;
-	} catch {
-		return null;
+		text = await (await file.getFile()).text();
+	} catch (e) {
+		if ((e as { name?: string })?.name === 'NotFoundError') return null;
+		throw e;
 	}
+	const value = JSON.parse(text);
+	if (typeof value?.id === 'string' && typeof value?.profileId === 'string')
+		return { id: value.id, profileId: value.profileId };
+	throw new Error('Unreadable push registration');
+}
+/** For display: an unreadable registration reads as none. */
+export function readPushRegistration(): Promise<PushRegistration | null> {
+	return readPushOwner().catch(() => null);
 }
 export async function writePushRegistration(value: PushRegistration | null): Promise<void> {
 	const directory = await navigator.storage.getDirectory();

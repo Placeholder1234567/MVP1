@@ -2,7 +2,7 @@ import * as env from '$app/env/public';
 import { firebaseAuth } from '../auth/firebase';
 import { trpc } from '../trpc';
 import { PushController } from './push-controller';
-import { readPushRegistration, writePushRegistration, markPushEnabled } from './push-storage';
+import { readPushOwner, writePushRegistration, markPushEnabled } from './push-storage';
 
 export function pushConfigured(): boolean {
 	return !!(
@@ -48,24 +48,44 @@ async function registration() {
 }
 let current: { profileId: string; controller: PushController } | undefined;
 let control: BroadcastChannel | undefined;
+/** Fired on window when a profile's push is turned off; `detail` is that profile's ID. */
+export const PUSH_DISABLED = 'guad-push-disabled';
+function pushDisabled(profileId: string) {
+	globalThis.dispatchEvent(new CustomEvent(PUSH_DISABLED, { detail: profileId }));
+}
 function controls() {
 	if (!control && typeof BroadcastChannel !== 'undefined') {
 		control = new BroadcastChannel('guad-push-control');
 		control.onmessage = (event) => {
-			if (event.data === 'off') {
-				current?.controller.cancel();
-				void markPushEnabled(false).catch(() => {});
-				globalThis.dispatchEvent(new Event('guad-push-disabled'));
-			}
+			// Another tab turned this profile's push off. It already cleared the
+			// browser-wide opt-in under the lock; only this tab's pending setup for
+			// the same profile stops here. A newer profile's setup is left alone.
+			const profileId = event.data?.off;
+			if (typeof profileId !== 'string') return;
+			if (current?.profileId === profileId) current.controller.cancel();
+			pushDisabled(profileId);
 		};
 	}
 	return control;
+}
+let queue: Promise<unknown> = Promise.resolve();
+/** One browser-wide push step at a time: Web Locks across tabs, else within this tab. */
+export function exclusive<T>(work: () => Promise<T>): Promise<T> {
+	if (typeof navigator !== 'undefined' && navigator.locks)
+		return navigator.locks.request('guad-push', work) as Promise<T>;
+	const run = queue.then(work, work);
+	queue = run.catch(() => {});
+	return run;
 }
 export function webPushController(profileId: string, serverConfigured: boolean): PushController {
 	controls();
 	if (current?.profileId === profileId) return current.controller;
 	current?.controller.cancel();
-	const controller = new PushController(profileId, {
+	current = { profileId, controller: createController(profileId, serverConfigured) };
+	return current.controller;
+}
+function createController(profileId: string, serverConfigured: boolean): PushController {
+	return new PushController(profileId, {
 		configured: serverConfigured && pushConfigured(),
 		available: pushAvailable,
 		permission: () => Notification.permission,
@@ -94,25 +114,32 @@ export function webPushController(profileId: string, serverConfigured: boolean):
 		unsubscribe: async () => {
 			const registration = await navigator.serviceWorker.getRegistration();
 			const subscription = await registration?.pushManager.getSubscription();
-			if (subscription && !(await subscription.unsubscribe())) throw new Error('Push cleanup unavailable');
+			if (subscription && !(await subscription.unsubscribe()))
+				throw new Error('Push cleanup unavailable');
 		},
-		read: readPushRegistration,
+		read: readPushOwner,
 		write: writePushRegistration,
 		mark: markPushEnabled,
 		register: (token, previousId) =>
 			trpc.notification.registerPushDevice.mutate({ token, platform: 'web', previousId }),
-		remove: (id) => trpc.notification.removePushDevice.mutate({ id })
+		remove: (id) => trpc.notification.removePushDevice.mutate({ id }),
+		exclusive
 	});
-	current = { profileId, controller };
-	return controller;
 }
-/** Logout never waits indefinitely for a provider. The worker opt-in is revoked first. */
+/**
+ * Logout never waits indefinitely for a provider: after 4 s this reports
+ * `false` (cleanup not confirmed) and the teardown carries on in the
+ * background. The teardown waits its turn behind any push setup already in
+ * progress on this browser, so the opt-in can be cleared after that point.
+ * Where Web Locks are missing, that ordering holds only within this tab.
+ */
 export async function stopWebPush(profileId: string): Promise<boolean> {
-	controls()?.postMessage('off');
+	controls()?.postMessage({ off: profileId });
+	// Never cancel or replace a newer profile's controller to tear down an older one.
 	const controller =
 		current?.profileId === profileId
 			? current.controller
-			: webPushController(profileId, pushConfigured());
+			: createController(profileId, pushConfigured());
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		return await Promise.race([
@@ -126,7 +153,7 @@ export async function stopWebPush(profileId: string): Promise<boolean> {
 		return false;
 	} finally {
 		clearTimeout(timer);
-		current = undefined;
-		globalThis.dispatchEvent(new Event('guad-push-disabled'));
+		if (current?.controller === controller) current = undefined;
+		pushDisabled(profileId);
 	}
 }
