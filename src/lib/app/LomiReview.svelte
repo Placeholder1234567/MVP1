@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { trpc } from '#lib/trpc.ts';
+	import { appendObservations } from '#lib/domain/observation-text.ts';
 	import { draftLocally, vagueFlags, type DraftResult, type NoteKind } from '#lib/domain/lomi.ts';
 	import {
 		applyAcceptedUpdates,
@@ -431,11 +432,14 @@
 									voiceMessage = state.message;
 								}}
 								onText={(clip) => {
-									additions[section] = [additions[section], clip]
-										.filter(Boolean)
-										.join(' ')
-										.slice(0, 2000);
+									const combined = appendObservations(additions[section] ?? '', clip, 2000);
+									if (combined === null) {
+										onDirty?.();
+										return false;
+									}
+									additions[section] = combined;
 									changed();
+									return true;
 								}}
 							/>{/if}
 						<button

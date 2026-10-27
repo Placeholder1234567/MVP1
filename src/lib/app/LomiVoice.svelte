@@ -14,13 +14,18 @@
 		seconds: number;
 		label: string;
 		disabled?: boolean;
-		onText: (text: string) => void;
+		onText: (text: string) => boolean | void;
 		onState?: (state: { recording: boolean; busy: boolean; message: string }) => void;
 		/** Offline, keep the recording for this person and note type (pending_recordings). */
 		saveFor?: { clientId: string; kind: string };
 	} = $props();
 	// Groups the parts of one recording kept offline.
 	let recordingId = crypto.randomUUID();
+	let pendingText = $state('');
+	function acceptTranscript(text: string) {
+		if (onText(text) === false) pendingText = text;
+		else pendingText = '';
+	}
 	const app = useSession();
 	let voiceState = $state<VoiceState>({
 		recording: false,
@@ -65,7 +70,7 @@
 						mimeType: mime as 'audio/webm' | 'audio/mp4' | 'audio/ogg'
 					})
 				).text,
-			text: (text) => onText(text),
+			text: acceptTranscript,
 			offline: () => !!saveFor && !navigator.onLine,
 			keep: async (audio, mime, part) => {
 				if (!saveFor || !app.db) throw new Error('Nowhere to keep it');
@@ -116,7 +121,7 @@
 	});
 	function speak() {
 		if (voiceState.recording) capture?.stop();
-		else if (!disabled) {
+		else if (!disabled && !pendingText) {
 			recordingId = crypto.randomUUID();
 			void capture?.start(seconds);
 		}
@@ -126,7 +131,41 @@
 <button
 	class="btn sec"
 	type="button"
-	disabled={(disabled && !voiceState.recording) || voiceState.busy || voiceState.requesting}
+	disabled={(disabled && !voiceState.recording) ||
+		voiceState.busy ||
+		voiceState.requesting ||
+		!!pendingText}
 	onclick={speak}
 	>{voiceState.recording ? 'Stop recording' : voiceState.busy ? 'Transcribing…' : label}</button
 >
+
+{#if pendingText}
+	<section class="callout warn stack" aria-label="Transcript not added">
+		<p role="alert">
+			This transcript does not fit in the observations field. Nothing was added or cut off. Make
+			room and add it again, or transfer the words you need manually. Keep this screen open: this
+			transcript is only held here until you leave.
+		</p>
+		<label
+			>Full transcript not yet added<textarea class="input" readonly value={pendingText}
+			></textarea></label
+		>
+		<div class="actions">
+			<button class="btn sec" type="button" {disabled} onclick={() => acceptTranscript(pendingText)}
+				>Add full transcript</button
+			>
+			<button
+				class="textbtn"
+				type="button"
+				onclick={() => {
+					if (
+						confirm(
+							'Discard this transcript that has not been added? Your existing observations stay unchanged.'
+						)
+					)
+						pendingText = '';
+				}}>Discard unadded transcript</button
+			>
+		</div>
+	</section>
+{/if}
