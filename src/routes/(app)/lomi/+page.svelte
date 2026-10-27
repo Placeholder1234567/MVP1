@@ -20,7 +20,7 @@
 		{#each app.currentPeople as person (person.id)}
 			<a
 				class="card pad row"
-				href={resolve('/(app)/people/[id]/note', { id: person.id }) + '#lomi'}
+				href={resolve('/(app)/people/[id]/note', { id: person.id })}
 			>
 				<span class="grow"><b>{person.name}</b><span>Start a shift note with Lomi</span></span>
 			</a>
