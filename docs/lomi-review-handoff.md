@@ -1,3 +1,5 @@
 # Reviewed Lomi draft handoff
 
 After explicit Use, focus moves to the existing Care note form and a status confirms that the reviewed content was transferred but not saved or submitted. Goal scores and explicit save/sign controls remain unchanged. The existing desktop/phone recovery regression now verifies form focus and the unsaved acknowledgement before editing, saving and reloading. No model, authorization or provider behavior changes. Final-head CI is required before merge.
+
+The first handoff browser run (40445867575) hit the unchanged 30-minute job deadline during phone production tests. Both viewports passed the strengthened recovery assertions, but this was not a full pass. CI now runs desktop and phone in separate matrix jobs, each with independent ephemeral services and seed, both production and development phases, the same 30-minute allowance, zero retries and unchanged assertions. Artifact names distinguish viewports; fail-fast is disabled so both produce evidence. The guarded runner accepts only desktop or phone selectors; its default still runs both projects. No CI browser tests were executed in the editor.
