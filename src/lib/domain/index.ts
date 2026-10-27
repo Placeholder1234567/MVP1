@@ -16,6 +16,7 @@ export * from './vitals';
 export * from './eligibility';
 export * from './referral-stage';
 export * from './report-schedule';
+export * from './credentials';
 export * from './disclosure';
 export * from './schedule-suggest';
 export * from './charting';

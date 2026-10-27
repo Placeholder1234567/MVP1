@@ -4,18 +4,24 @@ import { test, expect } from '@playwright/test';
 // (frontend-spec-3.md §5 Pagination), never infinite scroll.
 test('long lists show 25 rows and load more on request', async ({ page }, info) => {
 	test.skip(info.project.name !== 'desktop', 'One run is enough for a list control.');
-	// Stretch the staff list to 30 synthetic rows.
-	await page.route(/\/api\/trpc\/staff\.list(?:\?|$)/, async (route) => {
+	// Stretch the staff list to 30 synthetic rows. tRPC may batch it with
+	// the page's other queries, so find its place in the batch.
+	await page.route(/\/api\/trpc\/[^?]*\bstaff\.list\b/, async (route) => {
+		const procedures = decodeURIComponent(new URL(route.request().url()).pathname)
+			.split('/')
+			.pop()!
+			.split(',');
+		const at = procedures.indexOf('staff.list');
 		const response = await route.fetch();
 		const body = await response.json();
-		const rows = body[0].result.data.json as Array<Record<string, unknown>>;
+		const rows = body[at].result.data.json as Array<Record<string, unknown>>;
 		const extra = Array.from({ length: 30 - rows.length }, (_, i) => ({
 			...rows[0],
 			id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
 			name: `Synthetic Staff ${String(i + 1).padStart(2, '0')}`,
 			email: `synthetic-${i}@example.test`
 		}));
-		body[0].result.data.json = [...rows, ...extra];
+		body[at].result.data.json = [...rows, ...extra];
 		await route.fulfill({ response, json: body });
 	});
 	await page.goto('/login');

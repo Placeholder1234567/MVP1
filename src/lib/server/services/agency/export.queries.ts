@@ -14,6 +14,7 @@ export const EXPORT_TABLES = {
 	homes: t(schema.homes),
 	rooms: t(schema.rooms),
 	profiles: t(schema.profiles),
+	staff_credentials: t(schema.staffCredentials),
 	clients: t(schema.clients),
 	client_health_info: t(schema.clientHealthInfo),
 	goal_templates: t(schema.goalTemplates),

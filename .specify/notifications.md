@@ -419,6 +419,19 @@ Update `notifications.sent_at`
 | **Deep Link** | `/dashboard/reports/background` |
 | **Escalation** | None |
 
+### 2.22 credential_expiring
+
+| Field | Value |
+|-------|-------|
+| **Trigger** | A staff member's training or certification (`staff_credentials`, recorded by an admin on Staff) is 30, 14 or 7 days from its expiry date, or has lapsed (the day after its last valid day). The hourly `credential-expiry-sweep` sends from 09:00 in the agency's time zone. A credential recorded inside a window gets that window's reminder only, and lapses older than 30 days are not reminded about. |
+| **Recipients** | The staff member, at each stage. The agency's admins, once while it is expiring and once when it lapses (not for their own, which they already get). Inactive staff are skipped. |
+| **Channels** | In-app + push + email |
+| **Priority** | Normal; High once lapsed |
+| **Template** | To the person: `"Your {credential} expires on {date}. Plan your renewal."` or `"Your {credential} expired on {date}. Renew it and tell your admin."` To admins: `"A staff member's {credential} expires on {date}"` or `"... expired on {date}"`, body `"Open Staff to see who."` |
+| **PHI Safety** | Safe. Credential name and date; no client data, and admin alerts don't name the staff member. |
+| **Deep Link** | `/dashboard/staff` for admins, `/me` for others |
+| **Escalation** | None. Each alert's reference is a stable ID from the credential, its expiry date and the stage, so it is sent once; renewing (a new expiry date) starts the reminders again. |
+
 ### Notification Type Summary Table
 
 | Type | Priority | Push | SMS | Email | Mandatory | Escalation |
@@ -451,6 +464,7 @@ Update `notifications.sent_at`
 | `email_delivery_problem` | Normal | Y | N | N | N | None |
 | `access_review` | Normal (High for a new admin) | Y | N | Y | N | None (at most weekly) |
 | `report_ready` | Normal | Y | N | Y | N | None |
+| `credential_expiring` | Normal (High once lapsed) | Y | N | Y | N | None (once per stage) |
 
 `*` SMS sent only on escalation if push is unacknowledged, not on initial send. Exception: `clock_missed` sends SMS immediately to the supervisor (not escalation-only).
 

@@ -4,6 +4,7 @@
 	import InstallCard from '#lib/app/InstallCard.svelte';
 	import HelpCard from '#lib/app/HelpCard.svelte';
 	import MyHours from '#lib/app/MyHours.svelte';
+	import StaffCredentials from '#lib/app/StaffCredentials.svelte';
 
 	const app = useSession();
 	let error = $state('');
@@ -37,6 +38,7 @@
 		<p><b>Time zone</b><br />{app.user.timeZone}</p>
 	</div>
 	{#if app.has('timekeeping')}<MyHours />{/if}
+	<StaffCredentials profileId={app.user.profileId} title="My training and certifications" />
 	<button class="btn sec" onclick={() => app.lock()}>Lock device</button><button
 		class="btn sec"
 		onclick={signOut}>Sign out on all devices</button

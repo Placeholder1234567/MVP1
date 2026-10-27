@@ -8,6 +8,7 @@ import {
 	sendDigest,
 	sweepDigests,
 	sweepAccessReview,
+	sweepCredentialReminders,
 	sweepCareReminders,
 	sweepMedReminders,
 	sweepNotifications
@@ -142,6 +143,13 @@ const JOBS = {
 		maxAttempts: 1,
 		run: () => sweepAccessReview()
 	}),
+	// Staff training and certifications expiring or lapsed (notifications.md §2.22).
+	'credential-expiry-sweep': job({
+		queue: 'maintenance',
+		payload: z.object({}).passthrough(),
+		maxAttempts: 1,
+		run: () => sweepCredentialReminders()
+	}),
 	'notifications-sweep': job({
 		queue: 'maintenance',
 		payload: z.object({}).passthrough(),
@@ -242,5 +250,7 @@ export const SCHEDULE: Array<{ job: JobName; cron: string }> = [
 	{ job: 'report-schedule-sweep', cron: '41 * * * *' },
 	{ job: 'sync-window', cron: '0 8 * * *' },
 	// Admins hear at most weekly (access-review.ts); 14:00 UTC is US morning.
-	{ job: 'access-review-sweep', cron: '0 14 * * *' }
+	{ job: 'access-review-sweep', cron: '0 14 * * *' },
+	// Hourly so each agency's reminders go out from 09:00 local time.
+	{ job: 'credential-expiry-sweep', cron: '53 * * * *' }
 ];

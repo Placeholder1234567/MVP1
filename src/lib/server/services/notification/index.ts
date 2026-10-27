@@ -59,6 +59,7 @@ export { sweepCareReminders } from './care-reminders';
 export { incidentReviewed } from './resolve';
 export { messagingUsage } from './usage';
 export { adminAdded, sweepAccessReview } from './access-review';
+export { sweepCredentialReminders } from './credential-reminders';
 export {
 	announceMaintenance,
 	MaintenanceInput,

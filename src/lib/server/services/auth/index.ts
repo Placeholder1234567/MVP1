@@ -21,6 +21,13 @@ import { ROLE_RANK, type CurrentUser, type Role } from './auth.types';
 export type { CurrentUser, Role } from './auth.types';
 export { saveDisclosure, saveTheme, DisclosureInput, ThemeInput } from './settings';
 export {
+	CredentialFilter,
+	CredentialInput,
+	listCredentials,
+	removeCredential,
+	saveCredential
+} from './credentials';
+export {
 	getStaff,
 	inviteStaff,
 	InviteInput,
