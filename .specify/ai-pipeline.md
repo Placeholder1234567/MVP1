@@ -132,9 +132,9 @@ One Google Cloud BAA covers every row except the last. It covers only products o
 ### PHI Minimization (Minimum Necessary Standard)
 
 - **In prompts**: Guad adds only the client's **first name** and their goal text (and behavior plan types for behavior notes). It never adds last names, DOBs, IDs, the diagnoses list, medication lists or guardian information. The caregiver's transcript is sent as spoken, and it **is PHI**: it routinely describes health, behavior, meals and medications. That's why the Google Cloud BAA (Vertex AI and Speech-to-Text) must be in place before any real data reaches Lomi. Calling the minimization "first name only" would understate the exposure.
-- **In transcripts**: Voice recordings may contain PHI spoken by the caregiver. Audio is sent inline to Speech-to-Text (never uploaded to Cloud Storage), with Speech-to-Text data logging left off, and is never persisted to disk, object storage, or any durable medium.
-- **Transcript text**: Held in browser memory during the drafting session. Saved only as part of the final signed note content in the `notes.content` JSONB column, protected by RLS.
-- **Chat messages**: Held in browser memory during the session. Not persisted independently. Content that Lomi routes into note sections is saved as part of the note, same as any edit.
+- **Audio**: Voice recordings may contain PHI. The current transcription service sends audio inline to Speech-to-Text and does not use Cloud Storage for recordings. Online capture is held in memory; full-note recordings captured offline are deliberately persisted in the encrypted device database (`pending_recordings`) for transcription on reconnect. Saved recordings remain when the complete transcript does not fit and need explicit retry after making room. Short section clips do not have that durable queue. Speech-to-Text data logging must be disabled and verified in the authorized provider configuration; source code and synthetic tests do not establish its deployed setting.
+- **Transcript and draft text**: Live input begins in browser memory. Once a Lomi review exists, the original observations, reviewed sections and recovery ledger can be saved in encrypted local care drafts, scoped to the account, person and note context (`LomiRecoveryStore`). Text explicitly used in a note can also be saved as an unsigned draft before human signature; server note content is protected by RLS. A live oversized transcript that has not been added remains volatile, with an on-screen warning. Do not describe all transcript text as memory-only or signed-note-only.
+- **Follow-up observations and proposals**: The review recovery ledger includes follow-up text, per-section additions and pending proposals in encrypted local storage. This is not an independent server chat-history feature. Accepted content reaches the note only through explicit review and Use; saving and signing remain separate actions.
 
 ### PHI Exclusion Zones
 
@@ -872,7 +872,9 @@ The server parses model JSON and validates supported output shapes, string bound
 - Caregivers explicitly review proposed changes and separately sign notes. No model output automatically approves, signs or submits a clinical record.
 - The fixed synthetic corpus and evaluation rubric in `docs/ai-acceptance.md` include quoted untrusted instructions, negation, numbers, uncertainty and attribution. Live-provider adversarial/factuality evaluation is not yet executed; do not claim prompt-injection immunity or verified clinical suitability.
 
-## Migration Path: MVP to Production
+## Historical migration plan: original MVP prototype to target architecture
+
+The table compares the original `mvp/` prototype with the target design; it is not the current Svelte implementation inventory or proof of deployment. The as-built boundaries at the top of this document take precedence. In particular, section edits, follow-up routing and proactive questions already exist in the Svelte app, and initial drafting currently makes one model request rather than the planned parallel pipeline.
 
 | Component | MVP (current) | Production |
 |---|---|---|
