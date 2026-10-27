@@ -1,0 +1,13 @@
+# Lomi suggestion response guards
+
+Section revisions and follow-up routing previously assigned their proposals after awaiting the server, even when a privacy lock interrupted the request. A response released after unlock could appear in the resumed review, despite the caregiver having moved on to new observations.
+
+`LomiReview.svelte` now binds these completions to the original agency, profile, home, person, note kind, observations, privacy revision and suggestion request. It also compares the submitted section text and correction, or all submitted sections and follow-up text, before displaying a proposal. Disposal or a changed context rejects a completion. A privacy lock releases the interrupted busy state and retains the current draft and additional observations; a late request cannot clear a newer request's busy state. Staff explicitly request another suggestion after reviewing their retained text. No automatic retry is added.
+
+`tests/e2e/lomi-suggestion-response.spec.ts` exercises both editing paths on desktop and phone. Each holds an actual console/demo server response using `route.fetch()`, locks and unlocks the workspace, changes the caregiver's draft and observations, and releases the old response. It requires no late proposal, unchanged new wording, and a successful explicit request using the new observations. The underlying note and signature remain unchanged. Accessibility and overflow are checked. Browser execution belongs to GitHub CI; local type checking does not establish browser success.
+
+These tests cover response ownership with the local fallback. They do not establish real-model accuracy, speech recognition quality or staff usability. The live AI acceptance gates in `ai-acceptance.md` remain open. Navigation while the destination is still loading and broader voice/recovery lifecycle behavior need their own evidence; this change does not claim those paths are fixed.
+
+## Browser validation follow-up
+
+Initial head `a5c3769` passed both new edit/route cases on desktop and phone. Its desktop job failed only `controlled.spec.ts` at the assumed default witness mode; development tests were not reached. The retained trace shows “Checking sync…” at the waste-form click. `start()` intentionally sets the mode from `canReachServer`, which is false while checking sync, so later countersigning was selected. The in-person credential scenario now explicitly selects “Signs in here now” before its existing checked-state assertion. Invalid password, witness identity, successful witnessed save, count and mismatch assertions are retained. No product, timeout or retry changes are made. This is an evidence-based fixture correction, not attribution of that failure to Lomi. The new final head requires all five CI jobs again.
