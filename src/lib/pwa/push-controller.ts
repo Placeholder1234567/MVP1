@@ -92,19 +92,36 @@ export class PushController {
 			return mine === this.revision ? 'failed' : 'off';
 		}
 	}
-	async disable(): Promise<boolean> {
+	/**
+	 * `unknownOwner` decides what happens when the browser's registration
+	 * can't be read: 'teardown' (this profile is the one using this tab, so
+	 * stopping is safe) or 'leave' (it may belong to someone who signed in
+	 * since; change nothing browser-wide and report it unconfirmed).
+	 */
+	async disable(unknownOwner: 'teardown' | 'leave' = 'leave'): Promise<boolean> {
 		this.revision++;
-		return this.deps.exclusive(() => this.teardown());
+		return this.deps.exclusive(() => this.teardown(unknownOwner));
 	}
-	private async teardown(): Promise<boolean> {
+	private async teardown(unknownOwner: 'teardown' | 'leave'): Promise<boolean> {
 		const d = this.deps;
-		const previous = await d.read().catch(() => null);
+		let previous: PushRegistration | null;
+		try {
+			previous = await d.read();
+		} catch {
+			if (unknownOwner === 'leave') return false;
+			previous = null;
+		}
 		// Another profile signed in on this browser since and set up its own
 		// push: the browser's token and subscription are its now. Ours was
 		// replaced (and sign-out drops our server registrations), so leave it be.
 		if (previous && previous.profileId !== this.profileId) return true;
 		let stopped = false;
-		try { await d.mark(false); stopped = true; } catch { /* Try endpoint revocation too. */ }
+		try {
+			await d.mark(false);
+			stopped = true;
+		} catch {
+			/* Try endpoint revocation too. */
+		}
 		if (previous) {
 			try {
 				await d.remove(previous.id);
@@ -114,9 +131,19 @@ export class PushController {
 				/* Retain opaque ID for a later cleanup attempt. */
 			}
 		}
-		try { await d.unsubscribe(); stopped = true; } catch { /* Keep worker/server result. */ }
+		try {
+			await d.unsubscribe();
+			stopped = true;
+		} catch {
+			/* Keep worker/server result. */
+		}
 		if (d.configured && previous) {
-			try { await d.deleteToken(); stopped = true; } catch { /* Cleanup can be retried. */ }
+			try {
+				await d.deleteToken();
+				stopped = true;
+			} catch {
+				/* Cleanup can be retried. */
+			}
 		}
 		return stopped;
 	}

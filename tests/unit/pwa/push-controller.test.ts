@@ -243,3 +243,29 @@ it('a sign-out queued behind a newer setup finds it the owner and leaves it in p
 	expect(browser).toMatchObject({ enabled: true, registration: { profileId: 'newer' } });
 	expect(browser.token).toMatch(/^token-newer-/);
 });
+
+it('when the browser’s registration can’t be read, an older sign-out changes nothing and says so', async () => {
+	const { browser, deps } = sharedBrowser();
+	expect(await new PushController('newer', deps('newer')).enable()).toBe('registered');
+	const older = deps('older');
+	older.read = async () => {
+		throw new Error('Storage blocked');
+	};
+	// Unknown is not "nobody's": it may be the newer profile's, so leave it.
+	expect(await new PushController('older', older).disable()).toBe(false);
+	expect(browser).toMatchObject({
+		enabled: true,
+		registration: { profileId: 'newer' },
+		subscribed: true
+	});
+	expect(older.unsubscribe).not.toHaveBeenCalled();
+	expect(older.deleteToken).not.toHaveBeenCalled();
+});
+
+it('the profile using this tab still turns its own push off when the registration can’t be read', async () => {
+	const { deps, controller } = fixture();
+	deps.read.mockRejectedValue(new Error('Storage blocked'));
+	expect(await controller.disable('teardown')).toBe(true);
+	expect(deps.mark).toHaveBeenCalledWith(false);
+	expect(deps.unsubscribe).toHaveBeenCalled();
+});

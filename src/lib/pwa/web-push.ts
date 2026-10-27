@@ -2,7 +2,7 @@ import * as env from '$app/env/public';
 import { firebaseAuth } from '../auth/firebase';
 import { trpc } from '../trpc';
 import { PushController } from './push-controller';
-import { readPushRegistration, writePushRegistration, markPushEnabled } from './push-storage';
+import { readPushOwner, writePushRegistration, markPushEnabled } from './push-storage';
 
 export function pushConfigured(): boolean {
 	return !!(
@@ -117,7 +117,7 @@ function createController(profileId: string, serverConfigured: boolean): PushCon
 			if (subscription && !(await subscription.unsubscribe()))
 				throw new Error('Push cleanup unavailable');
 		},
-		read: readPushRegistration,
+		read: readPushOwner,
 		write: writePushRegistration,
 		mark: markPushEnabled,
 		register: (token, previousId) =>
@@ -136,14 +136,13 @@ function createController(profileId: string, serverConfigured: boolean): PushCon
 export async function stopWebPush(profileId: string): Promise<boolean> {
 	controls()?.postMessage({ off: profileId });
 	// Never cancel or replace a newer profile's controller to tear down an older one.
-	const controller =
-		current?.profileId === profileId
-			? current.controller
-			: createController(profileId, pushConfigured());
+	const inCharge = current?.profileId === profileId;
+	const controller = inCharge ? current!.controller : createController(profileId, pushConfigured());
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		return await Promise.race([
-			controller.disable(),
+			// Unreadable ownership stops push only for the profile using this tab.
+			controller.disable(inCharge ? 'teardown' : 'leave'),
 			new Promise<boolean>((resolve) => {
 				timer = setTimeout(() => resolve(false), 4000);
 			})
