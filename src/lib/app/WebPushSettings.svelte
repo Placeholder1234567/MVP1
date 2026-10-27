@@ -6,7 +6,8 @@
 		pushAvailable,
 		pushConfigured,
 		webPushController,
-		stopWebPush
+		stopWebPush,
+		PUSH_DISABLED
 	} from '#lib/pwa/web-push.ts';
 	import { readPushRegistration, pushEnabled } from '#lib/pwa/push-storage.ts';
 	import type { PushStatus } from '#lib/pwa/push-controller.ts';
@@ -29,10 +30,10 @@
 			'Push setup did not finish. Reconnect and try again. If an app update is waiting, save your work, close all Guad windows and reopen.'
 	};
 	onMount(() => {
-		const disabled = () => {
-			status = 'off';
+		const disabled = (event: Event) => {
+			if ((event as CustomEvent<string>).detail === app.user.profileId) status = 'off';
 		};
-		window.addEventListener('guad-push-disabled', disabled);
+		window.addEventListener(PUSH_DISABLED, disabled);
 		void (async () => {
 			if (!pushConfigured()) {
 				status = 'not-configured';
@@ -64,7 +65,7 @@
 				loaded = true;
 			}
 		})();
-		return () => window.removeEventListener('guad-push-disabled', disabled);
+		return () => window.removeEventListener(PUSH_DISABLED, disabled);
 	});
 	async function enable() {
 		if (!controller) return;
@@ -73,7 +74,7 @@
 	}
 	async function disable() {
 		status = 'working';
-		status = await stopWebPush(app.user.profileId) ? 'off' : 'failed';
+		status = (await stopWebPush(app.user.profileId)) ? 'off' : 'failed';
 		controller = webPushController(app.user.profileId, configured);
 	}
 </script>

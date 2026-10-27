@@ -1,5 +1,14 @@
 import { expect, it, vi } from 'vitest';
 import { PushController, type PushDependencies } from '../../../src/lib/pwa/push-controller';
+/** One-at-a-time runner standing in for the browser-wide Web Lock. */
+function mutex(): PushDependencies['exclusive'] {
+	let tail: Promise<unknown> = Promise.resolve();
+	return <T>(work: () => Promise<T>) => {
+		const run = tail.then(work, work);
+		tail = run.catch(() => {});
+		return run;
+	};
+}
 function fixture() {
 	const deps = {
 		configured: true,
@@ -14,7 +23,8 @@ function fixture() {
 		write: vi.fn<PushDependencies['write']>(async () => {}),
 		mark: vi.fn<PushDependencies['mark']>(async () => {}),
 		register: vi.fn<PushDependencies['register']>(async () => ({ id: 'registration' })),
-		remove: vi.fn<PushDependencies['remove']>(async () => ({ removed: true }))
+		remove: vi.fn<PushDependencies['remove']>(async () => ({ removed: true })),
+		exclusive: mutex()
 	};
 	return { deps, controller: new PushController('profile', deps) };
 }
@@ -67,9 +77,11 @@ it('does not run concurrent permission prompts and drops tokens completing after
 	const enabling = controller.enable();
 	await vi.waitFor(() => expect(deps.getToken).toHaveBeenCalled());
 	expect(await controller.enable()).toBe('working');
-	await controller.disable();
+	// Sign-out cancels at once; its cleanup runs after the setup step returns.
+	const disabling = controller.disable();
 	finish('late-token');
 	expect(await enabling).toBe('off');
+	await disabling;
 	expect(deps.register).not.toHaveBeenCalled();
 	expect(deps.deleteToken).toHaveBeenCalled();
 });
@@ -114,4 +126,120 @@ it('reports uncertain opt-out when every revocation mechanism is unavailable', a
 	deps.unsubscribe.mockRejectedValue(new Error('Browser unavailable'));
 	deps.deleteToken.mockRejectedValue(new Error('Provider unavailable'));
 	expect(await controller.disable()).toBe(false);
+});
+
+/**
+ * Two profiles' controllers on one browser: shared opt-in, registration file,
+ * token and subscription, and one lock, as on a shared phone.
+ */
+function sharedBrowser() {
+	const browser = {
+		enabled: false,
+		registration: null as { profileId: string; id: string } | null,
+		token: null as string | null,
+		subscribed: false
+	};
+	let tokens = 0;
+	const exclusive = mutex();
+	const holds: Partial<Record<'unsubscribe' | 'getToken', Promise<void>>> = {};
+	const deps = (profile: string) => ({
+		configured: true,
+		available: () => true,
+		permission: () => 'granted',
+		requestPermission: vi.fn(async () => 'granted'),
+		supported: async () => true,
+		getToken: vi.fn(async () => {
+			await holds.getToken;
+			browser.subscribed = true;
+			return (browser.token = `token-${profile}-${++tokens}`);
+		}),
+		deleteToken: vi.fn(async () => {
+			browser.token = null;
+		}),
+		unsubscribe: vi.fn(async () => {
+			await holds.unsubscribe;
+			browser.subscribed = false;
+		}),
+		read: async () => browser.registration,
+		write: async (value: { profileId: string; id: string } | null) => {
+			browser.registration = value;
+		},
+		mark: async (enabled: boolean) => {
+			browser.enabled = enabled;
+		},
+		register: vi.fn(async () => ({ id: `registration-${profile}` })),
+		remove: vi.fn(async () => ({ removed: true })),
+		exclusive
+	});
+	return { browser, holds, deps };
+}
+function held() {
+	let release!: () => void;
+	const promise = new Promise<void>((resolve) => (release = resolve));
+	return { promise, release };
+}
+
+it('an older profile’s sign-out leaves a newer profile’s push on this browser alone', async () => {
+	const { browser, deps } = sharedBrowser();
+	const newer = deps('newer');
+	expect(await new PushController('newer', newer).enable()).toBe('registered');
+	const older = deps('older');
+	expect(await new PushController('older', older).disable()).toBe(true);
+	expect(browser).toMatchObject({
+		enabled: true,
+		registration: { profileId: 'newer', id: 'registration-newer' },
+		subscribed: true
+	});
+	expect(browser.token).toMatch(/^token-newer-/);
+	expect(older.unsubscribe).not.toHaveBeenCalled();
+	expect(older.deleteToken).not.toHaveBeenCalled();
+	expect(older.remove).not.toHaveBeenCalled();
+});
+
+it('a sign-out still cleaning up holds a newer setup until it finishes, then cannot undo it', async () => {
+	const { browser, holds, deps } = sharedBrowser();
+	const olderDeps = deps('older');
+	const older = new PushController('older', olderDeps);
+	expect(await older.enable()).toBe('registered');
+	// The older profile signs out; its provider cleanup hangs (the 4 s logout case).
+	const unsubscribing = held();
+	holds.unsubscribe = unsubscribing.promise;
+	const signingOut = older.disable();
+	await vi.waitFor(() => expect(olderDeps.unsubscribe).toHaveBeenCalled());
+	// The next person turns push on: the prompt is still immediate, the rest waits.
+	const newerDeps = deps('newer');
+	const enabling = new PushController('newer', newerDeps).enable();
+	expect(newerDeps.requestPermission).toHaveBeenCalledOnce();
+	await new Promise((resolve) => setTimeout(resolve, 10));
+	expect(newerDeps.getToken).not.toHaveBeenCalled();
+	unsubscribing.release();
+	expect(await signingOut).toBe(true);
+	expect(await enabling).toBe('registered');
+	expect(browser).toMatchObject({
+		enabled: true,
+		registration: { profileId: 'newer' },
+		subscribed: true
+	});
+	expect(browser.token).toMatch(/^token-newer-/);
+});
+
+it('a sign-out queued behind a newer setup finds it the owner and leaves it in place', async () => {
+	const { browser, holds, deps } = sharedBrowser();
+	const older = new PushController('older', deps('older'));
+	expect(await older.enable()).toBe('registered');
+	const tokenHeld = held();
+	holds.getToken = tokenHeld.promise;
+	const newerDeps = deps('newer');
+	const enabling = new PushController('newer', newerDeps).enable();
+	await vi.waitFor(() => expect(newerDeps.getToken).toHaveBeenCalled());
+	// The older profile's (late) sign-out arrives while the newer setup is mid-way.
+	const olderDeps = deps('older');
+	const signingOut = new PushController('older', olderDeps).disable();
+	tokenHeld.release();
+	expect(await enabling).toBe('registered');
+	expect(await signingOut).toBe(true);
+	expect(olderDeps.unsubscribe).not.toHaveBeenCalled();
+	expect(olderDeps.deleteToken).not.toHaveBeenCalled();
+	expect(browser).toMatchObject({ enabled: true, registration: { profileId: 'newer' } });
+	expect(browser.token).toMatch(/^token-newer-/);
 });

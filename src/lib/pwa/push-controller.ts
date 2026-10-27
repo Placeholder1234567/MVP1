@@ -15,6 +15,11 @@ export interface PushDependencies {
 	mark: (enabled: boolean) => Promise<void>;
 	register: (token: string, previousId?: string) => Promise<{ id: string }>;
 	remove: (id: string) => Promise<unknown>;
+	/**
+	 * Runs one browser-wide push step at a time, across controllers and tabs:
+	 * the token, subscription and opt-in belong to the browser, not a profile.
+	 */
+	exclusive: <T>(work: () => Promise<T>) => Promise<T>;
 }
 export class PushController {
 	private revision = 0;
@@ -34,13 +39,27 @@ export class PushController {
 		if (d.permission() === 'denied') return 'denied';
 		this.working = true;
 		const mine = ++this.revision;
+		try {
+			// Invoke directly from the button gesture, before awaiting SDK imports or requests.
+			let permission: string;
+			try {
+				permission = await d.requestPermission();
+			} catch {
+				return mine === this.revision ? 'failed' : 'off';
+			}
+			if (mine !== this.revision) return 'off';
+			if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off';
+			return await d.exclusive(() => this.register(mine));
+		} finally {
+			this.working = false;
+		}
+	}
+	private async register(mine: number): Promise<PushStatus> {
+		const d = this.deps;
 		let created: string | undefined;
 		let tokenRequested = false;
 		try {
-			// Invoke directly from the button gesture, before awaiting SDK imports or requests.
-			const permission = await d.requestPermission();
 			if (mine !== this.revision) return 'off';
-			if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off';
 			if (!(await d.supported())) return 'unsupported';
 			if (mine !== this.revision) return 'off';
 			const previous = await d.read();
@@ -71,17 +90,22 @@ export class PushController {
 			await d.unsubscribe().catch(() => {});
 			if (tokenRequested) await d.deleteToken().catch(() => {});
 			return mine === this.revision ? 'failed' : 'off';
-		} finally {
-			this.working = false;
 		}
 	}
 	async disable(): Promise<boolean> {
 		this.revision++;
+		return this.deps.exclusive(() => this.teardown());
+	}
+	private async teardown(): Promise<boolean> {
 		const d = this.deps;
+		const previous = await d.read().catch(() => null);
+		// Another profile signed in on this browser since and set up its own
+		// push: the browser's token and subscription are its now. Ours was
+		// replaced (and sign-out drops our server registrations), so leave it be.
+		if (previous && previous.profileId !== this.profileId) return true;
 		let stopped = false;
 		try { await d.mark(false); stopped = true; } catch { /* Try endpoint revocation too. */ }
-		const previous = await d.read().catch(() => null);
-		if (previous?.profileId === this.profileId) {
+		if (previous) {
 			try {
 				await d.remove(previous.id);
 				stopped = true;
