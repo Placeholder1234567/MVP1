@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import {
+	CredentialFilter,
+	CredentialInput,
+	listCredentials,
+	removeCredential,
+	saveCredential,
 	getStaff,
 	InviteInput,
 	inviteStaff,
@@ -9,7 +14,7 @@ import {
 	StaffUpdateInput,
 	updateStaff
 } from '../../services/auth/index.ts';
-import { roleProcedure, router } from '../middleware.ts';
+import { roleProcedure, router, userProcedure } from '../middleware.ts';
 
 // trpc-router.md `staff.*`: supervisors see staff; only admins change them.
 export const staffRouter = router({
@@ -30,6 +35,23 @@ export const staffRouter = router({
 	update: roleProcedure('admin')
 		.input(StaffUpdateInput)
 		.mutation(({ ctx, input }) => updateStaff(ctx.db, ctx.user, input)),
+
+	/**
+	 * Training and certifications with their status today: a caregiver gets
+	 * their own, supervisors and admins one person's or everyone's.
+	 */
+	credentials: userProcedure
+		.input(CredentialFilter.optional())
+		.query(({ ctx, input }) => listCredentials(ctx.db, ctx.user, input ?? {})),
+
+	/** Records a credential, or renews or corrects one (with its id). */
+	saveCredential: roleProcedure('admin')
+		.input(CredentialInput)
+		.mutation(({ ctx, input }) => saveCredential(ctx.db, ctx.user, input)),
+
+	removeCredential: roleProcedure('admin')
+		.input(z.object({ id: z.uuid() }))
+		.mutation(({ ctx, input }) => removeCredential(ctx.db, ctx.user, input.id)),
 
 	/** Lost authenticator: remove their second factors so they can enroll again. */
 	resetMfa: roleProcedure('admin')

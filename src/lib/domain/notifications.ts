@@ -49,7 +49,9 @@ export const DEFAULT_CHANNELS = {
 	email_delivery_problem: r([], [], ['push']),
 	// Dormant accounts, stale home access, a new admin (security.md "Access Reviews").
 	access_review: r([], [], ['push', 'email']),
-	report_ready: r([], ['push', 'email'], ['push', 'email'])
+	report_ready: r([], ['push', 'email'], ['push', 'email']),
+	// A staff training or certification expiring or lapsed (domain/credentials.ts).
+	credential_expiring: r(['push', 'email'], ['push', 'email'], ['push', 'email'])
 } satisfies Record<string, Row>;
 
 export type NotificationType = keyof typeof DEFAULT_CHANNELS;
@@ -86,7 +88,8 @@ export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
 	controlled_countersign: 'Requests to witness a count',
 	email_delivery_problem: 'Email delivery problems',
 	access_review: 'Access review alerts',
-	report_ready: 'Scheduled reports ready'
+	report_ready: 'Scheduled reports ready',
+	credential_expiring: 'Expiring training and certifications'
 };
 
 /** Always sent, whatever the user's preferences say (clinical safety, compliance). */

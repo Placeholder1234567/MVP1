@@ -12,6 +12,7 @@
 	import { isDormant } from '#lib/domain/access-review.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
+	import StaffCredentials from '#lib/app/StaffCredentials.svelte';
 
 	type Staff = Awaited<ReturnType<typeof trpc.staff.list.query>>[number];
 	type Role = Staff['role'];
@@ -330,7 +331,13 @@
 				</div>
 			</fieldset>
 		</form>
+		{#if editing}<StaffCredentials profileId={editing} canEdit={isAdmin && canConnect} />{/if}
 	{/if}
+
+	{#if canConnect && editing === null}<StaffCredentials
+			attentionOnly
+			title="Expiring training and certifications"
+		/>{/if}
 
 	{#if loading}<Skeleton label="Loading staff" />{:else}
 		<div class="list card" role="list">

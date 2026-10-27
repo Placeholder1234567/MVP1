@@ -66,7 +66,7 @@ Read `.specify/` for full specs. Key files:
 | `.specify/constitution.md` | Engineering principles -- read before writing any code |
 | `.specify/infrastructure.md` | Hosting and vendors (Google Cloud + AWS messaging), sign-in flow, DB session setup, jobs, local dev, cost |
 | `deploy/README.md` | Deploying to Google Cloud: bootstrap and release scripts, first-deploy checks |
-| `.specify/schema.ts` | Database schema (49 Drizzle pgTable definitions, source of truth) |
+| `.specify/schema.ts` | Database schema (50 Drizzle pgTable definitions, source of truth) |
 | `.specify/services.md` | Service boundaries, data ownership, dependencies |
 | `.specify/trpc-router.md` | tRPC procedure specification (26 routers, all input/output types) |
 | `.specify/charting-ux.md` | Screen specs, component catalog, UX flows, accessibility |

@@ -2017,3 +2017,47 @@ export const reportSchedules = pgTable(
     index('report_schedules_due_idx').on(t.active, t.next_run_on),
   ],
 );
+
+// ─── staff_credentials ───────────────────────────────────────────────────────
+// A staff member's training or certification (CPR, first aid, medication
+// administration, abuse and neglect training, or one the agency names), with
+// the date it expires (domain/credentials.ts). One row per credential per
+// person: renewing changes its dates, and the audit log keeps the history.
+// Admins record them; supervisors see them; staff see their own. The hourly
+// credential-expiry sweep reminds the person and the admins before and when
+// one lapses. Never synced.
+export const staffCredentials = pgTable(
+  'staff_credentials',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agency_id: uuid('agency_id')
+      .notNull()
+      .references(() => agencies.id, { onDelete: 'cascade' }),
+    profile_id: uuid('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    // domain/credentials.ts CREDENTIAL_KINDS
+    kind: text('kind').notNull(),
+    // The kind's label, or the agency's own name for an 'other' credential
+    name: text('name').notNull(),
+    issued_on: date('issued_on'),
+    // The last day it is valid; null for training that never expires
+    expires_on: date('expires_on'),
+    recorded_by: uuid('recorded_by').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    created_at: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('staff_credentials_agency_id_idx').on(t.agency_id, t.expires_on),
+    uniqueIndex('staff_credentials_profile_name_idx').on(
+      t.profile_id,
+      sql`lower(${t.name})`,
+    ),
+  ],
+);

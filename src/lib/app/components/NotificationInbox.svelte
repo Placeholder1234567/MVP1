@@ -63,10 +63,13 @@
 		if (type === 'report_ready' && app.user.role !== 'caregiver')
 			return '/(app)/dashboard/reports/background';
 		if (
-			(type === 'access_review' || type === 'email_delivery_problem') &&
+			(type === 'access_review' ||
+				type === 'email_delivery_problem' ||
+				type === 'credential_expiring') &&
 			app.user.role === 'admin'
 		)
 			return '/(app)/dashboard/staff';
+		if (type === 'credential_expiring') return '/(app)/me';
 		return '/(app)/today';
 	}
 	async function load(reset = false) {
