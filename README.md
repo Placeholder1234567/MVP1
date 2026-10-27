@@ -1,14 +1,16 @@
 # Guad
 
-Charting, scheduling and AI-assisted shift coverage for agencies that support people with intellectual and developmental disabilities. Lomi is Guad's AI assistant.
+Charting, scheduling and shift coverage for agencies that support people with intellectual and developmental disabilities. Lomi offers optional AI-assisted charting with human review. Coverage currently uses eligibility rules and templated outreach, not model-generated staffing decisions.
 
 > **Status: early build.** Use synthetic data only. No real client information goes into any environment until the checklist in `.specify/infrastructure.md` §8 is done.
+
+The default local demo does not connect a live drafting model or transcription provider. Lomi sorts typed observations without rewriting them; staff review the result before using it. Connected drafting, revisions and summaries still require actual quality evaluation before their AI promises can be accepted. See [AI acceptance evidence](docs/ai-acceptance.md) and the [completion milestone](docs/completion-milestone.md).
 
 ## What's here
 
 | Path                 | What it is                                                                                           |
 | -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `src/`               | Production app: SvelteKit 3 + Svelte 5, deployed to Google Cloud Run                                 |
+| `src/`               | SvelteKit 3 + Svelte 5 app with Cloud Run deployment configuration                                   |
 | `src/lib/domain/`    | Business rules shared by the phone and the server (shifts, doses, notes, geofence, vitals, coverage) |
 | `src/lib/server/db/` | Database connection and the `withUser()` / `withService()` helpers                                   |
 | `.specify/`          | Architecture specs. Start with `constitution.md` and `infrastructure.md`                             |

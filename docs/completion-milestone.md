@@ -1,6 +1,6 @@
 # Guad completion milestone
 
-Status: proposed scope freeze, awaiting owner acceptance. Inventory baseline: main 1091f6adb17c43c64e893d20cb4b364149a7a00a. Detailed evidence and open decisions are indexed in [m1-evidence.md](m1-evidence.md). This is an evidence checklist, not certification or a completion percentage.
+Status: proposed scope freeze, awaiting owner acceptance. Inventory baseline: main 18e764f2fe75114edfb9b79be1471f99a21bc63d. Detailed evidence and open decisions are indexed in [m1-evidence.md](m1-evidence.md). This is an evidence checklist, not certification or a completion percentage.
 
 ## Finish line
 
@@ -16,7 +16,7 @@ Do not describe M1 as production readiness. No target date or percentage is defe
 
 Freeze new optional features during M1. Accept only reproducible defects, missing acceptance criteria, security/safety fixes or explicit owner-approved scope changes. Keep optional requests in a later backlog. Record each addition's reason and impact on the finish line.
 
-Credentials and medication-certification expiry are merged (PR284/285); their workflow evidence still needs reconciliation and reviewer acceptance. Codex is validating Lomi suggestion response ownership in PR297. The cross-tab push cleanup race remains open after the notification review; coordinate ownership before changing that lifecycle. These are completion work, not optional feature expansion.
+Credentials and medication-certification expiry are merged (PR284/285); their workflow evidence still needs reconciliation and reviewer acceptance. Codex merged Lomi suggestion response ownership (PR297) and complete voice-input handling (PR299); summary response/accessibility work remains under validation in PR301. The cross-tab push cleanup race remains open after the notification review; coordinate ownership before changing that lifecycle. These are completion work, not optional feature expansion.
 
 Self-service signup, billing automation, Spanish, expanded placement matching, branding and progressive feature reveal are deferred unless the owner explicitly makes one a pilot prerequisite. Resolve scheduled-report plan access and nearby-staff location behavior before claiming the affected workflow accepted; they need not block unrelated core workflows if explicitly excluded from pilot scope.
 
@@ -53,7 +53,7 @@ External evidence is currently outstanding. Repository checkboxes and synthetic 
 ## Known immediate blockers and evidence
 
 - Cross-tab sign-out/sign-in push cleanup can cancel a newer push setup. The notification review records this as unresolved; the existing list/removal tests do not establish lifecycle safety. Held-dependency account-transition tests and a bounded fix are still needed. No wrong-recipient delivery is claimed as reproduced.
-- AI section/chat suggestion responses crossing a privacy lock are being validated in PR297; do not count a published PR as a completed fix.
+- AI section/chat response guards (PR297) and voice length handling (PR299) are merged and verified. Daily-summary response and accessibility work remains pending final-head validation in PR301.
 - Intake supervisor scope, scheduled-report plan access and timekeeping period semantics remain explicit review items in the evidence index. Preserve current authorization until a decision is made.
 - Existing status prose contains historical pending statements for merged work; reconcile against actual main rather than recreating completed features.
 - Verified baseline PR281 final 0dcbe3b: CI 40397766336 (557 units, 345 integration plus SQL RLS), browser 40397766351 (220 production passes, 20 exclusions, 2 development passes), performance 40397766337. Both new nonempty push concurrency tests passed. This evidence covers that commit and those scenarios only.
@@ -70,7 +70,7 @@ Report progress as accepted workflow rows / total required rows, open blockers b
 
 ## AI promise acceptance gate
 
-AI is core scope, not an optional polish item. No promise is accepted merely because a button, mock or model call exists. Inventory actual website/demo/sales wording and map each claim to the rows below; revise unsupported wording or complete its acceptance criteria before M1. Marketing promises have not yet been fully inventoried.
+AI is core scope, not an optional polish item. No promise is accepted merely because a button, mock or model call exists. Inventory actual website/demo/sales wording and map each claim to the rows below; revise unsupported wording or complete its acceptance criteria before M1. Repository/app claim surfaces are inventoried in `ai-acceptance.md`; no separate external sales site or sales collateral was supplied for review.
 
 | Promise                         | Required evidence before acceptance                                                                                                                                                                                                                                        |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

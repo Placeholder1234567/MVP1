@@ -1,6 +1,6 @@
 # Lomi acceptance evidence
 
-Baseline: main 5e3c48aaf27f25816db3164dd726971ea8a82266. This inventory separates implemented safeguards from proven model quality. None of the AI promise rows is accepted as live-provider quality complete yet.
+Source inventory baseline: main 18e764f2fe75114edfb9b79be1471f99a21bc63d. This inventory separates implemented safeguards from proven model quality. None of the AI promise rows is accepted as live-provider quality complete yet.
 
 | Core promise                   | Existing evidence to review                                                                                                                                                                      | Remaining acceptance work                                                                                                                                       |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,3 +32,20 @@ Evaluate initial drafts, then per-section correction and chat-routing versions, 
 ## Open evidence and limits
 
 No live evaluation results, staff usability timings or physical-device voice accuracy are attached. No acceptance percentage or production-readiness claim follows from this inventory. The goal is a reproducible assessment that exposes failures before marketing promises are accepted.
+
+## Actual claim inventory
+
+This inventory covers the repository README, the app entry/composer/review/summary surfaces and the pipeline spec at the baseline above. No separate external sales website or sales material was supplied or accepted by this review.
+
+| Surface / promise                                                          | Actual boundary and disposition                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| README's former “AI-assisted shift coverage”                               | Corrected to shift coverage with deterministic eligibility rules and templated outreach. No model-generated staffing-decision promise is supported by the current coverage implementation                                              |
+| App header “Talk to Lomi” and home/person picker                           | Discoverable entry to the current person's existing charting workflow. It does not establish a connected provider or create/sign a clinical record automatically                                                                       |
+| Composer's drafting availability notice                                    | Explicitly identifies unconfigured drafting and local sentence sorting. The default demo is not a live-AI demonstration                                                                                                                |
+| Review: AI-generated draft or simple sorting draft                         | Staff review sections, proposals and flagged wording; Use transfers text to the note, and save/sign remain separate. PR297 rejects section/chat responses interrupted by privacy; it does not prove model truthfulness                 |
+| Voice: full-note and section input                                         | PR299 preserves complete text at input limits and retains oversized offline recordings for retry. Synthetic microphone/transcription fixtures establish workflow behavior only, not recognition quality or physical-device reliability |
+| Overview daily summary and next steps                                      | Authorized summary transport and deterministic operational links exist. PR301 response guards remain under validation at this inventory; model summary factuality is not accepted                                                      |
+| Pipeline spec's former “No Prompt Injection Surface”                       | Replaced with risk/control boundaries. Quoting/JSON encoding, schemas and fixed instructions do not establish prompt-injection immunity or factual clinical output                                                                     |
+| Parallel pipeline, model choices, latency and cost projections in the spec | Marked as planning assumptions/targets. The current initial-draft service makes one model request; neither the four-call architecture nor projected latency/quality is claimed as delivered evidence                                   |
+
+The remaining live evaluation and staff task study are unchanged. This inventory corrects claim precision; it does not accept the AI promise rows or add a new model feature.
