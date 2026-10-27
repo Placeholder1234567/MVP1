@@ -45,6 +45,7 @@
 		clientId,
 		type,
 		said,
+		agencyId: app.user.agencyId,
 		profileId: app.user.profileId,
 		homeId: app.homeId
 	}));
@@ -53,6 +54,7 @@
 	let invalidated = false;
 	$effect(() => {
 		if (
+			app.user.agencyId !== original.agencyId ||
 			app.user.profileId !== original.profileId ||
 			app.homeId !== original.homeId ||
 			clientId !== original.clientId ||
@@ -69,6 +71,13 @@
 		const masked = app.privacyLocked;
 		if (masked && !wasMasked) {
 			privacyRevision++;
+			// The provider may finish, but its old proposal must not enter this review.
+			if (untrack(() => busy)) {
+				suggestionRevision++;
+				busy = false;
+				message =
+					'Suggestion interrupted. Your draft and observations are unchanged. Review them before requesting another suggestion.';
+			}
 			// Preserve the reconnect event even if this request fails while masked.
 			if (untrack(() => refreshing)) reconnectPending = true;
 		}
@@ -286,12 +295,42 @@
 		pending = null;
 		onDirty?.();
 	}
+	let suggestionRevision = 0;
+	function suggestionContext(revision: number, privacy: number) {
+		return (
+			alive &&
+			!invalidated &&
+			!app.privacyLocked &&
+			revision === suggestionRevision &&
+			privacy === privacyRevision &&
+			app.user.agencyId === original.agencyId &&
+			app.user.profileId === original.profileId &&
+			app.homeId === original.homeId &&
+			clientId === original.clientId &&
+			type === original.type &&
+			said === original.said
+		);
+	}
 	async function refine(section: string) {
-		if (busy || !additions[section]?.trim()) return;
+		if (
+			busy ||
+			voiceBusy ||
+			!additions[section]?.trim() ||
+			!suggestionContext(suggestionRevision, privacyRevision)
+		)
+			return;
 		if (content[section].length > 6000) {
 			message = 'This section is too long for assisted editing. Edit its text directly.';
 			return;
 		}
+		const revision = ++suggestionRevision,
+			privacy = privacyRevision;
+		const current = content[section],
+			input = additions[section];
+		const valid = () =>
+			suggestionContext(revision, privacy) &&
+			content[section] === current &&
+			additions[section] === input;
 		busy = true;
 		message = '';
 		pending = null;
@@ -299,20 +338,28 @@
 			const proposal = await trpc.lomi.edit.mutate({
 				clientId,
 				section: section as DraftSection,
-				current: content[section],
-				input: additions[section]
+				current,
+				input
 			});
+			if (!valid()) return;
 			pending = { updates: [{ section, text: proposal.text }], fallback: proposal.fallback };
 			pendingSource = section;
 		} catch {
+			if (!valid()) return;
 			message =
 				'Assisted editing is unavailable. Your section and additional observations are unchanged; edit directly or try again.';
 		} finally {
-			busy = false;
+			if (revision === suggestionRevision) busy = false;
 		}
 	}
 	async function route() {
-		if (busy || !followup.trim()) return;
+		if (
+			busy ||
+			voiceBusy ||
+			!followup.trim() ||
+			!suggestionContext(suggestionRevision, privacyRevision)
+		)
+			return;
 		const current = {
 			activities: content.activities ?? '',
 			meals: content.meals ?? '',
@@ -326,17 +373,27 @@
 			message = 'This draft is too long for assisted additions. Edit its sections directly.';
 			return;
 		}
+		const revision = ++suggestionRevision,
+			privacy = privacyRevision,
+			input = followup;
+		const valid = () =>
+			suggestionContext(revision, privacy) &&
+			followup === input &&
+			Object.entries(current).every(([key, value]) => content[key] === value);
 		busy = true;
 		message = '';
 		pending = null;
 		try {
-			pending = await trpc.lomi.route.mutate({ clientId, current, message: followup });
+			const proposal = await trpc.lomi.route.mutate({ clientId, current, message: input });
+			if (!valid()) return;
+			pending = proposal;
 			pendingSource = 'followup';
 		} catch {
+			if (!valid()) return;
 			message =
 				'Assisted additions are unavailable. Your draft and observations are unchanged; edit directly or try again.';
 		} finally {
-			busy = false;
+			if (revision === suggestionRevision) busy = false;
 		}
 	}
 </script>
