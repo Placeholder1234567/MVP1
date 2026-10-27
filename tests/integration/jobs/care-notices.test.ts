@@ -13,6 +13,7 @@ const { getCurrentUser } = await import('../../../src/lib/server/services/auth')
 const { appRouter } = await import('../../../src/lib/server/trpc/router');
 const mw = await import('../../../src/lib/server/trpc/middleware');
 const { setProvidersForTests } = await import('../../../src/lib/server/messaging');
+const { render } = await import('../../../src/lib/server/messaging/templates');
 const { remindShifts, flagIncidents, flagOverdueContacts } =
 	await import('../../../src/lib/server/services/notification/care-reminders');
 
@@ -311,4 +312,57 @@ it('reminds supervisors once per contact not marked as told by the agency’s ho
 	);
 	expect(await forIncident(nurseLate)).toHaveLength(1);
 	expect(await forIncident(familyLate)).toHaveLength(1);
+});
+
+it('never puts the person, their medication, readings or incident details in any alert or message text', async () => {
+	const caregiver = await as(carer);
+	// Every care flow that alerts staff, each with details that must stay in the app.
+	await caregiver.health.create({
+		clientId: person,
+		kind: 'vitals',
+		data: { temp: 103.7, pulse: 131 }
+	});
+	await caregiver.incident.create({
+		clientId: person,
+		type: 'Fall',
+		severity: 'High',
+		occurredAt: new Date(Date.now() - 60_000),
+		description: 'Private fall description'
+	});
+	const note = await caregiver.note.create({ clientId: person, type: 'shift', content: {} });
+	await caregiver.note.sign({ id: note.id });
+	await caregiver.mar.record({
+		id: randomUUID(),
+		clientId: person,
+		medicationId: med,
+		day: today,
+		scheduledTime: '08:00',
+		status: 'held',
+		reason: 'Private hold reason'
+	});
+
+	const rows = await withService((tx) =>
+		tx
+			.select({
+				id: s.notifications.id,
+				type: s.notifications.type,
+				title: s.notifications.title,
+				body: s.notifications.body,
+				referenceId: s.notifications.reference_id
+			})
+			.from(s.notifications)
+			.where(eq(s.notifications.agency_id, agency))
+	);
+	const types = new Set(rows.map((r) => r.type));
+	for (const t of ['health_alert', 'incident_high_severity', 'note_submitted', 'med_refusal'])
+		expect(types).toContain(t);
+	const secret = /Private|103\.7|131|fall description|hold reason/i;
+	for (const row of rows) {
+		expect(`${row.title} ${row.body ?? ''}`).not.toMatch(secret);
+		// What leaves Guad: the push, text and email built from each alert.
+		for (const channel of ['push', 'sms', 'email'] as const) {
+			const out = render(channel, row);
+			expect(`${out.title} ${out.body}`).not.toMatch(secret);
+		}
+	}
 });
