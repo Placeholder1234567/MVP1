@@ -29,6 +29,12 @@ if (
 		'Browser tests require a demo-* project and loopback-only database, Auth and PowerSync.'
 	);
 }
+// CI runs each viewport against its own ephemeral services and seed. Keep the
+// default local command running both; reject arbitrary shell arguments.
+const viewport = process.env.GUAD_E2E_PROJECT;
+if (viewport && !['desktop', 'phone'].includes(viewport))
+	throw new Error('GUAD_E2E_PROJECT must be desktop or phone.');
+const selection = viewport ? ` --project=${viewport}` : '';
 process.env.GUAD_E2E = '1';
 process.env.APP_ORIGIN = 'http://127.0.0.1:4175';
 process.env.APP_URL = process.env.APP_ORIGIN;
@@ -56,5 +62,5 @@ run('node_modules/firebase-tools/lib/bin/firebase.js', [
 	'auth',
 	'--project',
 	project,
-	'npm run db:seed && npx playwright test && npx playwright test --config=playwright.dev.config.ts'
+	`npm run db:seed && npx playwright test${selection} && npx playwright test --config=playwright.dev.config.ts${selection}`
 ]);
