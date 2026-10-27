@@ -67,3 +67,23 @@ External evidence is currently outstanding. Repository checkboxes and synthetic 
 
 Report progress as accepted workflow rows / total required rows, open blockers by severity, and external gates remaining. Keep implementation, automated verification and real-world readiness separate. Update the register after each material merge; do not add tasks merely to keep development busy.
 
+## AI promise acceptance gate
+
+AI is core scope, not an optional polish item. No promise is accepted merely because a button, mock or model call exists. Inventory actual website/demo/sales wording and map each claim to the rows below; revise unsupported wording or complete its acceptance criteria before M1. Marketing promises have not yet been fully inventoried.
+
+| Promise | Required evidence before acceptance |
+| --- | --- |
+| Observations to clinical draft | Representative synthetic typed and voice observations produce the supported note sections; preserve negation, times, quantities and uncertainty; do not invent events, diagnoses, interventions or outcomes; missing evidence stays visibly missing |
+| Section revisions and Lomi chat | Requests affect the intended section/person/note; additions preserve earlier observations and caregiver edits; corrections supersede contradictions visibly; undo/recovery and stale-response guards work |
+| Voice input | Full-note and section recording, permission denial, interruption, partial transcription, long recording ordering and segment boundaries; errors never silently discard observations; typed entry remains available |
+| Supervisor summaries | Authorized current source records and period only; distinguish facts from missing/unreviewed material; omit unsupported clinical conclusions; verify scope changes, sparse/conflicting records and stale responses |
+| Coverage assistance | Document whether each step is deterministic matching, templated messaging or model generation; verify current eligibility, contact/consent rules, replies and concurrent fills; retain human approval and an audit trail; do not market unimplemented autonomous decisions |
+| Questions and suggestions | Relevant to supplied observations and supported workflow; no fabricated trial levels, retrospective events or clinical decisions; users can dismiss and continue manually |
+| Availability and failures | Voice/Lomi available from the start as required; clear offline/provider-outage/rate-limit behavior, useful manual fallback, preserved edits, no accidental repeat submissions or charges claimed as tested |
+| Privacy and control | Current tenant/home/person authorization; AI labeling; explicit human review/signature; no auto-submit/approve; minimized inputs and no sensitive logs; authorized provider/model/region agreements before real data |
+
+For each row name an owner and attach exact test/evaluation fixtures, current results, known limitations and reviewer acceptance. Include straightforward, ambiguous, contradictory, incomplete and unsafe-input cases. Set expected factual invariants and a reviewer scoring rubric before evaluating; retain failures rather than selecting only favorable examples. Record latency and failure rate against agreed targets with measured conditions.
+
+Separate three evidence levels: deterministic/mock tests; authorized live-provider evaluation using synthetic data; controlled human-reviewed pilot. Mock success cannot establish transcription accuracy, model faithfulness, live latency or clinical suitability. Live-provider calls and spend remain separately authorized.
+
+Known documented gap: long voice recording segmentation still needs real Chirp word-accuracy verification at segment edges. Server-side audio splitting/streaming is unbuilt and must not be promised as delivered. Current goal references are conservative; Lomi does not fill observed trial scores. No claim of live-provider AI completion is made here.
