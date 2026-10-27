@@ -185,17 +185,32 @@
 	}
 	async function discardRecovery() {
 		if (
+			busy ||
 			!validContext() ||
 			!confirm(
 				'Discard the saved Lomi observations and review on this device? Your saved note stays unchanged.'
 			)
 		)
 			return;
-		preview = null;
-		recovery = null;
-		reviewSeed = undefined;
-		await store?.clear();
-		storageReady = !storageError;
+		const target = store;
+		if (!target) return;
+		busy = true;
+		storageReady = false;
+		activeRecovery = false;
+		try {
+			await target.clear();
+			if (!validContext() || store !== target) return;
+			// Keep the recovery controls present until encrypted deletion completes.
+			// Their disappearance is the UI acknowledgement that reload is safe.
+			if (!storageError) {
+				preview = null;
+				recovery = null;
+				reviewSeed = undefined;
+			}
+			storageReady = !storageError;
+		} finally {
+			busy = false;
+		}
 	}
 	// Seconds recorded so far, for the status line.
 	let elapsed = $state(0);
