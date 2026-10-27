@@ -55,13 +55,13 @@ test('daily summaries stay with the home that requested them', async ({ page }) 
 		first.release();
 		await first.done;
 		await boundary(page);
-		await expect(panel(page).getByTestId('lomi-summary-text')).toHaveCount(0);
+		await expect(page.getByTestId('lomi-summary-text')).toHaveCount(0);
 		await expect(
 			panel(page).getByRole('button', { name: 'Summarizing…', exact: true })
 		).toBeDisabled();
 		second.release();
 		await second.done;
-		await expect(panel(page).getByTestId('lomi-summary-text')).toBeVisible();
+		await expect(page.getByTestId('lomi-summary-text')).toBeVisible();
 		await expect(panel(page)).toContainText('For Maple House');
 		await expect(panel(page)).not.toContainText('For Oak House');
 		expect(requests).toBe(2);
@@ -78,7 +78,7 @@ test('privacy removes a loaded daily summary and rejects a held refresh until ex
 }, info) => {
 	await open(page);
 	await panel(page).getByRole('button', { name: 'Summarize today', exact: true }).click();
-	await expect(panel(page).getByTestId('lomi-summary-text')).toBeVisible();
+	await expect(page.getByTestId('lomi-summary-text')).toBeVisible();
 	const held = gate();
 	let requests = 0;
 	await page.route(pattern, async (route) => {
@@ -101,23 +101,23 @@ test('privacy removes a loaded daily summary and rejects a held refresh until ex
 		await expect(
 			page.getByRole('heading', { name: 'Workspace locked', exact: true })
 		).toBeVisible();
-		await expect(panel(page).getByTestId('lomi-summary-text')).toHaveCount(0);
+		await expect(page.getByTestId('lomi-summary-text')).toHaveCount(0);
 		await page.getByLabel('Device PIN', { exact: true }).fill('654321');
 		await page.getByRole('button', { name: 'Unlock workspace', exact: true }).click();
 		held.release();
 		await held.done;
 		await boundary(page);
-		await expect(panel(page).getByTestId('lomi-summary-text')).toHaveCount(0);
+		await expect(page.getByTestId('lomi-summary-text')).toHaveCount(0);
 		expect(requests).toBe(1);
 		await panel(page).getByRole('button', { name: 'Summarize today', exact: true }).click();
-		await expect(panel(page).getByTestId('lomi-summary-text')).toBeVisible();
+		await expect(page.getByTestId('lomi-summary-text')).toBeVisible();
 		expect(requests).toBe(2);
-		const text = await panel(page).getByTestId('lomi-summary-text').textContent();
+		const text = await page.getByTestId('lomi-summary-text').textContent();
 		await context.setOffline(true);
 		await expect(
 			panel(page).getByRole('button', { name: 'Refresh summary', exact: true })
 		).toBeDisabled();
-		await expect(panel(page).getByTestId('lomi-summary-text')).toHaveText(text!);
+		await expect(page.getByTestId('lomi-summary-text')).toHaveText(text!);
 		await context.setOffline(false);
 		await boundary(page);
 		expect(requests).toBe(2);
@@ -163,7 +163,7 @@ test('a daily summary response cannot return while destination navigation is hel
 		await summary.done;
 		await boundary(page);
 		await expect(panel(page)).toBeVisible();
-		await expect(panel(page).getByTestId('lomi-summary-text')).toHaveCount(0);
+		await expect(page.getByTestId('lomi-summary-text')).toHaveCount(0);
 		await expect(
 			panel(page).getByRole('button', { name: 'Summarize today', exact: true })
 		).toBeDisabled();
