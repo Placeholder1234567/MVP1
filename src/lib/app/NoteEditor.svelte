@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { beforeNavigate } from '$app/navigation';
 	import { useSession, parseJson } from './session.svelte';
@@ -109,6 +110,8 @@
 	let busy = $state(false);
 	let signed = $state(false);
 	let message = $state('');
+	let lomiHandoff = $state(false);
+	let noteForm = $state<HTMLFormElement>();
 	let signature = $state(false);
 	let dirty = $state(false);
 	let assisted = $state(false);
@@ -430,18 +433,30 @@
 						assisted = true;
 						dirty = true;
 						signature = false;
+						lomiHandoff = true;
+						const target = noteForm;
+						void tick().then(() => {
+							if (target?.isConnected && target === noteForm && !app.privacyLocked) target.focus();
+						});
 					}}
 				/>{/key}{/if}
 		{#if !editable}<p class="callout">
 				This note is {note?.status}. Signed records are read-only.
 			</p>{/if}
 		<form
+			bind:this={noteForm}
+			tabindex="-1"
+			aria-label="Care note"
 			class="stack"
 			onsubmit={(e) => {
 				e.preventDefault();
 				void save(false);
 			}}
 		>
+			{#if lomiHandoff}<p class="callout" role="status">
+					Your reviewed Lomi draft is in the note below. Check the sections and goal scores, then
+					save or sign when ready. Using a draft does not save or submit the note.
+				</p>{/if}
 			{#snippet sections(list: typeof fields)}<div class="card pad stack">
 					{#each list as [key, label] (key)}<label
 							>{label}<textarea

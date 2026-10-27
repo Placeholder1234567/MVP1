@@ -94,6 +94,10 @@ test('encrypted reload recovery keeps original observations, review edits and ed
 	await review
 		.getByRole('button', { name: 'Use this reviewed draft in my note', exact: true })
 		.click();
+	await expect(page.getByRole('form', { name: 'Care note', exact: true })).toBeFocused();
+	await expect(
+		page.getByRole('form', { name: 'Care note', exact: true }).getByRole('status')
+	).toContainText('Using a draft does not save or submit the note.');
 	await noteActivities.fill('Synthetic edit after Use.');
 	await page.getByRole('button', { name: 'Save draft', exact: true }).click();
 	await expect(page.getByText('Draft saved on this device.', { exact: true })).toBeVisible();
