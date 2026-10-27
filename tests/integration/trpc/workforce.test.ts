@@ -339,6 +339,44 @@ it('verifies location server-side and records a clock-out', async () => {
 	expect(record.distance_meters).toBe(0);
 	expect((await user.clock.clockOut({})).clock_out_at).toBeInstanceOf(Date);
 });
+it('a clock-in outside the geofence is kept but unverified, flagged once, and paid as unverified', async () => {
+	const user = await as(cara);
+	// About 1.1 km north of Oak, well outside its 150 m radius.
+	const record = await user.clock.clockIn({ homeId: oak, lat: 40.01, lng: -75 });
+	expect(record.verified).toBe(false);
+	expect(record.distance_meters).toBeGreaterThan(1000);
+	const alerts = await withService((tx) =>
+		tx
+			.select({ to: s.notifications.profile_id })
+			.from(s.notifications)
+			.where(
+				and(
+					eq(s.notifications.agency_id, agency),
+					eq(s.notifications.type, 'clock_anomaly'),
+					eq(s.notifications.reference_id, record.id),
+					eq(s.notifications.channel, 'in_app')
+				)
+			)
+	);
+	expect(alerts.map((a) => a.to)).toContain(sam);
+	expect(alerts.some((a) => a.to === cara)).toBe(false);
+	const out = await user.clock.clockOut({ lat: 40.01, lng: -75 });
+	const supervisor = await as(sam);
+	// A caregiver can't clear the flag; the supervisor's review is recorded.
+	await expect(user.clock.acknowledge({ id: record.id })).rejects.toMatchObject({
+		code: 'FORBIDDEN'
+	});
+	await supervisor.clock.acknowledge({ id: record.id });
+	const sheet = await supervisor.clock.timesheet({
+		homeId: oak,
+		dateRange: { from: record.clock_in_at, to: new Date() }
+	});
+	const row = sheet.entries.find((e) => e.id === record.id)!;
+	expect(row).toMatchObject({ verified: false, acknowledged: true });
+	const hours = (out.clock_out_at!.getTime() - record.clock_in_at.getTime()) / 3600000;
+	expect(sheet.unverifiedHours).toBeCloseTo(hours, 6);
+	expect(sheet.verifiedHours).toBe(0);
+});
 it('serializes simultaneous punches so only one active record is created', async () => {
 	const user = await as(cara);
 	const results = await Promise.allSettled([
