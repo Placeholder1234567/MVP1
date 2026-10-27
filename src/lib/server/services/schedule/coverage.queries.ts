@@ -38,14 +38,15 @@ const keyWhere = (agencyId: string, key: SlotKey) =>
 		eq(slots.shift, key.shift)
 	);
 export async function lockSlot(tx: Tx, agencyId: string, key: SlotKey) {
-	return (await tx.select().from(slots).where(keyWhere(agencyId, key)).for('update'))[0];
+	return (await tx.select().from(slots).where(keyWhere(agencyId, key)).for('no key update'))[0];
 }
+/** The lock leaves foreign-key checks alone (see scheduleStaff). */
 export async function requestById(tx: Tx, agencyId: string, id: string, lock = false) {
 	const q = tx
 		.select()
 		.from(requests)
 		.where(and(eq(requests.agency_id, agencyId), eq(requests.id, id)));
-	return (await (lock ? q.for('update') : q))[0];
+	return (await (lock ? q.for('no key update') : q))[0];
 }
 export async function openRequest(tx: Tx, agencyId: string, key: SlotKey) {
 	return (

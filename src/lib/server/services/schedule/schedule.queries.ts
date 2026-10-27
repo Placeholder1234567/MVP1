@@ -10,13 +10,19 @@ export async function scheduleHome(tx: Tx, agencyId: string, id: string) {
 			.where(and(eq(homes.agency_id, agencyId), eq(homes.id, id)))
 	)[0];
 }
+/**
+ * Locks the staff member for a scheduling decision. NO KEY UPDATE, not
+ * UPDATE: rows that reference the profile (notifications, offer evidence)
+ * take a KEY SHARE lock for their foreign key, and FOR UPDATE would block
+ * them and deadlock with the jobs that insert them.
+ */
 export async function scheduleStaff(tx: Tx, agencyId: string, id: string) {
 	return (
 		await tx
 			.select()
 			.from(profiles)
 			.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, id)))
-			.for('update')
+			.for('no key update')
 	)[0];
 }
 export function weekSlots(tx: Tx, agencyId: string, homeId: string, from: string, to: string) {
