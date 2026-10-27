@@ -24,7 +24,8 @@ export async function createSmsPushFallback(
 		.select({ active: profiles.active, role: profiles.role })
 		.from(profiles)
 		.where(and(eq(profiles.agency_id, agencyId), eq(profiles.id, identity.profileId)))
-		.for('update');
+		// Serializes per recipient without blocking foreign-key checks on the profile.
+		.for('no key update');
 	if (!recipient) return null;
 	const [source] = await tx.select().from(notifications).where(sourceScope);
 	if (!source) return null;

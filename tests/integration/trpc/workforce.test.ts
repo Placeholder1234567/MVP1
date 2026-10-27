@@ -722,3 +722,56 @@ it('refuses an assignment when the shift changed since the supervisor last saw i
 	).toBe(bea);
 	await supervisor.schedule.clearSlot({ homeId: oak, day: target, shift: 'pm', seen: bea });
 });
+
+it('two supervisors booking one person into two homes at once: one wins, no double booking', async () => {
+	const when = addDays(day, 20);
+	const [a, b] = await Promise.all([as(sam), as(sam)]);
+	const results = await Promise.allSettled([
+		a.schedule.setSlot({ homeId: oak, day: when, shift: 'on', profileId: eli }),
+		b.schedule.setSlot({ homeId: maple, day: when, shift: 'on', profileId: eli })
+	]);
+	expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+	const refused = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+	expect(refused.reason).toMatchObject({ code: 'CONFLICT' });
+	const booked = await withService((tx) =>
+		tx
+			.select({ home: s.scheduleSlots.home_id })
+			.from(s.scheduleSlots)
+			.where(
+				and(
+					eq(s.scheduleSlots.assigned_to, eli),
+					eq(s.scheduleSlots.day, when),
+					eq(s.scheduleSlots.shift, 'on')
+				)
+			)
+	);
+	expect(booked).toHaveLength(1);
+});
+
+it('a supervisor assigning a shift while the same person accepts its offer never deadlocks', async () => {
+	const supervisor = await as(sam);
+	// Several rounds: a lock-order deadlock shows up only under some timings.
+	for (const offset of [21, 22, 23]) {
+		const when = addDays(day, offset);
+		await supervisor.schedule.setSlot({ homeId: oak, day: when, shift: 'am', profileId: cara });
+		const request = await (
+			await as(cara)
+		).coverage.callout({ homeId: oak, day: when, shift: 'am' });
+		await runJob(
+			'coverage-search',
+			{ agencyId: agency, id: request.id },
+			{ attempt: 0, final: true }
+		);
+		const [accepting, assigning] = await Promise.all([as(bea), as(sam)]);
+		const results = await Promise.allSettled([
+			accepting.coverage.accept({ id: request.id }),
+			assigning.schedule.setSlot({ homeId: oak, day: when, shift: 'am', profileId: bea })
+		]);
+		// Either may lose cleanly (the offer closed), but nothing fails unexplained.
+		for (const r of results)
+			if (r.status === 'rejected')
+				expect((r.reason as { code?: string }).code).not.toBe('INTERNAL_SERVER_ERROR');
+		const slots = await supervisor.schedule.get({ homeId: oak, weekStart: when });
+		expect(slots.slots.find((x) => x.day === when && x.shift === 'am')?.assigned_to).toBe(bea);
+	}
+});
