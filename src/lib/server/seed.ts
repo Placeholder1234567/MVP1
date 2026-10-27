@@ -16,9 +16,9 @@ export { DEV_PASSWORD } from './demo-accounts';
 // Only the guarded browser runner requests these disposable accounts. Separate
 // profiles keep destructive desktop/phone tests independent of suite order.
 // Each browser-test viewport gets one registered device per removal test.
-const PUSH_FIXTURES = ['push', 'push-held'].flatMap((prefix) =>
+const PUSH_FIXTURES = ['push', 'push-held', 'push-nav'].flatMap((prefix) =>
 	['desktop', 'phone'].map((project) => ({
-		name: `Synthetic ${prefix === 'push' ? 'Push' : 'Held Push'} ${project}`,
+		name: `Synthetic ${prefix} ${project}`,
 		email: `${prefix}-${project}@guad.test`,
 		role: 'caregiver' as const,
 		homes: ['oak'] as const,
