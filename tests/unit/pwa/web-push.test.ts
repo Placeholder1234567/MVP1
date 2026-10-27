@@ -110,7 +110,7 @@ it('an older sign-out leaves the browser alone when its registration can’t be 
 	expect(await web.stopWebPush('older')).toBe(false);
 	expect(storage.markPushEnabled).not.toHaveBeenCalled();
 	expect(cancel).not.toHaveBeenCalled();
-	// The profile using this tab can still turn its own push off.
-	expect(await web.stopWebPush('newer')).toBe(true);
-	expect(storage.markPushEnabled).toHaveBeenCalledWith(false);
+	// Not even the profile using this tab: unknown ownership is never proven own.
+	expect(await web.stopWebPush('newer')).toBe(false);
+	expect(storage.markPushEnabled).not.toHaveBeenCalled();
 });

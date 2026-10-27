@@ -136,13 +136,14 @@ function createController(profileId: string, serverConfigured: boolean): PushCon
 export async function stopWebPush(profileId: string): Promise<boolean> {
 	controls()?.postMessage({ off: profileId });
 	// Never cancel or replace a newer profile's controller to tear down an older one.
-	const inCharge = current?.profileId === profileId;
-	const controller = inCharge ? current!.controller : createController(profileId, pushConfigured());
+	const controller =
+		current?.profileId === profileId
+			? current.controller
+			: createController(profileId, pushConfigured());
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		return await Promise.race([
-			// Unreadable ownership stops push only for the profile using this tab.
-			controller.disable(inCharge ? 'teardown' : 'leave'),
+			controller.disable(),
 			new Promise<boolean>((resolve) => {
 				timer = setTimeout(() => resolve(false), 4000);
 			})

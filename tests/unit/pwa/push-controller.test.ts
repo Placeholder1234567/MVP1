@@ -262,10 +262,57 @@ it('when the browser’s registration can’t be read, an older sign-out changes
 	expect(older.deleteToken).not.toHaveBeenCalled();
 });
 
-it('the profile using this tab still turns its own push off when the registration can’t be read', async () => {
+it('turning one’s own push off reports failure, not success, when the registration can’t be read', async () => {
 	const { deps, controller } = fixture();
 	deps.read.mockRejectedValue(new Error('Storage blocked'));
-	expect(await controller.disable('teardown')).toBe(true);
-	expect(deps.mark).toHaveBeenCalledWith(false);
-	expect(deps.unsubscribe).toHaveBeenCalled();
+	// Unknown ownership is never treated as proven: nothing changes, retry later.
+	expect(await controller.disable()).toBe(false);
+	expect(deps.mark).not.toHaveBeenCalled();
+	expect(deps.unsubscribe).not.toHaveBeenCalled();
+	expect(deps.deleteToken).not.toHaveBeenCalled();
+});
+
+it('a setup that can’t read the registration fails without touching a newer profile’s push', async () => {
+	const { browser, deps } = sharedBrowser();
+	expect(await new PushController('newer', deps('newer')).enable()).toBe('registered');
+	const older = deps('older');
+	older.read = async () => {
+		throw new Error('Storage blocked');
+	};
+	expect(await new PushController('older', older).enable()).toBe('failed');
+	expect(older.getToken).not.toHaveBeenCalled();
+	expect(older.unsubscribe).not.toHaveBeenCalled();
+	expect(older.deleteToken).not.toHaveBeenCalled();
+	expect(browser).toMatchObject({
+		enabled: true,
+		registration: { profileId: 'newer' },
+		subscribed: true
+	});
+	expect(browser.token).toMatch(/^token-newer-/);
+});
+
+it('a stale tab’s own sign-out queued behind another tab’s newer setup leaves it alone when unreadable', async () => {
+	const { browser, holds, deps } = sharedBrowser();
+	// Tab 1 still shows profile A; tab 2 is setting up profile B.
+	const tokenHeld = held();
+	holds.getToken = tokenHeld.promise;
+	const enabling = new PushController('B', deps('B')).enable();
+	await vi.waitFor(() => expect(browser.enabled).toBe(false));
+	const staleA = deps('A');
+	// Once B has written its registration, storage fails for the stale tab.
+	staleA.read = async () => {
+		if (browser.registration?.profileId === 'B') throw new Error('Storage blocked');
+		return browser.registration;
+	};
+	const signingOut = new PushController('A', staleA).disable();
+	tokenHeld.release();
+	expect(await enabling).toBe('registered');
+	expect(await signingOut).toBe(false);
+	expect(staleA.unsubscribe).not.toHaveBeenCalled();
+	expect(staleA.deleteToken).not.toHaveBeenCalled();
+	expect(browser).toMatchObject({
+		enabled: true,
+		registration: { profileId: 'B' },
+		subscribed: true
+	});
 });

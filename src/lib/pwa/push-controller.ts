@@ -62,7 +62,13 @@ export class PushController {
 			if (mine !== this.revision) return 'off';
 			if (!(await d.supported())) return 'unsupported';
 			if (mine !== this.revision) return 'off';
-			const previous = await d.read();
+			let previous: PushRegistration | null;
+			try {
+				previous = await d.read();
+			} catch {
+				// Can't tell whose push this browser holds: change nothing.
+				return mine === this.revision ? 'failed' : 'off';
+			}
 			await d.mark(false);
 			if (previous && previous.profileId !== this.profileId) await d.deleteToken();
 			if (mine !== this.revision) return 'off';
@@ -92,24 +98,20 @@ export class PushController {
 			return mine === this.revision ? 'failed' : 'off';
 		}
 	}
-	/**
-	 * `unknownOwner` decides what happens when the browser's registration
-	 * can't be read: 'teardown' (this profile is the one using this tab, so
-	 * stopping is safe) or 'leave' (it may belong to someone who signed in
-	 * since; change nothing browser-wide and report it unconfirmed).
-	 */
-	async disable(unknownOwner: 'teardown' | 'leave' = 'leave'): Promise<boolean> {
+	async disable(): Promise<boolean> {
 		this.revision++;
-		return this.deps.exclusive(() => this.teardown(unknownOwner));
+		return this.deps.exclusive(() => this.teardown());
 	}
-	private async teardown(unknownOwner: 'teardown' | 'leave'): Promise<boolean> {
+	private async teardown(): Promise<boolean> {
 		const d = this.deps;
 		let previous: PushRegistration | null;
 		try {
 			previous = await d.read();
 		} catch {
-			if (unknownOwner === 'leave') return false;
-			previous = null;
+			// Can't tell whose push this browser holds; it may be someone who
+			// signed in since. Change nothing and report it unconfirmed, so the
+			// person sees the failure and can retry.
+			return false;
 		}
 		// Another profile signed in on this browser since and set up its own
 		// push: the browser's token and subscription are its now. Ours was
