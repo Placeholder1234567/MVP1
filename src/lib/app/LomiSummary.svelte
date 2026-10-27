@@ -6,39 +6,124 @@
 	// hour. Next steps are fixed operational rules, never model text.
 	import { resolve } from '$app/paths';
 	import { trpc } from '#lib/trpc.ts';
+	import { onMount, onDestroy } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
+	import { navigating } from '$app/state';
+	import { useSession } from './session.svelte';
+	import { ReportJobGuard, reportCanConnect } from './report-job';
 
 	type Summary = Awaited<ReturnType<typeof trpc.lomi.summarize.mutate>>;
 	let { homeId }: { homeId: string } = $props();
+	const app = useSession();
 	let result = $state<Summary | null>(null);
 	let at = $state<Date | null>(null);
 	let busy = $state(false);
 	let message = $state('');
 	let tick = $state(Date.now());
 
-	$effect(() => {
-		// A new home starts with no summary.
-		void homeId;
+	let online = $state(false),
+		visible = $state(false);
+	let alive = false,
+		interruption = 0;
+	const guard = new ReportJobGuard();
+	let controller: AbortController | undefined;
+	const context = () =>
+		JSON.stringify([
+			app.user.agencyId,
+			app.user.profileId,
+			app.user.role,
+			app.user.homeIds,
+			app.user.features,
+			app.user.timeZone,
+			app.homeId,
+			homeId,
+			app.privacyLocked,
+			app.homes.some((home) => home.id === homeId)
+		]);
+	const canConnect = $derived(
+		reportCanConnect(online, visible, app.privacyLocked) &&
+			!navigating.to &&
+			app.user.role !== 'caregiver' &&
+			app.user.features.includes('lomi_summary') &&
+			homeId === app.homeId &&
+			app.homes.some((home) => home.id === homeId)
+	);
+	function interrupt() {
+		controller?.abort();
+		busy = false;
+	}
+	function forget() {
+		interrupt();
 		result = null;
 		at = null;
 		message = '';
-	});
+	}
 	$effect(() => {
-		const t = setInterval(() => (tick = Date.now()), 30_000);
-		return () => clearInterval(t);
+		if (guard.change(context())) forget();
 	});
-
+	beforeNavigate(() => {
+		guard.change('navigating');
+		forget();
+	});
+	onDestroy(() => {
+		alive = false;
+		guard.change('disposed');
+		interrupt();
+	});
+	onMount(() => {
+		alive = true;
+		const update = () => {
+			online = navigator.onLine;
+			visible = !document.hidden;
+			if (!online || !visible) {
+				guard.change(`unavailable-${++interruption}`);
+				interrupt();
+			}
+		};
+		update();
+		const timer = setInterval(() => (tick = Date.now()), 30_000);
+		window.addEventListener('online', update);
+		window.addEventListener('offline', update);
+		document.addEventListener('visibilitychange', update);
+		return () => {
+			clearInterval(timer);
+			window.removeEventListener('online', update);
+			window.removeEventListener('offline', update);
+			document.removeEventListener('visibilitychange', update);
+		};
+	});
 	async function summarize() {
+		if (busy || !canConnect || !alive) return;
+		guard.change(context());
+		const identity = context(),
+			stillCurrent = guard.capture(),
+			requestedHome = homeId;
+		const pending = new AbortController();
+		controller = pending;
+		const valid = () =>
+			alive &&
+			stillCurrent() &&
+			identity === context() &&
+			canConnect &&
+			controller === pending &&
+			!pending.signal.aborted;
 		busy = true;
 		message = '';
 		try {
-			result = await trpc.lomi.summarize.mutate({ homeId });
+			const next = await trpc.lomi.summarize.mutate(
+				{ homeId: requestedHome },
+				{ signal: pending.signal }
+			);
+			if (!valid()) return;
+			result = next;
 			at = new Date();
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Connect to summarize today.';
+			if (valid()) message = e instanceof Error ? e.message : 'Connect to summarize today.';
 		} finally {
-			busy = false;
+			if (valid()) busy = false;
 		}
 	}
+
 	const ago = $derived.by(() => {
 		if (!at) return '';
 		const min = Math.floor((tick - at.getTime()) / 60_000);
@@ -49,11 +134,11 @@
 <section class="lomi-card" aria-label="Lomi's summary" aria-busy={busy}>
 	<span class="orb" aria-hidden="true">◒</span>
 	<div class="body">
-		<b>Lomi's summary</b>
+		<h2 class="summary-title">Lomi's summary</h2>
 		{#if busy && !result}
 			<p class="muted">Reading today's records…</p>
-		{:else if result}
-			<p class="text" aria-live="polite">{result.summary}</p>
+		{:else if result && !app.privacyLocked}
+			<p class="text" aria-live="polite" data-testid="lomi-summary-text">{result.summary}</p>
 			{#if result.highlights.length}
 				<h3>Highlights</h3>
 				<ul>
@@ -77,14 +162,17 @@
 				</ul>
 			{/if}
 			<p class="foot muted">
-				{ago}{result.fallback ? ' · Written from today’s counts' : ''}
+				For {result.snapshot.home} · {ago}{result.fallback ? ' · Written from today’s counts' : ''}
 			</p>
 		{:else}
 			<p class="muted">A quick read on today across coverage, notes, incidents, meds and health.</p>
 		{/if}
+		{#if !online}<p class="muted">
+				Connect to request a fresh summary. An already loaded summary stays available for reading.
+			</p>{/if}
 		{#if message}<p class="callout" role="status">{message}</p>{/if}
 		<div>
-			<button type="button" class="btn sec" disabled={busy} onclick={summarize}>
+			<button type="button" class="btn sec" disabled={busy || !canConnect} onclick={summarize}>
 				{busy ? 'Summarizing…' : result ? 'Refresh summary' : 'Summarize today'}
 			</button>
 		</div>
@@ -126,6 +214,11 @@
 	.text {
 		font-size: 15px;
 		line-height: 1.5;
+	}
+	.summary-title {
+		font: inherit;
+		font-weight: 700;
+		margin: 0;
 	}
 	h3 {
 		margin: 4px 0 0;
