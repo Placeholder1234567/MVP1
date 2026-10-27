@@ -6,7 +6,7 @@ test.use({
 	launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] }
 });
 const transcript = 'Renée reported no pain at 14:35; drank 250 mL.';
-async function open(page: Page, followup = false) {
+async function open(page: Page, followup = false, phone = false) {
 	await page.route(/\/api\/trpc\/lomi\.capabilities(?:\?|$)/, (route) =>
 		route.fulfill({
 			contentType: 'application/json',
@@ -22,9 +22,14 @@ async function open(page: Page, followup = false) {
 	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
 	await page.getByLabel('Confirm PIN', { exact: true }).fill('654321');
 	await page.getByRole('button', { name: 'Save PIN and open', exact: true }).click();
-	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
+	await page
+		.getByLabel('Current home', { exact: true })
+		.selectOption({ label: followup && phone ? 'Maple House' : 'Oak House' });
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
-	await page.getByRole('link', { name: /Rosa Demo/ }).click();
+	if (followup) await page.getByRole('link', { name: 'Care records', exact: true }).first().click();
+	await page
+		.getByRole('link', { name: new RegExp(followup && phone ? 'Theo Demo' : 'Rosa Demo') })
+		.click();
 	await page.getByRole('link', { name: followup ? /^Shift note/ : /^Behavior note/ }).click();
 }
 async function record(page: Page, name: string) {
@@ -37,10 +42,10 @@ for (const mode of ['full-note', 'section', 'follow-up'] as const) {
 	test(`an oversized ${mode} transcript stays whole until explicit addition`, async ({
 		page,
 		context
-	}) => {
+	}, info) => {
 		const section = mode === 'section',
 			followup = mode === 'follow-up';
-		await open(page, followup);
+		await open(page, followup, info.project.name === 'phone');
 		let routes = 0;
 		page.on('request', (request) => {
 			if (/\/api\/trpc\/lomi\.route(?:\?|$)/.test(request.url())) routes++;
