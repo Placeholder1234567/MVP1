@@ -50,6 +50,7 @@
 	let recording = $state(false);
 	let transcribing = $state(false);
 	let voice = $state(false);
+	let aiDraftConnected = $state<boolean | null>(null);
 	let message = $state('');
 	let preview = $state<DraftResult | null>(null);
 	let voiceMessage = $state('');
@@ -226,6 +227,8 @@
 		void trpc.lomi.capabilities
 			.query()
 			.then((c) => {
+				if (!validContext()) return;
+				aiDraftConnected = c.draft;
 				voice = c.voice;
 				void app.db
 					?.execute('INSERT OR REPLACE INTO device_flags (id, value) VALUES (?, ?)', [
@@ -331,6 +334,10 @@
 		<span class="lemon-orb" aria-hidden="true">◒</span>
 	</div>
 	<p class="muted">Use your own words. Lomi helps organize them, and you review every section.</p>
+	{#if aiDraftConnected === false}<p class="callout" role="status" data-testid="lomi-local-mode">
+			AI drafting isn’t connected. You can still type observations: Lomi will sort your sentences
+			into sections without rewriting them. Review each section before using it.
+		</p>{/if}
 	{#if recovery && recovery.noteId === noteId && !preview}<div class="callout stack">
 			<p>
 				A Lomi review is saved in this device’s encrypted database for this person and note period.

@@ -24,5 +24,7 @@ test('Talk to Lomi opens current-home charting without submitting a note', async
 	await picker.getByRole('link', { name: /Theo Demo/ }).click();
 	await expect(page.getByRole('region', { name: 'Lomi drafting assistant' })).toBeVisible();
 	await expect(page.getByLabel('Your observations', { exact: true })).toBeVisible();
+	await expect(page.getByTestId('lomi-local-mode')).toContainText('AI drafting isn’t connected.');
+	await expect(page.getByTestId('lomi-local-mode')).toContainText('without rewriting them');
 	await expect(page.getByRole('button', { name: 'Prepare a draft', exact: true })).toBeDisabled();
 });
