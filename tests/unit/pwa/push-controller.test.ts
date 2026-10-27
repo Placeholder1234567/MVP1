@@ -296,8 +296,10 @@ it('a stale tab’s own sign-out queued behind another tab’s newer setup leave
 	// Tab 1 still shows profile A; tab 2 is setting up profile B.
 	const tokenHeld = held();
 	holds.getToken = tokenHeld.promise;
-	const enabling = new PushController('B', deps('B')).enable();
-	await vi.waitFor(() => expect(browser.enabled).toBe(false));
+	const bDeps = deps('B');
+	const enabling = new PushController('B', bDeps).enable();
+	// B holds the lock, waiting on the provider, before A's sign-out queues.
+	await vi.waitFor(() => expect(bDeps.getToken).toHaveBeenCalled());
 	const staleA = deps('A');
 	// Once B has written its registration, storage fails for the stale tab.
 	staleA.read = async () => {
