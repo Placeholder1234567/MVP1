@@ -16,7 +16,7 @@ Do not describe M1 as production readiness. No target date or percentage is defe
 
 Freeze new optional features during M1. Accept only reproducible defects, missing acceptance criteria, security/safety fixes or explicit owner-approved scope changes. Keep optional requests in a later backlog. Record each addition's reason and impact on the finish line.
 
-Credentials and medication-certification expiry are merged (PR284/285); their workflow evidence still needs reconciliation and reviewer acceptance. Codex merged Lomi suggestion response ownership (PR297) and complete voice-input handling (PR299); summary response/accessibility work remains under validation in PR301. The cross-tab push cleanup race remains open after the notification review; coordinate ownership before changing that lifecycle. These are completion work, not optional feature expansion.
+Credentials and medication-certification expiry are merged (PR284/285); their workflow evidence still needs reconciliation and reviewer acceptance. Codex merged Lomi suggestion response ownership (PR297) and complete voice-input handling (PR299); summary response/accessibility work is verified and merged in PR301. Spoken follow-up input is the current bounded acceptance increment; see `lomi-followup-voice.md`. The cross-tab push cleanup race remains open after the notification review; coordinate ownership before changing that lifecycle. These are completion work, not optional feature expansion.
 
 Self-service signup, billing automation, Spanish, expanded placement matching, branding and progressive feature reveal are deferred unless the owner explicitly makes one a pilot prerequisite. Resolve scheduled-report plan access and nearby-staff location behavior before claiming the affected workflow accepted; they need not block unrelated core workflows if explicitly excluded from pilot scope.
 
@@ -53,7 +53,7 @@ External evidence is currently outstanding. Repository checkboxes and synthetic 
 ## Known immediate blockers and evidence
 
 - Cross-tab sign-out/sign-in push cleanup can cancel a newer push setup. The notification review records this as unresolved; the existing list/removal tests do not establish lifecycle safety. Held-dependency account-transition tests and a bounded fix are still needed. No wrong-recipient delivery is claimed as reproduced.
-- AI section/chat response guards (PR297) and voice length handling (PR299) are merged and verified. Daily-summary response and accessibility work remains pending final-head validation in PR301.
+- AI section/chat response guards (PR297) and voice length handling (PR299) are merged and verified. Daily-summary response and accessibility work (PR301) is also merged and verified. Spoken follow-up input still requires its final-head browser validation.
 - Intake supervisor scope, scheduled-report plan access and timekeeping period semantics remain explicit review items in the evidence index. Preserve current authorization until a decision is made.
 - Existing status prose contains historical pending statements for merged work; reconcile against actual main rather than recreating completed features.
 - Verified baseline PR281 final 0dcbe3b: CI 40397766336 (557 units, 345 integration plus SQL RLS), browser 40397766351 (220 production passes, 20 exclusions, 2 development passes), performance 40397766337. Both new nonempty push concurrency tests passed. This evidence covers that commit and those scenarios only.

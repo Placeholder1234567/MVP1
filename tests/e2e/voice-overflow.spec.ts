@@ -6,7 +6,7 @@ test.use({
 	launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] }
 });
 const transcript = 'Renée reported no pain at 14:35; drank 250 mL.';
-async function open(page: Page) {
+async function open(page: Page, followup = false) {
 	await page.route(/\/api\/trpc\/lomi\.capabilities(?:\?|$)/, (route) =>
 		route.fulfill({
 			contentType: 'application/json',
@@ -14,7 +14,9 @@ async function open(page: Page) {
 		})
 	);
 	await page.goto('/login');
-	await page.getByLabel('Email', { exact: true }).fill('cara@guad.test');
+	await page
+		.getByLabel('Email', { exact: true })
+		.fill(followup ? 'supervisor@guad.test' : 'cara@guad.test');
 	await page.getByLabel('Password', { exact: true }).fill('guad-dev-only-1');
 	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 	await page.getByLabel('Device PIN', { exact: true }).fill('654321');
@@ -23,7 +25,7 @@ async function open(page: Page) {
 	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
 	await expect(page.getByTestId('sync-status')).toHaveText('All changes synced');
 	await page.getByRole('link', { name: /Rosa Demo/ }).click();
-	await page.getByRole('link', { name: /^Behavior note/ }).click();
+	await page.getByRole('link', { name: followup ? /^Shift note/ : /^Behavior note/ }).click();
 }
 async function record(page: Page, name: string) {
 	await page.getByRole('button', { name, exact: true }).click();
@@ -31,11 +33,18 @@ async function record(page: Page, name: string) {
 	await page.waitForTimeout(1100); // Capture an actual synthetic MediaRecorder chunk.
 	await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
 }
-for (const section of [false, true]) {
-	test(`an oversized ${section ? 'section' : 'full-note'} transcript stays whole until explicit addition`, async ({
-		page
+for (const mode of ['full-note', 'section', 'follow-up'] as const) {
+	test(`an oversized ${mode} transcript stays whole until explicit addition`, async ({
+		page,
+		context
 	}) => {
-		await open(page);
+		const section = mode === 'section',
+			followup = mode === 'follow-up';
+		await open(page, followup);
+		let routes = 0;
+		page.on('request', (request) => {
+			if (/\/api\/trpc\/lomi\.route(?:\?|$)/.test(request.url())) routes++;
+		});
 		let transcriptions = 0;
 		await page.route(/\/api\/trpc\/lomi\.transcribe(?:\?|$)/, (route) => {
 			transcriptions++;
@@ -45,21 +54,48 @@ for (const section of [false, true]) {
 			});
 		});
 		const observations = page.getByLabel('Your observations', { exact: true });
-		if (section) {
+		if (section || followup) {
 			await observations.fill('Synthetic activity observation.');
 			await page.getByRole('button', { name: 'Prepare a draft', exact: true }).click();
-			await page.getByText('Refine what the person did with Lomi', { exact: true }).click();
+			if (section)
+				await page.getByText('Refine what the person did with Lomi', { exact: true }).click();
 		}
-		const input = section
-			? page.getByLabel('Additional observations or corrections for what the person did', {
-					exact: true
-				})
-			: observations;
-		const original = 'x'.repeat(section ? 1990 : 7990);
+		const input = followup
+			? page.getByLabel('Follow-up observations', { exact: true })
+			: section
+				? page.getByLabel('Additional observations or corrections for what the person did', {
+						exact: true
+					})
+				: observations;
+		if (followup) {
+			await context.setOffline(true);
+			try {
+				await expect(
+					page.getByRole('button', { name: 'Speak follow-up · up to 30 seconds', exact: true })
+				).toBeDisabled();
+				await expect(input).toBeEnabled();
+				expect(transcriptions).toBe(0);
+			} finally {
+				await context.setOffline(false);
+			}
+			await expect(
+				page.getByRole('button', { name: 'Speak follow-up · up to 30 seconds', exact: true })
+			).toBeEnabled();
+		}
+		const original = 'x'.repeat(section || followup ? 1990 : 7990);
 		await input.fill(original);
-		const note = page.locator('form').getByLabel('What the person did', { exact: true });
+		const note = page
+			.locator('form')
+			.getByLabel(followup ? 'Activities' : 'What the person did', { exact: true });
 		const originalNote = await note.inputValue();
-		await record(page, section ? 'Speak · up to 30 seconds' : 'Speak · up to 5 minutes');
+		await record(
+			page,
+			followup
+				? 'Speak follow-up · up to 30 seconds'
+				: section
+					? 'Speak · up to 30 seconds'
+					: 'Speak · up to 5 minutes'
+		);
 		const pending = page.getByRole('region', { name: 'Transcript not added', exact: true });
 		await expect(pending.getByLabel('Full transcript not yet added', { exact: true })).toHaveValue(
 			transcript
@@ -73,6 +109,14 @@ for (const section of [false, true]) {
 		await expect(input).toHaveValue('Caregiver revised observations. ' + transcript);
 		await expect(pending).toHaveCount(0);
 		expect(transcriptions).toBe(1);
+		expect(routes).toBe(0);
+		if (followup) {
+			await page.getByRole('button', { name: 'Suggest section updates', exact: true }).click();
+			await expect(
+				page.getByRole('region', { name: 'Proposed changes', exact: true })
+			).toContainText(transcript);
+			expect(routes).toBe(1);
+		}
 		await expect(note).toHaveValue(originalNote);
 		await expect(page.getByRole('button', { name: 'Sign and submit', exact: true })).toBeDisabled();
 		expect(

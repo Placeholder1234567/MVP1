@@ -22,6 +22,7 @@
 	// Groups the parts of one recording kept offline.
 	let recordingId = crypto.randomUUID();
 	let pendingText = $state('');
+	let connected = $state(typeof navigator === 'undefined' || navigator.onLine);
 	function acceptTranscript(text: string) {
 		if (onText(text) === false) pendingText = text;
 		else pendingText = '';
@@ -43,10 +44,14 @@
 	});
 	$effect(() => {
 		if (app.privacyLocked) capture?.cancel();
+		else if (!connected && !saveFor)
+			capture?.cancel(
+				'Recording stopped because transcription needs a connection. Your typed observations are still here.'
+			);
 	});
 	onMount(() => {
 		capture = new VoiceCapture({
-			allowed: () => !document.hidden && !app.privacyLocked,
+			allowed: () => !document.hidden && !app.privacyLocked && (!!saveFor || connected),
 			capture: () => navigator.mediaDevices.getUserMedia({ audio: true }),
 			recorder: (stream) => {
 				const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find((type) =>
@@ -121,24 +126,29 @@
 	});
 	function speak() {
 		if (voiceState.recording) capture?.stop();
-		else if (!disabled && !pendingText) {
+		else if (!disabled && !pendingText && (!!saveFor || connected)) {
 			recordingId = crypto.randomUUID();
 			void capture?.start(seconds);
 		}
 	}
 </script>
 
+<svelte:window ononline={() => (connected = true)} onoffline={() => (connected = false)} />
 <button
 	class="btn sec"
 	type="button"
 	disabled={(disabled && !voiceState.recording) ||
 		voiceState.busy ||
 		voiceState.requesting ||
-		!!pendingText}
+		!!pendingText ||
+		(!saveFor && !connected)}
 	onclick={speak}
 	>{voiceState.recording ? 'Stop recording' : voiceState.busy ? 'Transcribing…' : label}</button
 >
 
+{#if !saveFor && !connected}<p class="muted">
+		Connect for spoken observations. You can keep typing here.
+	</p>{/if}
 {#if pendingText}
 	<section class="callout warn stack" aria-label="Transcript not added">
 		<p role="alert">
