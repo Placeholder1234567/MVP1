@@ -134,7 +134,7 @@
 <section class="lomi-card" aria-label="Lomi's summary" aria-busy={busy}>
 	<span class="orb" aria-hidden="true">◒</span>
 	<div class="body">
-		<b>Lomi's summary</b>
+		<h2 class="summary-title">Lomi's summary</h2>
 		{#if busy && !result}
 			<p class="muted">Reading today's records…</p>
 		{:else if result && !app.privacyLocked}
@@ -214,6 +214,11 @@
 	.text {
 		font-size: 15px;
 		line-height: 1.5;
+	}
+	.summary-title {
+		font: inherit;
+		font-weight: 700;
+		margin: 0;
 	}
 	h3 {
 		margin: 4px 0 0;
