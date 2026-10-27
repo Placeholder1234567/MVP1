@@ -534,13 +534,37 @@
 					disabled={busy || voiceBusy}
 					oninput={changed}></textarea></label
 			>
-			<button class="btn sec" type="button" disabled={busy || !followup.trim()} onclick={route}
-				>Suggest section updates</button
-			>
+			<div class="actions">
+				{#if voice}<LomiVoice
+						seconds={30}
+						label="Speak follow-up · up to 30 seconds"
+						disabled={busy || voiceBusy}
+						onState={(state) => {
+							voiceBusy = state.recording || state.busy;
+							voiceMessage = state.message;
+						}}
+						onText={(clip) => {
+							const combined = appendObservations(followup, clip, 2000);
+							if (combined === null) {
+								onDirty?.();
+								return false;
+							}
+							followup = combined;
+							changed();
+							return true;
+						}}
+					/>{/if}
+				<button
+					class="btn sec"
+					type="button"
+					disabled={busy || voiceBusy || !followup.trim()}
+					onclick={route}>Suggest section updates</button
+				>
+			</div>
 			<button
 				class="textbtn"
 				type="button"
-				disabled={busy || !followup}
+				disabled={busy || voiceBusy || !followup}
 				onclick={() => {
 					followup = '';
 					pending = null;
