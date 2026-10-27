@@ -140,6 +140,8 @@ test('every office screen passes axe and loads within budget', async ({ page }, 
 		'/dashboard/audit',
 		'/dashboard/api-keys',
 		'/dashboard/setup',
+		// The supervisor's week grid; the caregiver sweep above sees only their own shifts.
+		'/shifts',
 		'/controlled'
 	])
 		await check(page, path, timings);
