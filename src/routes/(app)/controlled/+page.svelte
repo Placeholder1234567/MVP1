@@ -90,7 +90,9 @@
 		quantity = null;
 		reason = '';
 		witnessId = '';
-		witnessHere = canReachServer(app);
+		// Default to signing in here whenever the device is online. A sync that is
+		// checking or uploading at this moment is brief, and saving rechecks it.
+		witnessHere = !!app.db?.currentStatus.connected;
 		forgetWitness();
 		error = '';
 		message = '';
