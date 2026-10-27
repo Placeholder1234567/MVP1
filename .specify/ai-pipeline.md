@@ -1,5 +1,11 @@
 # Lomi AI Pipeline
 
+## As-built boundaries and acceptance
+
+The current server implementation uses authenticated tRPC and `modelJson` in `src/lib/server/services/lomi/index.ts`. A configured initial draft makes one model request; classification, goal matching and detection are not a delivered four-call parallel pipeline. Goal references use active server-loaded IDs and exact observation quotes, never generated trial scores. Coverage eligibility/outreach and summary next-step recommendations are deterministic rules, not autonomous model decisions.
+
+The architecture diagrams, latency figures, model-selection rationale and cost projections below include planning targets and assumptions. They are not measured quality, speed or price guarantees. The production-candidate model/prompt/region must be evaluated separately; configured transport and mock success do not establish faithful clinical text or speech accuracy. [AI acceptance evidence](../docs/ai-acceptance.md) records what is tested and what remains unverified.
+
 ## Implemented drafting review increment
 
 The current Svelte app uses `lomi.draft`, `lomi.edit`, and `lomi.route` tRPC mutations (the REST endpoints below remain architecture references). Section edits and follow-up observations produce proposals; caregivers explicitly apply or discard them, then separately use the reviewed draft in the note. The note's signature remains a separate action. Empty sections offer direct editing. Direct text and conservative sorting remain available without configured providers.
@@ -12,9 +18,9 @@ Where an accepted proposal differs from Mode 2/3 below: the target design applie
 
 Vague language flags are shown per section from the current text (`vagueFlags`, `openSectionFlags` in `src/lib/domain/`), with "Fix it" (focuses and selects the phrase) and "Keep as is". The reviewed draft can't be used in the note until every flag is fixed or kept, matching frontend-spec-2.md §3.2's sign-time rule one step earlier.
 
-The brain dump records up to 5 minutes and a per-section clip 30 seconds, without object storage. As built, the device splits a long recording into segments of at most 55 seconds on the same microphone stream (synchronous `Recognize` takes 60 s at most): after 40 seconds a segment ends at the first pause (loudness below a threshold for one 250 ms check), with a hard cut at 55 s, and the next segment starts before the previous one stops so no audio falls in the gap. Each segment is transcribed as soon as it ends, while recording continues, and the texts are joined in order. A segment that cannot be transcribed is marked "[Part of this recording could not be transcribed.]" in the text rather than dropped (`src/lib/app/voice-capture.ts`). A per-section clip is transcribed into that section's "additional observations" field only; the caregiver then asks for a revision and reviews it like a typed one. Server-side splitting and streaming recognition remain unbuilt; the segment approach still needs verifying against the real Chirp recognizer (word accuracy at segment edges). No real provider or cloud resource is needed for local/mock validation.
+The brain dump records up to 5 minutes and a per-section clip 30 seconds, without object storage. As built, the device splits a long recording into segments of at most 55 seconds on the same microphone stream (synchronous `Recognize` takes 60 s at most): after 40 seconds a segment ends at the first pause (loudness below a threshold for one 250 ms check), with a hard cut at 55 s, and the next segment starts before the previous one stops to reduce transition gaps. Actual captured and transcribed boundary accuracy still requires physical-device/provider validation. Each segment is transcribed as soon as it ends, while recording continues, and the texts are joined in order. A segment that cannot be transcribed is marked "[Part of this recording could not be transcribed.]" in the text rather than dropped (`src/lib/app/voice-capture.ts`). A per-section clip is transcribed into that section's "additional observations" field only; the caregiver then asks for a revision and reviews it like a typed one. Server-side splitting and streaming recognition remain unbuilt; the segment approach still needs verifying against the real Chirp recognizer (word accuracy at segment edges). No real provider or cloud resource is needed for local/mock validation.
 
-The in-memory recording controller cancels on privacy lock, page hide, or component disposal. A late microphone grant is immediately released. Cancellation during audio encoding prevents the transcription request; if a request has already started, its late result is discarded (already transmitted audio cannot be recalled). Recorder errors, empty clips and the 2.5 MB byte limit release the microphone and restore typed editing. One-second recording chunks bound accumulated audio before upload; no audio is persisted on the device.
+The in-memory recording controller cancels on privacy lock, page hide, or component disposal. A late microphone grant is immediately released. Cancellation during audio encoding prevents the transcription request; if a request has already started, its late result is discarded (already transmitted audio cannot be recalled). Recorder errors, empty clips and the 2.5 MB byte limit release the microphone and restore typed editing. One-second recording chunks bound accumulated online audio before upload. Full-note recordings kept offline are stored in the encrypted device database (`pending_recordings`) and transcribed on reconnect. An oversized transcript is not silently clipped: live unadded text is visibly held in memory for explicit addition/discard, and a saved offline recording remains until its full transcript fits. See [voice overflow handling](../docs/voice-overflow.md) for the volatile-copy and retry limits.
 
 ## Overview
 
@@ -850,23 +856,21 @@ These costs are compatible with all subscription tiers. For context, Therap char
 
 ## Security Considerations
 
-### Input Sanitization
+### Input boundaries
 
-- Transcript text is passed to the model as a quoted string within the prompt. No template injection is possible because the prompt structure is hardcoded in `prompts.js` and the transcript is treated as a data value, not an instruction.
-- JSON output from the model is parsed with `JSON.parse` wrapped in try/catch. Malformed output triggers the rules-based fallback.
-- The client strips markdown code fences from model output before parsing (handles models that wrap JSON in triple backticks).
-- Chat messages are treated identically to transcripts — quoted data values within fixed prompt templates.
+The server JSON-encodes user payloads inside fixed model messages and treats observations, corrections and chat as untrusted data. This keeps those values separate from the application-built payload structure; it does not prevent a model from following malicious instructions contained in the data. The MVP's `prompts.js` is a reference implementation, not proof of the server's security or model behavior.
 
-### Model Output Validation
+### Model output validation
 
-The client validates that the parsed JSON matches the expected shape before rendering. Missing fields are filled with safe defaults (empty strings, empty arrays, `false` for booleans). Unexpected fields are ignored.
+The server parses model JSON and validates supported output shapes, string bounds and section names before returning it. Missing required draft sections or malformed output trigger conservative fallback; unsupported keys do not become additional clinical fields. Goal references must identify an accessible active goal and quote the supplied observations exactly. Output shape validation does not establish factuality, completeness, correct attribution or safe clinical meaning.
 
-### No Prompt Injection Surface
+### Prompt-injection risk and controls
 
-- Users do not have direct access to modify prompts. The transcript and chat messages are the only user-controlled inputs, and they are embedded as quoted data values within fixed prompt templates.
-- The model is instructed to "use only facts the caregiver stated" and "never add details," which limits hallucination risk.
-- Output is structured JSON, not executable code.
-- Chat routing output is validated against known section names — a prompt injection that tries to route to a non-existent section is dropped.
+- Fixed system instructions tell the model to use stated observations and avoid invented facts. This is a control, not a guarantee that adversarial observations are ignored.
+- Known section names, server-loaded context and authorization constrain where output can go. They do not detect every unsupported clinical claim inside an allowed string.
+- Structured output is text rather than executable application code, but false clinical text remains harmful even when its JSON is valid.
+- Caregivers explicitly review proposed changes and separately sign notes. No model output automatically approves, signs or submits a clinical record.
+- The fixed synthetic corpus and evaluation rubric in `docs/ai-acceptance.md` include quoted untrusted instructions, negation, numbers, uncertainty and attribution. Live-provider adversarial/factuality evaluation is not yet executed; do not claim prompt-injection immunity or verified clinical suitability.
 
 ## Migration Path: MVP to Production
 
