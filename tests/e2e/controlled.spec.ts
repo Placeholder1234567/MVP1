@@ -113,6 +113,9 @@ test('a witnessed count book: receipt, blind count, countersign and a mismatch',
 	await card
 		.getByRole('combobox', { name: 'Witness', exact: true })
 		.selectOption({ label: 'Cara Giver' });
+	// Opening during a periodic sync check intentionally defaults to later
+	// countersigning. Choose the in-person credential flow explicitly.
+	await card.getByRole('radio', { name: 'Signs in here now' }).check();
 	await expect(card.getByRole('radio', { name: 'Signs in here now' })).toBeChecked();
 	await card.getByLabel(/^Witness password/).fill('not-her-password');
 	await card.getByRole('button', { name: 'Save to count book', exact: true }).click();
