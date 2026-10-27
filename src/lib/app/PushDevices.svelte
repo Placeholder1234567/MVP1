@@ -92,17 +92,27 @@
 		)
 			return;
 		interruptList();
+		// Captured before the request: a lock, navigation or another sign-in while it
+		// runs must not let this removal touch the newer view or profile's push.
+		const generation = listGeneration,
+			account = identity(),
+			profileId = app.user.profileId;
+		const sameAccount = () => account === identity();
+		const sameView = () => sameAccount() && generation === listGeneration && !app.privacyLocked;
 		busy = true;
 		message = '';
 		try {
 			await trpc.notification.removePushDevice.mutate({ id });
-			const local = await readPushRegistration();
-			if (local?.id === id && local.profileId === app.user.profileId)
-				await stopWebPush(app.user.profileId);
+			// Finish this device's cleanup only for the account that asked for it.
+			if (sameAccount()) {
+				const local = await readPushRegistration();
+				if (local?.id === id && local.profileId === profileId) await stopWebPush(profileId);
+			}
+			if (!sameView()) return;
 			devices = devices.filter((device) => device.id !== id);
 			message = 'Push device removed. A delivery already in progress may still arrive.';
 		} catch {
-			message = 'Could not remove this push device. Reconnect and try again.';
+			if (sameView()) message = 'Could not remove this push device. Reconnect and try again.';
 		} finally {
 			busy = false;
 		}
