@@ -307,7 +307,7 @@
 </script>
 
 <svelte:window ononline={() => (online = true)} onoffline={() => (online = false)} />
-<section class="card pad stack lomi-panel" aria-label="Lomi drafting assistant">
+<section id="lomi" class="card pad stack lomi-panel" aria-label="Lomi drafting assistant">
 	<div class="spread">
 		<div>
 			<p class="eyebrow">A little help from Lomi</p>

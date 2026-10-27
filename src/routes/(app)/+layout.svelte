@@ -591,6 +591,10 @@
 					>
 					<ThemeToggle />
 					<CommandPalette pages={nav} />
+					{#if data.user.features.includes('charting')}<a
+							class="btn sec"
+							href={resolve('/(app)/lomi')}>Talk to Lomi</a
+						>{/if}
 					<a
 						class="textbtn"
 						href={resolve('/(app)/messages')}
