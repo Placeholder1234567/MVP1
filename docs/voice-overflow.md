@@ -1,0 +1,11 @@
+# Preserve voice observations at field limits
+
+Lomi's full-note and section voice callbacks previously joined a transcript to the existing observations and then sliced it to 8,000 or 2,000 characters. The offline recording reader also deleted the source recording after this truncation. A qualifier at the end of a clip could disappear without an explicit warning.
+
+The shared `appendObservations` rule now accepts the complete joined text or refuses it. It never clips a transcript. Live voice keeps a refused transcript in a labeled, read-only field and explains that nothing was added. Staff can make room and explicitly add the complete transcript without another transcription request, transfer words manually, or explicitly confirm discard. Another recording cannot overwrite that pending transcript. The existing observations and care note remain unchanged until the appropriate explicit action.
+
+The live unadded transcript is held in component memory only. The screen states that leaving loses that unadded copy; this is not an encrypted reload-recovery claim. The parent is marked dirty so the existing unsaved-work navigation prompt applies. No new browser cache or logging is introduced.
+
+For recordings already saved offline in encrypted SQLite, an oversized transcription leaves the recording intact and shows an explicit retry button. Retrying after making room transcribes again; it may use a provider request in a configured installation. The recording is removed only after its whole transcript fits. Context is checked before reading and before adding a result. This does not claim new exactly-once guarantees for unrelated local deletion failures or complete voice lifecycle coverage.
+
+Validation: boundary unit cases preserve final negation, time, quantity and Unicode. `tests/e2e/voice-overflow.spec.ts` uses Chromium's synthetic microphone and stubbed transcription only, on desktop and phone: full-note and section overflow, a refused retry, complete explicit addition with no second provider request, and retained offline recording followed by an explicit transcription retry. It checks unchanged care-note/signature state, accessibility and overflow. Actual Chirp word accuracy and physical-device behavior remain unverified. Browser execution is restricted to GitHub CI.

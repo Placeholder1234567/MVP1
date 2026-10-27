@@ -4,6 +4,7 @@
 	import LomiVoice from './LomiVoice.svelte';
 	import { RECORDING_MAX_SECONDS } from './voice-capture';
 	import { trpc } from '#lib/trpc.ts';
+	import { appendObservations } from '#lib/domain/observation-text.ts';
 	import {
 		draftLocally,
 		topicSuggestions,
@@ -250,22 +251,26 @@
 	let online = $state(typeof navigator === 'undefined' || navigator.onLine);
 	let waiting = $state(0);
 	let resuming = false;
+	let recordingNeedsRoom = $state(false);
 	type Kept = { id: string; recording_id: string; mime: string; audio: string };
-	async function resume() {
+	async function resume(explicit = false) {
 		const db = app.db;
-		if (!db || resuming) return;
+		if (!db || resuming || !validContext() || (recordingNeedsRoom && !explicit)) return;
 		resuming = true;
 		try {
 			const rows = await db.getAll<Kept>(
 				'SELECT id, recording_id, mime, audio FROM pending_recordings WHERE profile_id = ? AND client_id = ? AND kind = ? ORDER BY recorded_at, recording_id, part',
-				[app.user.profileId, clientId, type]
+				[originalBinding.profileId, clientId, type]
 			);
+			if (!validContext()) return;
 			waiting = new Set(rows.map((r) => r.recording_id)).size;
+			recordingNeedsRoom = false;
 			if (!online || !rows.length) return;
 			for (const recording of [...new Set(rows.map((r) => r.recording_id))]) {
 				const parts = rows.filter((r) => r.recording_id === recording);
 				const texts: string[] = [];
-				for (const part of parts)
+				for (const part of parts) {
+					if (!validContext()) return;
 					texts.push(
 						(
 							await trpc.lomi.transcribe.mutate({
@@ -274,9 +279,19 @@
 							})
 						).text.trim()
 					);
+				}
 				const clip = texts.filter(Boolean).join(' ');
+				if (!validContext()) return;
 				if (clip) {
-					text = [text, clip].filter(Boolean).join(' ').slice(0, 8000);
+					const combined = appendObservations(text, clip, 8000);
+					if (combined === null) {
+						recordingNeedsRoom = true;
+						message =
+							'The saved recording does not fit in your observations. Nothing was added or cut off. The recording is still saved on this encrypted device. Make room, then retry saved recordings.';
+						return;
+					}
+					text = combined;
+					preview = null;
 					onDirty?.();
 				}
 				await db.execute('DELETE FROM pending_recordings WHERE recording_id = ?', [recording]);
@@ -293,7 +308,8 @@
 	$effect(() => {
 		void online;
 		void app.db;
-		void resume();
+		void app.privacyLocked;
+		untrack(() => void resume());
 	});
 	async function draft() {
 		if (!text.trim() || busy || !storageReady || !validContext()) return;
@@ -413,8 +429,15 @@
 					voiceMessage = state.message;
 				}}
 				onText={(clip) => {
-					text = [text, clip].filter(Boolean).join(' ').slice(0, 8000);
+					const combined = appendObservations(text, clip, 8000);
+					if (combined === null) {
+						onDirty?.();
+						return false;
+					}
+					text = combined;
+					preview = null;
 					onDirty?.();
+					return true;
 				}}
 			/>{/if}<button
 			class="btn"
@@ -430,6 +453,12 @@
 			Voice will be available once your agency connects transcription. You can type here now.
 		</p>{/if}
 	{#if message || voiceMessage}<p role="status">{message || voiceMessage}</p>{/if}
+	{#if recordingNeedsRoom && online}<button
+			class="btn sec"
+			type="button"
+			disabled={busy || recording || transcribing}
+			onclick={() => void resume(true)}>Retry saved recordings</button
+		>{/if}
 	{#if waiting && !online}<p class="muted s14">
 			{waiting}
 			{waiting === 1 ? 'recording is' : 'recordings are'} saved on this device and will be transcribed
