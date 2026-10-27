@@ -167,6 +167,14 @@
 		message = '';
 	}
 
+	/** A medication certificate just recorded or removed may have changed med_certified. */
+	async function refreshCertified() {
+		const id = editing;
+		await load();
+		const person = staff.find((p) => p.id === id);
+		if (person && editing === id) medCertified = person.medCertified;
+	}
+
 	function toggleHome(id: string, on: boolean) {
 		homeIds = on ? [...new Set([...homeIds, id])] : homeIds.filter((h) => h !== id);
 	}
@@ -298,6 +306,10 @@
 				<label class="check"
 					><input type="checkbox" bind:checked={medCertified} /> Medication certified</label
 				>
+				{#if editing}<p class="muted s13">
+						Recording their medication administration certificate below sets this; it turns off on
+						its own when the certificate lapses.
+					</p>{/if}
 				<fieldset class="stack">
 					<legend>Homes they work at</legend>
 					{#each app.homes.filter((h) => !h.archived_at || homeIds.includes(h.id)) as home (home.id)}
@@ -331,7 +343,11 @@
 				</div>
 			</fieldset>
 		</form>
-		{#if editing}<StaffCredentials profileId={editing} canEdit={isAdmin && canConnect} />{/if}
+		{#if editing}<StaffCredentials
+				profileId={editing}
+				canEdit={isAdmin && canConnect}
+				onsaved={refreshCertified}
+			/>{/if}
 	{/if}
 
 	{#if canConnect && editing === null}<StaffCredentials

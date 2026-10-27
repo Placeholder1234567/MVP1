@@ -6,6 +6,12 @@
 // stable ID made from the credential, its expiry date and the stage, so a
 // renewed credential (a new date) is reminded about again, and nothing is
 // sent twice however often the sweep runs.
+//
+// From the first run after midnight, someone whose medication
+// administration credential has lapsed stops being med-certified
+// (profiles.med_certified), so they can't record doses, be offered shifts
+// that need it, or witness a controlled count until an admin records the
+// renewal.
 import { createHash } from 'node:crypto';
 import {
 	addDays,
@@ -18,7 +24,7 @@ import {
 } from '../../../domain/index.ts';
 import { withService, type Tx } from '../../db';
 import { forEachIsolated } from '../../jobs/isolate.ts';
-import { credentialsExpiring } from './credential-reminders.queries';
+import { credentialsExpiring, revokeLapsedMedCertificates } from './credential-reminders.queries';
 import { agencyClocks } from './escalation.queries';
 import { notify, type Recipient } from './index';
 import { alreadySent } from './med-reminders.queries';
@@ -45,20 +51,24 @@ export function credentialReminderId(credentialId: string, expiresOn: string, ke
 	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export async function sweepCredentialReminders(now = new Date()): Promise<{ sent: number }> {
+export async function sweepCredentialReminders(
+	now = new Date()
+): Promise<{ sent: number; revoked: number }> {
 	const agencies = await withService((tx) => agencyClocks(tx));
 	let sent = 0;
+	let revoked = 0;
 	await forEachIsolated(
 		'credential-reminder agency',
 		agencies,
 		(a) => a.id,
 		async (a) => {
 			const local = localTime(now, a.timeZone);
+			revoked += await withService((tx) => revokeLapsedMedCertificates(tx, a.id, local.day));
 			if (local.hour < CREDENTIAL_REMINDER_HOUR) return;
 			sent += await withService((tx) => remindCredentials(tx, a.id, local.day));
 		}
 	);
-	return { sent };
+	return { sent, revoked };
 }
 
 export async function remindCredentials(tx: Tx, agencyId: string, today: string): Promise<number> {
@@ -79,6 +89,9 @@ export async function remindCredentials(tx: Tx, agencyId: string, today: string)
 				type: 'credential_expiring',
 				priority: stage === 'expired' ? 2 : 3,
 				title: ownReminderTitle(c.name, c.expiresOn, stage),
+				...(stage === 'expired' && c.kind === 'med_admin'
+					? { body: 'Until an admin records your renewal, Guad won’t let you record medications.' }
+					: {}),
 				referenceId: own,
 				referenceType: 'staff_credentials'
 			});

@@ -7,7 +7,7 @@
 // never deleted. The profiles_protect_privileged_columns trigger is the
 // backstop that keeps role, homes and status admin-only.
 import { z } from 'zod';
-import { initialsOf } from '../../../domain/index.ts';
+import { initialsOf, localTime } from '../../../domain/index.ts';
 import { afterCommit, asService, type RequestInfo, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
 import {
@@ -25,6 +25,7 @@ import { forgetDeviceKeys } from '../device/index.ts';
 import { listHomes } from '../home/index.ts';
 import { adminAdded } from '../notification/index.ts';
 import type { CurrentUser } from './auth.types';
+import { lapsedMedCertificate } from './credentials.queries';
 import {
 	activeUidsWithRoles,
 	insertProfile,
@@ -200,6 +201,15 @@ export async function updateStaff(
 			throw new ServiceError('RULE_VIOLATION', 'Keep at least one other active admin');
 	}
 	if (data.homeIds) await checkHomes(tx, admin.agencyId, data.homeIds, before.homeIds ?? []);
+	if (data.medCertified) {
+		const today = localTime(new Date(), admin.timeZone).day;
+		const lapsed = await lapsedMedCertificate(tx, admin.agencyId, data.id, today);
+		if (lapsed)
+			throw new ServiceError(
+				'RULE_VIOLATION',
+				`Their medication administration certificate expired on ${lapsed}. Record the renewal under Training and certifications.`
+			);
+	}
 	const row = await updateProfileRow(tx, admin.agencyId, data.id, {
 		role: data.role,
 		home_ids: data.homeIds,

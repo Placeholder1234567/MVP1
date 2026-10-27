@@ -18,7 +18,8 @@
 		profileId = null,
 		canEdit = false,
 		attentionOnly = false,
-		title = 'Training and certifications'
+		title = 'Training and certifications',
+		onsaved
 	}: {
 		/** One person's; null for everyone the caller can see */
 		profileId?: string | null;
@@ -26,6 +27,8 @@
 		/** Only expiring and expired ones (the Staff overview) */
 		attentionOnly?: boolean;
 		title?: string;
+		/** After a save or removal (a medication certificate changes med_certified) */
+		onsaved?: () => void;
 	} = $props();
 
 	type Credential = Awaited<ReturnType<typeof trpc.staff.credentials.query>>[number];
@@ -102,6 +105,7 @@
 			editing = null;
 			message = 'Saved.';
 			await load();
+			onsaved?.();
 		} catch (e) {
 			// Keep what was typed.
 			message = e instanceof Error ? e.message : 'Could not save. Check your connection.';
@@ -117,6 +121,7 @@
 		try {
 			await trpc.staff.removeCredential.mutate({ id: c.id });
 			await load();
+			onsaved?.();
 		} catch (e) {
 			message = e instanceof Error ? e.message : 'Could not remove. Check your connection.';
 		} finally {

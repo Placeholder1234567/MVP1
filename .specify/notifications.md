@@ -432,6 +432,8 @@ Update `notifications.sent_at`
 | **Deep Link** | `/dashboard/staff` for admins, `/me` for others |
 | **Escalation** | None. Each alert's reference is a stable ID from the credential, its expiry date and the stage, so it is sent once; renewing (a new expiry date) starts the reminders again. |
 
+**Medication certification:** the same sweep, from its first run after midnight local time, turns `profiles.med_certified` off for anyone whose medication administration credential has lapsed, so they can't record doses, be offered shifts that need it, or witness a controlled count until an admin records the renewal (which turns it back on). Their lapsed reminder says so.
+
 ### Notification Type Summary Table
 
 | Type | Priority | Push | SMS | Email | Mandatory | Escalation |
