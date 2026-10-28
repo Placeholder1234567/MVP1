@@ -9,6 +9,8 @@ NETWORK="${NETWORK:-default}"
 SUBNET="${SUBNET:-default}"
 REPO="${REPO:-guad}"                          # Artifact Registry repository
 TASKS_QUEUE_PREFIX="${TASKS_QUEUE_PREFIX:-}"  # e.g. "staging-" to share a project
+# Private bucket for generated report files; web and worker both use it.
+EXPORTS_BUCKET="${EXPORTS_BUCKET:-${PROJECT}-guad-exports}"
 
 # Service accounts (one per workload, least privilege).
 SA_WEB="guad-web@${PROJECT}.iam.gserviceaccount.com"

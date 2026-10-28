@@ -15,6 +15,10 @@ TAG="${TAG:-$(git rev-parse --short HEAD)}"
 IMAGE="${IMAGE_BASE}:${TAG}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+if ! gcloud storage buckets describe "gs://$EXPORTS_BUCKET" >/dev/null 2>&1; then
+	echo "gs://$EXPORTS_BUCKET doesn't exist: run deploy/bootstrap.sh first (it creates the report files bucket)" >&2
+	exit 1
+fi
 
 exists() { "$@" >/dev/null 2>&1; }
 url_of() { gcloud run services describe "$1" --region="$REGION" --format='value(status.url)' 2>/dev/null || true; }
@@ -75,6 +79,7 @@ TASKS_QUEUE_PREFIX: "$TASKS_QUEUE_PREFIX"
 WORKER_URL: "$WORKER_URL"
 WORKER_SERVICE_ACCOUNT: "$SA_TASKS"
 APP_URL: "$WEB_URL"
+EXPORTS_BUCKET: "$EXPORTS_BUCKET"
 PUBLIC_FIREBASE_API_KEY: "$FIREBASE_API_KEY"
 PUBLIC_FIREBASE_AUTH_DOMAIN: "$FIREBASE_AUTH_DOMAIN"
 PUBLIC_FIREBASE_PROJECT_ID: "$PROJECT"
