@@ -63,13 +63,13 @@ PROJECT=my-project FIREBASE_API_KEY=<web api key> bash deploy/deploy.sh
 
 It runs these steps in order:
 
-1. **Build:** builds the image with Cloud Build, tagged with the git commit.
+1. **Build:** builds the image with Cloud Build, tagged with the git commit. The offline page's CSP is fixed at build time, so the build is given PowerSync's public URL: its Cloud Run deterministic URL (`https://guad-powersync-<project number>.<region>.run.app`), or `POWERSYNC_URL` if you set it. `APP_ORIGIN`, if set, becomes the app's canonical origin (docs/offline-csp.md).
 2. **PowerSync config:** checks `powersync/sync-config.yaml` matches the spec, then stores it and `deploy/powersync.yaml` as secrets.
 3. **Migrate:** runs `guad-migrate` and waits for it.
 4. **Services:** deploys `guad-powersync`, then `guad-worker` and `guad-web`. On the very first deploy, it does a second pass to fill in the services' own URLs.
 5. **Jobs:** creates or updates the Cloud Tasks queues and Cloud Scheduler jobs.
 
-Extra settings (Lomi models, messaging drivers, a custom domain) go in `deploy/app.env.yaml`; see `deploy/app.env.example.yaml`. Rollback: `gcloud run services update-traffic guad-web --to-revisions=<previous>=100` (and the same for `guad-worker`). Migrations only go forward, so a rollback has to work with the newer schema.
+Extra settings (Lomi models, messaging drivers, a custom domain) go in `deploy/app.env.yaml`; see `deploy/app.env.example.yaml`. A custom domain also needs `APP_ORIGIN=https://<domain>` in the environment when you run `deploy.sh`, because the origin is set at build time. Rollback: `gcloud run services update-traffic guad-web --to-revisions=<previous>=100` (and the same for `guad-worker`). Migrations only go forward, so a rollback has to work with the newer schema.
 
 ## New agencies
 
