@@ -91,18 +91,13 @@ XFF_DEPTH: "1"
 BODY_SIZE_LIMIT: "4M"
 EOF
 }
-# gcloud keeps the first of two equal keys, so a default that
-# deploy/app.env.yaml also sets is left out rather than overridden.
+# deploy/app.env.yaml settings replace the defaults (deploy/app-env.awk).
 app_env() { # app_env <service> <service account> > env file
-	local extra=deploy/app.env.yaml
-	if [[ ! -f "$extra" ]]; then
+	if [[ -f deploy/app.env.yaml ]]; then
+		app_defaults "$@" | awk -f deploy/app-env.awk deploy/app.env.yaml -
+	else
 		app_defaults "$@"
-		return
 	fi
-	app_defaults "$@" | awk -v re='^[A-Za-z_][A-Za-z0-9_]*:' '
-		NR == FNR { if (match($0, re)) set[substr($0, 1, RLENGTH)] = 1; next }
-		!(match($0, re) && substr($0, 1, RLENGTH) in set)' "$extra" -
-	cat "$extra"
 }
 
 deploy_app() { # deploy_app <service> <GUAD_SERVICE> <service account> [extra flags]
