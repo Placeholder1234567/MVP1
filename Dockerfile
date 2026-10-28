@@ -12,9 +12,12 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
 # Public browser endpoints must be known while hashing the prerendered offline CSP.
 # These are public origins, never credentials; runtime variables still configure dynamic pages.
+# APP_ORIGIN is SvelteKit's build-time canonical origin (vite.config.ts paths.origin).
 ARG PUBLIC_POWERSYNC_URL
 ARG PUBLIC_AUTH_EMULATOR_URL
-RUN PUBLIC_POWERSYNC_URL="$PUBLIC_POWERSYNC_URL" PUBLIC_AUTH_EMULATOR_URL="$PUBLIC_AUTH_EMULATOR_URL" npm run build \
+ARG APP_ORIGIN
+RUN PUBLIC_POWERSYNC_URL="$PUBLIC_POWERSYNC_URL" PUBLIC_AUTH_EMULATOR_URL="$PUBLIC_AUTH_EMULATOR_URL" \
+    APP_ORIGIN="$APP_ORIGIN" npm run build \
     && npm prune --omit=dev --ignore-scripts
 
 FROM node:24-slim

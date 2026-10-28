@@ -35,8 +35,28 @@ access() { gcloud secrets add-iam-policy-binding "$1" --member="serviceAccount:$
 
 if [[ -n "$(git status --porcelain)" ]]; then echo "warning: uncommitted changes are included in $TAG" >&2; fi
 
+# The prerendered /offline page's CSP is fixed at build time, so PowerSync's
+# public URL must be known before the build (docs/offline-csp.md). Cloud Run's
+# deterministic URL is predictable before the service exists; set POWERSYNC_URL
+# to use another one (a custom domain). APP_ORIGIN sets the canonical origin.
+PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+POWERSYNC_URL="${POWERSYNC_URL:-https://guad-powersync-${PROJECT_NUMBER}.${REGION}.run.app}"
+APP_ORIGIN="${APP_ORIGIN:-}"
+
 echo "== Build $IMAGE"
-gcloud builds submit --tag "$IMAGE" .
+cat >"$TMP/cloudbuild.yaml" <<YAML
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=PUBLIC_POWERSYNC_URL=$POWERSYNC_URL
+      - --build-arg=APP_ORIGIN=$APP_ORIGIN
+      - --tag=$IMAGE
+      - .
+images:
+  - $IMAGE
+YAML
+gcloud builds submit --config="$TMP/cloudbuild.yaml" .
 
 echo "== PowerSync config and Cloud SQL details"
 SQL_IP="$(gcloud sql instances describe "$SQL_INSTANCE" --format='value(ipAddresses[0].ipAddress)')"
@@ -62,7 +82,6 @@ gcloud run deploy guad-powersync --image="$POWERSYNC_IMAGE" --region="$REGION" \
 	--cpu=1 --memory=1Gi --no-cpu-throttling --timeout=3600 \
 	--set-env-vars="POWERSYNC_CONFIG_PATH=/config/service.yaml,PS_PG_HOST=$SQL_IP,GOOGLE_CLOUD_PROJECT=$PROJECT,NODE_OPTIONS=--max-old-space-size=800" \
 	--set-secrets="/config/service.yaml=powersync-config:latest,/sync/sync-config.yaml=powersync-sync-config:latest,PS_PG_CA=sql-server-ca:latest,PS_REPLICATION_PASSWORD=ps-replication-password:latest,PS_STORAGE_PASSWORD=ps-storage-password:latest"
-POWERSYNC_URL="$(url_of guad-powersync)"
 
 # App settings shared by web and worker. Cloud Run's own URLs are known once
 # each service exists; the first deploy fills them in on a second pass.
