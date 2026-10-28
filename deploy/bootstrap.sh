@@ -64,6 +64,15 @@ for sa in "$SA_WEB" "$SA_WORKER"; do
 		--member="serviceAccount:$sa" --role=roles/storage.objectAdmin >/dev/null
 done
 
+echo "== Board photos bucket (gs://$MEDIA_BUCKET)"
+# The web service can run several instances, each with its own disk, so
+# photos must live in a bucket every instance reads.
+exists gcloud storage buckets describe "gs://$MEDIA_BUCKET" ||
+	gcloud storage buckets create "gs://$MEDIA_BUCKET" --location="$REGION" \
+		--uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets add-iam-policy-binding "gs://$MEDIA_BUCKET" \
+	--member="serviceAccount:$SA_WEB" --role=roles/storage.objectAdmin >/dev/null
+
 echo "== Private services access (Cloud SQL private IP)"
 exists gcloud compute addresses describe google-managed-services-"$NETWORK" --global ||
 	gcloud compute addresses create google-managed-services-"$NETWORK" --global \
