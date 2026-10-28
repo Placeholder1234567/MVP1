@@ -22,7 +22,7 @@ One image (`Dockerfile`) serves `web`, `worker` and `migrate`.
 
 ## 1. Before you start
 
-- A Google Cloud project with billing, and `gcloud` signed in as an Owner. Run the scripts from Cloud Shell, or from a machine with `bash`, `openssl`, `git` and Node 22.18+ (for `npx tsx`).
+- A Google Cloud project with billing, and `gcloud` signed in as an Owner. Run the scripts from Cloud Shell, or from a machine with `bash`, `openssl`, `git` and Node 24.12+ (`npm ci` and `npx tsx`; the Firebase SDK needs 24.12). Check `node -v` in Cloud Shell; if it is older, run `nvm install 24`.
 - Budget alerts set in Billing (infrastructure.md §7).
 - Optional: the Google for Startups / free-trial credits.
 
