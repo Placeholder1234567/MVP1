@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+# The jobs only read the repository (matches browser.yml and performance.yml).
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Lint, types, unit tests, spec lint
