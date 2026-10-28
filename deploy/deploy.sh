@@ -62,7 +62,7 @@ POWERSYNC_URL="$(url_of guad-powersync)"
 # each service exists; the first deploy fills them in on a second pass.
 WORKER_URL="$(url_of guad-worker)"
 WEB_URL="$(url_of guad-web)"
-app_env() { # app_env <service> <service account> > env file
+app_defaults() { # app_defaults <service> <service account>
 	cat <<EOF
 GUAD_SERVICE: "$1"
 NODE_ENV: "production"
@@ -82,12 +82,27 @@ PUBLIC_POWERSYNC_URL: "$POWERSYNC_URL"
 PROTOCOL_HEADER: "x-forwarded-proto"
 HOST_HEADER: "host"
 ADDRESS_HEADER: "x-forwarded-for"
+# The client is the last X-Forwarded-For entry on a run.app URL. Behind an
+# external Application Load Balancer it is the second to last (the balancer
+# appends its own address), so set XFF_DEPTH: "2" in deploy/app.env.yaml.
 XFF_DEPTH: "1"
 # Board photos are uploaded through tRPC (up to 1.5 MB, about 2 MB as base64);
 # adapter-node's default request limit is 512K.
 BODY_SIZE_LIMIT: "4M"
 EOF
-	if [[ -f deploy/app.env.yaml ]]; then cat deploy/app.env.yaml; fi
+}
+# gcloud keeps the first of two equal keys, so a default that
+# deploy/app.env.yaml also sets is left out rather than overridden.
+app_env() { # app_env <service> <service account> > env file
+	local extra=deploy/app.env.yaml
+	if [[ ! -f "$extra" ]]; then
+		app_defaults "$@"
+		return
+	fi
+	app_defaults "$@" | awk -v re='^[A-Za-z_][A-Za-z0-9_]*:' '
+		NR == FNR { if (match($0, re)) set[substr($0, 1, RLENGTH)] = 1; next }
+		!(match($0, re) && substr($0, 1, RLENGTH) in set)' "$extra" -
+	cat "$extra"
 }
 
 deploy_app() { # deploy_app <service> <GUAD_SERVICE> <service account> [extra flags]
