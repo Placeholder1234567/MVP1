@@ -19,7 +19,7 @@ The default local demo does not connect a live drafting model or transcription p
 
 ## Run it locally
 
-Needs Node 22+ and Docker.
+Needs Node 24.12+ and Docker.
 
 ```bash
 npm install

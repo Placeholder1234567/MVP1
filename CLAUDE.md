@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, sign-in (Identity Platform session cookies, Auth emulator locally) tRPC (`auth.me`, `agency.get`, `home.list`, `home.get`) and PowerSync end to end (encrypted on-device database, PIN unlock, live updates, offline reads and writes through `sync.upload`), and the Phase 2 care-record services (`note`, `mar`, `medication`, `health`, `incident`, `attendance`). The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 22+ and Docker.
+> **Phase 1 in progress.** The SvelteKit 3 app at the root has the database layer, shared domain rules, sign-in (Identity Platform session cookies, Auth emulator locally) tRPC (`auth.me`, `agency.get`, `home.list`, `home.get`) and PowerSync end to end (encrypted on-device database, PIN unlock, live updates, offline reads and writes through `sync.upload`), and the Phase 2 care-record services (`note`, `mar`, `medication`, `health`, `incident`, `attendance`). The vanilla-JS MVP lives in `mvp/` (run it with `cd mvp && npx vercel dev`, see `mvp/README.md`). Needs Node 24.12+ and Docker.
 
 ```bash
 npm install
