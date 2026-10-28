@@ -29,7 +29,8 @@ function appEnv(extra?: string): string {
 				PATH: process.env.PATH,
 				PROJECT: 'demo',
 				WEB_URL: 'https://web.run.app',
-				EXPORTS_BUCKET: 'demo-guad-exports'
+				EXPORTS_BUCKET: 'demo-guad-exports',
+				MEDIA_BUCKET: 'demo-guad-media'
 			}
 		});
 	} finally {
@@ -56,6 +57,8 @@ describe('deploy.sh app_env', () => {
 		expect(value(env, 'XFF_DEPTH')).toBe('1');
 		// Report files: written by the worker, served by the web service.
 		expect(value(env, 'EXPORTS_BUCKET')).toBe('demo-guad-exports');
+		// Board photos: every web instance reads the same bucket.
+		expect(value(env, 'MEDIA_BUCKET')).toBe('demo-guad-media');
 		expect(keys(env).length).toBeGreaterThan(15);
 	});
 
@@ -70,11 +73,11 @@ describe('deploy.sh app_env', () => {
 	it('replaces overridden defaults and adds new settings, with no repeated key', () => {
 		const defaults = keys(appEnv());
 		const env = appEnv(
-			'APP_URL: "https://app.example"\nXFF_DEPTH: "2"\nMEDIA_BUCKET: "demo-media"'
+			'APP_URL: "https://app.example"\nXFF_DEPTH: "2"\nSES_FROM_ADDRESS: "Guad <no-reply@example.test>"'
 		);
 		expect(value(env, 'APP_URL')).toBe('https://app.example');
 		expect(value(env, 'XFF_DEPTH')).toBe('2');
-		expect(value(env, 'MEDIA_BUCKET')).toBe('demo-media');
+		expect(value(env, 'SES_FROM_ADDRESS')).toBe('Guad <no-reply@example.test>');
 		expect(value(env, 'GUAD_SERVICE')).toBe('web');
 		const merged = keys(env);
 		expect(new Set(merged).size).toBe(merged.length);

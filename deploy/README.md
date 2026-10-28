@@ -37,7 +37,8 @@ This enables the APIs and creates the following, skipping anything that already 
 - **Images:** the Artifact Registry repo.
 - **Identities:** five service accounts, each with only the roles it needs.
 - **Network:** private services access, so Cloud SQL gets a private IP.
-- **Report files:** a private bucket, `<project>-guad-exports`, for generated reports. The worker builds them and the web service serves them, so they can't stay on either container's disk. Files are deleted when they expire, and a lifecycle rule removes anything left after 8 days. `deploy.sh` stops if the bucket is missing.
+- **Board photos:** a private bucket, `<project>-guad-media`, that only the web service can use. Photos are kept with the care record, so it has no lifecycle rule.
+- **Report files:** a private bucket, `<project>-guad-exports`, for generated reports. The worker builds them and the web service serves them, so they can't stay on either container's disk. Files are deleted when they expire, and a lifecycle rule removes anything left after 8 days. `deploy.sh` stops if either bucket is missing.
 - **Secrets:** generated values for the `postgres` admin, the two PowerSync roles, and `DEVICE_KEY_KEK`.
 - **Database:** the Cloud SQL instance (about 10 minutes the first time), the `guad` database, and IAM database users for `web` and `worker`.
 
@@ -111,16 +112,7 @@ npm run maintenance:announce -- --start 2026-11-01T03:00:00Z --end 2026-11-01T05
 
 ## Board photos
 
-Photos shared on home boards go to a private Cloud Storage bucket. Create it once and let the web service write to it:
-
-```bash
-gcloud storage buckets create gs://$PROJECT-guad-media --location=$REGION \
-  --uniform-bucket-level-access --public-access-prevention
-gcloud storage buckets add-iam-policy-binding gs://$PROJECT-guad-media \
-  --member=serviceAccount:guad-web@$PROJECT.iam.gserviceaccount.com --role=roles/storage.objectAdmin
-```
-
-Then set `MEDIA_BUCKET: "<project>-guad-media"` in `deploy/app.env.yaml` and deploy. Without it, photos are written to the container's disk and lost on the next deploy.
+Photos shared on home boards go to the private `<project>-guad-media` bucket that `bootstrap.sh` creates (step 2), and `deploy.sh` sets `MEDIA_BUCKET` for the web service. They can't stay on the container's disk: the web service runs several instances, and a photo saved on one would be missing on the others and lost when it stops.
 
 ## 5. Messaging (when ready)
 

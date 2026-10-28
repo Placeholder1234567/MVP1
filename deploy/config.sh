@@ -11,6 +11,8 @@ REPO="${REPO:-guad}"                          # Artifact Registry repository
 TASKS_QUEUE_PREFIX="${TASKS_QUEUE_PREFIX:-}"  # e.g. "staging-" to share a project
 # Private bucket for generated report files; web and worker both use it.
 EXPORTS_BUCKET="${EXPORTS_BUCKET:-${PROJECT}-guad-exports}"
+# Private bucket for board photos (kept with the care record, no lifecycle rule).
+MEDIA_BUCKET="${MEDIA_BUCKET:-${PROJECT}-guad-media}"
 
 # Service accounts (one per workload, least privilege).
 SA_WEB="guad-web@${PROJECT}.iam.gserviceaccount.com"
