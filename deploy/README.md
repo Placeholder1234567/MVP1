@@ -37,6 +37,7 @@ This enables the APIs and creates the following, skipping anything that already 
 - **Images:** the Artifact Registry repo.
 - **Identities:** five service accounts, each with only the roles it needs.
 - **Network:** private services access, so Cloud SQL gets a private IP.
+- **Report files:** a private bucket, `<project>-guad-exports`, for generated reports. The worker builds them and the web service serves them, so they can't stay on either container's disk. Files are deleted when they expire, and a lifecycle rule removes anything left after 8 days. `deploy.sh` stops if the bucket is missing.
 - **Secrets:** generated values for the `postgres` admin, the two PowerSync roles, and `DEVICE_KEY_KEK`.
 - **Database:** the Cloud SQL instance (about 10 minutes the first time), the `guad` database, and IAM database users for `web` and `worker`.
 

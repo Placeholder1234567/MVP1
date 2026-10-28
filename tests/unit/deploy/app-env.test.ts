@@ -25,7 +25,12 @@ function appEnv(extra?: string): string {
 		return execFileSync('bash', ['-c', `${functions}\napp_env web sa@example.test`], {
 			cwd: dir,
 			encoding: 'utf8',
-			env: { PATH: process.env.PATH, PROJECT: 'demo', WEB_URL: 'https://web.run.app' }
+			env: {
+				PATH: process.env.PATH,
+				PROJECT: 'demo',
+				WEB_URL: 'https://web.run.app',
+				EXPORTS_BUCKET: 'demo-guad-exports'
+			}
 		});
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
@@ -49,6 +54,8 @@ describe('deploy.sh app_env', () => {
 		expect(value(env, 'GUAD_SERVICE')).toBe('web');
 		expect(value(env, 'APP_URL')).toBe('https://web.run.app');
 		expect(value(env, 'XFF_DEPTH')).toBe('1');
+		// Report files: written by the worker, served by the web service.
+		expect(value(env, 'EXPORTS_BUCKET')).toBe('demo-guad-exports');
 		expect(keys(env).length).toBeGreaterThan(15);
 	});
 

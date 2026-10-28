@@ -162,7 +162,7 @@ Under HIPAA, PHI is any individually identifiable health information. In Guad's 
 | PowerSync OPFS (device) | Yes | Encrypted SQLite, session-scoped, cleared on logout |
 | Claude on Vertex AI (in-flight) | Yes | Google Cloud BAA, PHI in prompt/response only, prompt logging off |
 | Speech-to-Text (in-flight) | Yes | Google Cloud BAA, audio processed and discarded (data logging off) |
-| Cloud Storage | Yes (report exports) | Private bucket, signed URLs (15 min), lifecycle deletion after 7 days, Google Cloud BAA |
+| Cloud Storage | Yes (report exports) | Private bucket (`EXPORTS_BUCKET`, created by `deploy/bootstrap.sh`), read back only by the server after an access check (no signed URLs), deleted when the report expires (24 hours, or 7 days for scheduled reports) with a lifecycle rule deleting anything left after 8 days, Google Cloud BAA |
 
 ### Where PHI Is NEVER Stored
 

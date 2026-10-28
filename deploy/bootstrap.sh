@@ -12,13 +12,15 @@ secret() { # secret <name> <value-command>: create once with a generated value
 	exists gcloud secrets describe "$1" || { "${@:2}" | gcloud secrets create "$1" --data-file=- --replication-policy=automatic; }
 }
 random_b64url() { openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'; }
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
 echo "== APIs"
 gcloud services enable run.googleapis.com sqladmin.googleapis.com cloudtasks.googleapis.com \
 	cloudscheduler.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com \
 	cloudbuild.googleapis.com iam.googleapis.com iamcredentials.googleapis.com \
 	servicenetworking.googleapis.com compute.googleapis.com identitytoolkit.googleapis.com \
-	aiplatform.googleapis.com speech.googleapis.com fcm.googleapis.com
+	aiplatform.googleapis.com speech.googleapis.com fcm.googleapis.com storage.googleapis.com
 
 echo "== Artifact Registry"
 exists gcloud artifacts repositories describe "$REPO" --location="$REGION" ||
@@ -46,6 +48,21 @@ role "$SA_MIGRATE" roles/cloudsql.client
 # The web service signs Firebase custom tokens for PowerSync through the IAM API (infrastructure.md §3).
 gcloud iam service-accounts add-iam-policy-binding "$SA_WEB" \
 	--member="serviceAccount:$SA_WEB" --role=roles/iam.serviceAccountTokenCreator >/dev/null
+
+echo "== Report files bucket (gs://$EXPORTS_BUCKET)"
+# The worker writes report files and the web service serves them, so they
+# can't live on either container's disk. Files are deleted by the app when
+# they expire (24 hours, or 7 days for scheduled reports); the lifecycle rule
+# is a backstop a day after the longest of those.
+exists gcloud storage buckets describe "gs://$EXPORTS_BUCKET" ||
+	gcloud storage buckets create "gs://$EXPORTS_BUCKET" --location="$REGION" \
+		--uniform-bucket-level-access --public-access-prevention
+echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":8}}]}' >"$TMP/exports-lifecycle.json"
+gcloud storage buckets update "gs://$EXPORTS_BUCKET" --lifecycle-file="$TMP/exports-lifecycle.json" >/dev/null
+for sa in "$SA_WEB" "$SA_WORKER"; do
+	gcloud storage buckets add-iam-policy-binding "gs://$EXPORTS_BUCKET" \
+		--member="serviceAccount:$sa" --role=roles/storage.objectAdmin >/dev/null
+done
 
 echo "== Private services access (Cloud SQL private IP)"
 exists gcloud compute addresses describe google-managed-services-"$NETWORK" --global ||
