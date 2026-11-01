@@ -2,10 +2,14 @@ import { and, desc, eq, ne, isNull, inArray, arrayOverlaps } from 'drizzle-orm';
 import type { Tx } from '../../db';
 import { clients, homes, profiles, referralNotes, referrals, rooms } from '../../db/schema';
 
-/** Bounded, caller-RLS-scoped facts. No staffing schedule or clinical suitability inferred. */
+/**
+ * Bounded, caller-RLS-scoped facts. No staffing schedule or clinical suitability inferred.
+ * Supervisors and admins compare every active agency home: they can admit into any of
+ * them (security.md access matrix: homes, rooms and referrals are agency-wide for both).
+ */
 export async function placementFacts(tx: Tx, agencyId: string, viewerId: string) {
 	const [viewer] = await tx
-		.select({ role: profiles.role, homeIds: profiles.home_ids })
+		.select({ role: profiles.role })
 		.from(profiles)
 		.where(
 			and(eq(profiles.agency_id, agencyId), eq(profiles.id, viewerId), eq(profiles.active, true))
@@ -15,13 +19,7 @@ export async function placementFacts(tx: Tx, agencyId: string, viewerId: string)
 	const visibleHomes = await tx
 		.select({ homeId: homes.id, homeName: homes.name })
 		.from(homes)
-		.where(
-			and(
-				eq(homes.agency_id, agencyId),
-				isNull(homes.archived_at),
-				viewer.role === 'admin' ? undefined : inArray(homes.id, viewer.homeIds ?? [])
-			)
-		)
+		.where(and(eq(homes.agency_id, agencyId), isNull(homes.archived_at)))
 		.orderBy(homes.name, homes.id)
 		.limit(201);
 	const selected = visibleHomes.slice(0, 200);

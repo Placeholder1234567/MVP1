@@ -221,3 +221,26 @@ Before this, both readings were recorded with no alert at all ("none are specifi
 - Guad's alerts go to supervisors in real time, so a limit should mean "act now".
 - NEWS2's score-3 bands are the most widely used single-reading triggers.
 - The 1- and 2-point bands are left to the person's care plan and the trend chart.
+
+---
+
+## 6. Which homes can a supervisor admit a referral into?
+
+Decided 2026-11-01 (the owner asked for research-based decisions).
+
+### The conflict
+
+`intake.convertToClient`, `createRoom` and `updateReferral` accepted any active agency home for a supervisor, but the placement comparison (`placementFacts`) listed only the supervisor's assigned homes. A supervisor could admit into a home the comparison never showed.
+
+### Standards and practice
+
+- **The spec's access matrix** (security.md "Data Access Matrix") gives supervisors read and write on all agency homes, rooms, clients and referrals. Only caregivers are limited to assigned homes.
+- **HIPAA minimum necessary** (45 CFR 164.502(b), 164.514(d)) is met by role-based access that the covered entity defines. The matrix is that definition, and referral PHI is already agency-wide for supervisors.
+- **In practice,** intake and placement are usually agency-level work: one coordinator or program director places people into whichever home has a fitting room, not only homes they supervise day to day.
+
+### Rule
+
+The comparison covers every active agency home for supervisors and admins, matching where they can admit. Admission itself is unchanged. Caregivers still have no intake access. Archived and other-agency homes stay excluded.
+
+An agency that wants home-scoped intake would need a separate role or permission. That is a future feature, not a change to the supervisor role.
+

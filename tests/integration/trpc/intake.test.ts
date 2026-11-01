@@ -159,11 +159,11 @@ it('matches only explicit reviewed needs with current accessible room and caregi
 		certifiedCaregivers: 1,
 		guidance: 'needs_review'
 	});
-	expect(
-		row.placement.homes.some(
-			(h) => h.homeId === archived || h.homeId === foreignHome || h.homeId === secondHome
-		)
-	).toBe(false);
+	expect(row.placement.homes.some((h) => h.homeId === archived || h.homeId === foreignHome)).toBe(
+		false
+	);
+	// An unassigned home in the same agency is still compared: supervisors can admit there.
+	expect(row.placement.homes.some((h) => h.homeId === secondHome)).toBe(true);
 	row = await api.updateReferral({
 		id: referral.id,
 		status: 'accepted',
@@ -202,10 +202,11 @@ it('matches only explicit reviewed needs with current accessible room and caregi
 			.set({ home_ids: [home, certified] })
 			.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, supervisor)));
 	});
-	// Reuse the caller with its older claim: current profile ownership still wins.
+	// Home assignment no longer narrows a supervisor's comparison: it covers every
+	// active agency home they can admit into (security.md access matrix).
 	expect(
 		(await api.getReferral({ id: referral.id })).placement.homes.some((h) => h.homeId === gap)
-	).toBe(false);
+	).toBe(true);
 	await withService(async (tx) => {
 		await tx
 			.update(s.profiles)
@@ -222,6 +223,29 @@ it('matches only explicit reviewed needs with current accessible room and caregi
 		'certification_gap'
 	);
 	expect((await api.getReferral({ id: referral.id })).assigned_home_id).toBe(gap);
+});
+it('compares every active agency home for a supervisor, matching where they can admit', async () => {
+	// security.md: supervisors read and write all agency homes, rooms and referrals.
+	const unassigned = randomUUID();
+	await withService(async (tx) => {
+		await tx.insert(s.homes).values({ id: unassigned, agency_id: agency, name: 'Unassigned home' });
+		await tx.insert(s.rooms).values({ agency_id: agency, home_id: unassigned, name: 'Open room' });
+		await tx
+			.update(s.profiles)
+			.set({ home_ids: [home] })
+			.where(and(eq(s.profiles.agency_id, agency), eq(s.profiles.id, supervisor)));
+	});
+	const api = (await as(supervisor)).intake;
+	const referral = await api.createReferral({ clientName: 'Synthetic agency-wide comparison' });
+	const row = await api.getReferral({ id: referral.id });
+	expect(row.placement.homes.some((h) => h.homeId === unassigned)).toBe(true);
+	await api.updateReferral({ id: referral.id, status: 'accepted' });
+	const admitted = await api.convertToClient({
+		referralId: referral.id,
+		homeId: unassigned,
+		name: 'Synthetic agency-wide admission'
+	});
+	expect(admitted.placement.homes.some((h) => h.homeId === unassigned)).toBe(true);
 });
 const accepted = async () => {
 	const api = (await as(supervisor)).intake;
