@@ -5,7 +5,7 @@
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { resolve } from '$app/paths';
-	import { localInstant, localTime } from '#lib/domain/index.ts';
+	import { localTime, typedInstant } from '#lib/domain/index.ts';
 	const app = useSession();
 	// Typed times are wall-clock times in the agency's time zone, like the rest
 	// of the app (EVV and payroll record time where the service happened), not
@@ -16,7 +16,17 @@
 		const t = localTime(d, app.user.timeZone);
 		return `${t.day}T${pad(t.hour)}:${pad(t.minute)}`;
 	};
-	const at = (v: string) => localInstant(v.slice(0, 10), v.slice(11, 16), zone);
+	// A time in the hour skipped when clocks go forward does not exist; say so
+	// instead of moving it. Handlers check with skipped() before calling at().
+	const at = (v: string) => {
+		const instant = typedInstant(v, zone);
+		if (!instant) throw new Error('nonexistent local time');
+		return instant;
+	};
+	const skipped = (...values: string[]) =>
+		values.some((v) => !typedInstant(v, zone))
+			? `That time doesn’t exist in ${zone}: clocks skip that hour when they go forward. Choose a time outside it.`
+			: '';
 	const shown = (d: Date) => d.toLocaleString(undefined, { timeZone: zone });
 	let from = $state(localInput(new Date(Date.now() - 7 * 86400000)));
 	let to = $state(localInput(new Date(Date.now() + 60000)));
@@ -90,8 +100,9 @@
 	let correctReason = $state('');
 	async function correct(event: SubmitEvent, id: string) {
 		event.preventDefault();
+		message = skipped(correctOut);
+		if (message) return;
 		busy = true;
-		message = '';
 		try {
 			await trpc.clock.correctClockOut.mutate({
 				id,
@@ -111,6 +122,8 @@
 	}
 	async function load() {
 		if (reading || !app.homeId || !canConnect) return;
+		message = skipped(from, to);
+		if (message) return;
 		guard.change(context());
 		const stillCurrent = guard.capture();
 		const original = context();
@@ -151,8 +164,9 @@
 	}
 	async function manual(event: SubmitEvent) {
 		event.preventDefault();
+		message = skipped(entryIn, entryOut);
+		if (message) return;
 		busy = true;
-		message = '';
 		try {
 			await trpc.clock.manualEntry.mutate({
 				profileId: person,
@@ -216,10 +230,7 @@
 	<p class="eyebrow">Timekeeping</p>
 	<h1>Make every hour clear.</h1>
 	<a class="textbtn" href={resolve('/(app)/dashboard/reports')}>Care record reports →</a>
-	<p class="muted">
-		Choose a period, review location exceptions, then export. Date inputs use your device’s time
-		zone.
-	</p>
+	<p class="muted">Choose a period, review location exceptions, then export.</p>
 	<form
 		class="card pad stack"
 		onsubmit={(e) => {
@@ -227,7 +238,10 @@
 			void load();
 		}}
 	>
-		<p class="muted">Times are in the agency's time zone ({zone}).</p>
+		<p class="muted">
+			Times are in the agency's time zone ({zone}). In the hour repeated when clocks go back, a time
+			means the first one.
+		</p>
 		<div class="grid">
 			<label>From<input class="input" type="datetime-local" required bind:value={from} /></label
 			><label>To<input class="input" type="datetime-local" required bind:value={to} /></label>
