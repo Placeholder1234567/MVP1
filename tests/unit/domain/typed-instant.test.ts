@@ -21,6 +21,23 @@ describe('typedInstant', () => {
 	it('takes the first occurrence in the hour repeated when clocks go back', () => {
 		// 01:30 happens at 05:30Z (EDT) and again at 06:30Z (EST).
 		expect(typedInstant('2026-11-01T01:30', TZ)?.toISOString()).toBe('2026-11-01T05:30:00.000Z');
+		// East of UTC: 02:30 in Berlin is 00:30Z (CEST), then 01:30Z (CET).
+		expect(typedInstant('2026-10-25T02:30', 'Europe/Berlin')?.toISOString()).toBe(
+			'2026-10-25T00:30:00.000Z'
+		);
+		// A half-hour change: Lord Howe 01:45 is 14:45Z (+11), then 15:15Z (+10:30).
+		expect(typedInstant('2026-04-05T01:45', 'Australia/Lord_Howe')?.toISOString()).toBe(
+			'2026-04-04T14:45:00.000Z'
+		);
+		// Outside the repeated hour there is one occurrence.
+		expect(typedInstant('2026-10-25T03:30', 'Europe/Berlin')?.toISOString()).toBe(
+			'2026-10-25T02:30:00.000Z'
+		);
+	});
+
+	it('refuses the skipped hour east of UTC too', () => {
+		expect(typedInstant('2026-03-29T02:30', 'Europe/Berlin')).toBeNull();
+		expect(typedInstant('2026-10-04T02:15', 'Australia/Lord_Howe')).toBeNull();
 	});
 
 	it('refuses malformed and empty values', () => {

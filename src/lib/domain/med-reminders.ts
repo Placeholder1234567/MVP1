@@ -60,11 +60,21 @@ export function typedInstant(value: string, timeZone: string): Date | null {
 	const typed = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(value);
 	if (!typed) return null;
 	const [, day, hour, minute] = typed;
+	const matches = (instant: Date) => {
+		const back = localTime(instant, timeZone);
+		return back.day === day && back.hour === Number(hour) && back.minute === Number(minute);
+	};
 	const at = localInstant(day, `${hour}:${minute}`, timeZone);
-	const back = localTime(at, timeZone);
-	return back.day === day && back.hour === Number(hour) && back.minute === Number(minute)
-		? at
-		: null;
+	if (!matches(at)) return null;
+	// localInstant may land on either occurrence (east of UTC it finds the
+	// second). Offsets and their changes are whole quarter hours and at most
+	// two hours apart, so the earliest match is within eight steps back.
+	let earliest = at;
+	for (let step = 1; step <= 8; step++) {
+		const earlier = new Date(at.getTime() - step * 15 * 60_000);
+		if (matches(earlier)) earliest = earlier;
+	}
+	return earliest;
 }
 
 /**
