@@ -5,9 +5,19 @@
 	import { useSession } from '#lib/app/session.svelte.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import { resolve } from '$app/paths';
+	import { localInstant, localTime } from '#lib/domain/index.ts';
 	const app = useSession();
-	const localInput = (d: Date) =>
-		new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+	// Typed times are wall-clock times in the agency's time zone, like the rest
+	// of the app (EVV and payroll record time where the service happened), not
+	// the time zone of whichever device the supervisor uses.
+	const zone = $derived(app.user.timeZone);
+	const pad = (n: number) => String(n).padStart(2, '0');
+	const localInput = (d: Date) => {
+		const t = localTime(d, app.user.timeZone);
+		return `${t.day}T${pad(t.hour)}:${pad(t.minute)}`;
+	};
+	const at = (v: string) => localInstant(v.slice(0, 10), v.slice(11, 16), zone);
+	const shown = (d: Date) => d.toLocaleString(undefined, { timeZone: zone });
 	let from = $state(localInput(new Date(Date.now() - 7 * 86400000)));
 	let to = $state(localInput(new Date(Date.now() + 60000)));
 	let report = $state<Awaited<ReturnType<typeof trpc.clock.timesheet.query>> | null>(null);
@@ -85,7 +95,7 @@
 		try {
 			await trpc.clock.correctClockOut.mutate({
 				id,
-				clockOutAt: new Date(correctOut),
+				clockOutAt: at(correctOut),
 				reason: correctReason
 			});
 			correcting = null;
@@ -107,7 +117,7 @@
 		const current = () => stillCurrent() && original === context() && canConnect;
 		const request = new AbortController();
 		controller = request;
-		const requested = { from: new Date(from), to: new Date(to), homeId: app.homeId };
+		const requested = { from: at(from), to: at(to), homeId: app.homeId };
 		reading = true;
 		message = '';
 		try {
@@ -147,8 +157,8 @@
 			await trpc.clock.manualEntry.mutate({
 				profileId: person,
 				homeId: app.homeId,
-				clockInAt: new Date(entryIn),
-				clockOutAt: new Date(entryOut),
+				clockInAt: at(entryIn),
+				clockOutAt: at(entryOut),
 				reason
 			});
 			entryIn = '';
@@ -217,6 +227,7 @@
 			void load();
 		}}
 	>
+		<p class="muted">Times are in the agency's time zone ({zone}).</p>
 		<div class="grid">
 			<label>From<input class="input" type="datetime-local" required bind:value={from} /></label
 			><label>To<input class="input" type="datetime-local" required bind:value={to} /></label>
@@ -230,9 +241,9 @@
 		</p>{/if}
 	{#if message}<p role="status" class="callout">{message}</p>{/if}
 	{#if report}<p class="muted">
-			Report: {reportRange?.from.toLocaleString()} to {reportRange?.to.toLocaleString()} · {app.homes.find(
-				(h) => h.id === reportRange?.homeId
-			)?.name}
+			Report: {reportRange ? shown(reportRange.from) : ''} to {reportRange
+				? shown(reportRange.to)
+				: ''} · {app.homes.find((h) => h.id === reportRange?.homeId)?.name}
 		</p>
 		<div class="stats">
 			<div class="card pad">
@@ -277,8 +288,9 @@
 					>
 				</div>
 				<p>
-					{row.clock_in_at.toLocaleString()} → {row.clock_out_at?.toLocaleString() ??
-						'Still clocked in'}
+					{shown(row.clock_in_at)} → {row.clock_out_at
+						? shown(row.clock_out_at)
+						: 'Still clocked in'}
 				</p>
 				{#if row.reason}<p class="record-text">
 						{row.reason}
