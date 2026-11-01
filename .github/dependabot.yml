@@ -1,0 +1,34 @@
+# Weekly dependency update PRs. Updates are grouped so one PR covers the
+# week's compatible bumps; every PR runs the same five required CI checks.
+# Security alerts and Dependabot security updates are repository settings
+# (Settings > Code security), not part of this file.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Patch and minor releases of production dependencies, together.
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+      # Same for build, test and lint tooling.
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+    # Major releases come one package per PR so each gets its own review.
+    commit-message:
+      prefix: deps
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
