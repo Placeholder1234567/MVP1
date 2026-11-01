@@ -1,7 +1,7 @@
 // Audit log access (trpc-router.md audit.*; security.md "Audit Trail").
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 process.env.DATABASE_URL ??= 'postgres://guad:guad@localhost:5433/guad';
 
@@ -143,4 +143,39 @@ it('admins download the list as CSV for up to 93 days, without values, and the d
 	await expect((await as(PRO_ADMIN)).audit.export({ dateRange: range })).rejects.toMatchObject({
 		code: 'FORBIDDEN'
 	});
+});
+
+it('a date range ends before the next midnight, to the microsecond, in the agency zone', async () => {
+	// The screen sends agency days as [start of From, start of the day after To).
+	// 2026-01-01 in New York is [05:00Z, next day 05:00Z); created_at keeps
+	// microseconds, so an entry half a millisecond before midnight is inside.
+	const [inside, atMidnight] = [randomUUID(), randomUUID()];
+	await withService((t) =>
+		t.insert(s.auditLog).values([
+			{
+				agency_id: AGENCY,
+				table_name: 'boundary_test',
+				record_id: inside,
+				action: 'INSERT',
+				created_at: sql`'2026-01-02T04:59:59.9995Z'::timestamptz`
+			},
+			{
+				agency_id: AGENCY,
+				table_name: 'boundary_test',
+				record_id: atMidnight,
+				action: 'INSERT',
+				created_at: sql`'2026-01-02T05:00:00Z'::timestamptz`
+			}
+		])
+	);
+	const dateRange = { from: '2026-01-01T05:00:00.000Z', to: '2026-01-02T05:00:00.000Z' };
+	const admin = await as(ADMIN);
+	const listed = (
+		await admin.audit.list({ dateRange, tableName: 'boundary_test', limit: 200 })
+	).map((e) => e.recordId);
+	expect(listed).toEqual([inside]);
+	const file = await admin.audit.export({ dateRange, tableName: 'boundary_test' });
+	expect(file.content).toContain(inside);
+	expect(file.content).not.toContain(atMidnight);
+	expect(file.filename).toBe('audit-log-2026-01-01-to-2026-01-01.csv');
 });
