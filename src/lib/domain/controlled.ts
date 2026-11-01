@@ -5,6 +5,10 @@
 // disposal are witnessed. The MAR line shows the count (as Therap does).
 // What each state asks for differs, so agencies start from a state preset.
 
+import { calendarDayStart } from './clinical-export';
+import { localInstant } from './med-reminders';
+import { addDays, localTime } from './time';
+
 export const CONTROLLED_SCHEDULES = ['II', 'III', 'IV', 'V'] as const;
 export type ControlledSchedule = (typeof CONTROLLED_SCHEDULES)[number];
 
@@ -309,27 +313,17 @@ export function countEntryError(e: {
 	return null;
 }
 
-/** Start of the current count period: the shift (07, 15, 23) or the agency day. */
+/**
+ * Start of the current count period: the shift (07, 15, 23) or the agency day.
+ * The boundary is the real instant of that wall time in the agency zone, so a
+ * daylight-saving change inside the period doesn't move it by an hour.
+ */
 export function countPeriodStart(at: Date, timeZone: string, every: 'shift' | 'day'): Date {
-	const parts = new Intl.DateTimeFormat('en-CA', {
-		timeZone,
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		second: '2-digit',
-		hourCycle: 'h23'
-	}).formatToParts(at);
-	const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
-	const hour = get('hour');
-	const startHour = every === 'day' ? 0 : hour >= 23 ? 23 : hour >= 15 ? 15 : hour >= 7 ? 7 : -1;
-	// Back from now to the boundary in local wall time; -1 means 23:00 yesterday.
-	const back =
-		((hour - startHour) * 60 + get('minute')) * 60_000 +
-		get('second') * 1000 +
-		at.getMilliseconds();
-	return new Date(at.getTime() - back);
+	const lt = localTime(at, timeZone);
+	if (every === 'day') return calendarDayStart(lt.day, timeZone);
+	const hour = lt.hour;
+	if (hour < 7) return localInstant(addDays(lt.day, -1), '23:00', timeZone);
+	return localInstant(lt.day, hour >= 23 ? '23:00' : hour >= 15 ? '15:00' : '07:00', timeZone);
 }
 
 /** Whether a witnessed count is still needed this shift (or day) for a medication. */
