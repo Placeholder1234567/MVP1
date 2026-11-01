@@ -5,10 +5,10 @@
 	import { trpc } from '#lib/trpc.ts';
 	import {
 		MAINTENANCE_IMPACTS,
-		localInstant,
 		maintenanceBody,
 		maintenanceTitle,
 		maintenanceWindowError,
+		typedInstant,
 		type MaintenanceImpact
 	} from '#lib/domain/index.ts';
 
@@ -27,11 +27,19 @@
 		slow: 'Guad may be slow',
 		sync_paused: 'Syncing will pause'
 	};
-	const at = (v: string) => (v ? localInstant(v.slice(0, 10), v.slice(11, 16), timezone) : null);
+	// A time in the hour skipped when clocks go forward doesn't exist: say so
+	// instead of moving it (typedInstant; the repeated hour means the first).
+	const at = (v: string) => (v ? typedInstant(v, timezone) : null);
 	const slot = $derived.by(() => {
+		if (!starts || !ends) return null;
 		const s = at(starts);
 		const e = at(ends);
-		if (!s || !e) return null;
+		if (!s || !e)
+			return {
+				s: s ?? new Date(NaN),
+				e: e ?? new Date(NaN),
+				problem: `That time doesn’t exist in ${timezone}: clocks skip that hour when they go forward. Choose a time outside it.`
+			};
 		return { s, e, problem: maintenanceWindowError(s, e, new Date()) };
 	});
 
