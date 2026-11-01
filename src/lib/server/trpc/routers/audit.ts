@@ -26,6 +26,13 @@ export const auditRouter = router({
 	export: admin
 		.input(AuditExportInput)
 		.mutation(({ ctx, input }) =>
-			exportAudit(ctx.db, ctx.user.agencyId, ctx.user.profileId, input, ctx.request)
+			exportAudit(
+				ctx.db,
+				ctx.user.agencyId,
+				ctx.user.profileId,
+				input,
+				ctx.request,
+				ctx.user.timeZone
+			)
 		)
 });

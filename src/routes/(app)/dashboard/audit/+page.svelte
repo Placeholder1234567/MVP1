@@ -50,11 +50,12 @@
 	let offset = $state(0);
 
 	const app = useSession();
-	// Days are agency calendar days, like the reports: from the start of From to
-	// the last moment of To in the agency's time zone, whatever the device's.
+	// Days are agency calendar days, like the reports: from the start of From up
+	// to (not including) the start of the day after To, in the agency's time
+	// zone whatever the device's. The server reads the range as half-open.
 	const period = (fromDay: string, toDay: string) => ({
 		from: calendarDayStart(fromDay, app.user.timeZone).toISOString(),
-		to: new Date(calendarDayStart(addDays(toDay, 1), app.user.timeZone).getTime() - 1).toISOString()
+		to: calendarDayStart(addDays(toDay, 1), app.user.timeZone).toISOString()
 	});
 	let online = $state(false);
 	let visible = $state(false);
