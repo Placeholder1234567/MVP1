@@ -42,6 +42,9 @@ export function listAudit(tx: Tx, agencyId: string, input: z.input<typeof AuditF
 export const AUDIT_EXPORT_MAX_DAYS = 93;
 export const AUDIT_EXPORT_MAX_ROWS = 10_000;
 const DAY_MS = 86_400_000;
+// Agency calendar days are 23 to 25 hours long across a daylight-saving
+// change, so a full 93-day range can be an hour longer than 93 × 24 h.
+const DST_SLACK_MS = 3_600_000;
 
 export const AuditExportInput = z
 	.object({
@@ -53,7 +56,7 @@ export const AuditExportInput = z
 	.refine(
 		({ dateRange: { from, to } }) =>
 			Date.parse(to) >= Date.parse(from) &&
-			Date.parse(to) - Date.parse(from) <= AUDIT_EXPORT_MAX_DAYS * DAY_MS,
+			Date.parse(to) - Date.parse(from) <= AUDIT_EXPORT_MAX_DAYS * DAY_MS + DST_SLACK_MS,
 		{ message: `Choose a range of up to ${AUDIT_EXPORT_MAX_DAYS} days.`, path: ['dateRange'] }
 	);
 
