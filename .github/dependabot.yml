@@ -20,6 +20,11 @@ updates:
         dependency-type: development
         update-types: [minor, patch]
     # Major releases come one package per PR so each gets its own review.
+    ignore:
+      # svelte-check peers typescript ^5 || ^6, so a TypeScript major fails
+      # npm ci (ERESOLVE). Remove this once svelte-check supports it.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
     commit-message:
       prefix: deps
   - package-ecosystem: github-actions
