@@ -32,17 +32,29 @@ test('a caregiver sees a missed punch their supervisor added, with the reason', 
 		Math.floor(Date.now() / slot) * slot -
 		2 * 3600000 -
 		(info.project.name === 'phone' ? 3600000 : 0);
-	const local = (ms: number) =>
-		page.evaluate((t) => {
-			const d = new Date(t);
-			const pad = (n: number) => String(n).padStart(2, '0');
-			return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-		}, ms);
+	// The form takes times in the agency's time zone (the demo agency is
+	// America/New_York), whatever the browser's is.
+	const local = (ms: number) => {
+		const parts = Object.fromEntries(
+			new Intl.DateTimeFormat('en-US', {
+				timeZone: 'America/New_York',
+				year: 'numeric',
+				month: '2-digit',
+				day: '2-digit',
+				hour: '2-digit',
+				minute: '2-digit',
+				hourCycle: 'h23'
+			})
+				.formatToParts(new Date(ms))
+				.map((p) => [p.type, p.value])
+		);
+		return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+	};
 	const reason = `Badge reader was down (${info.project.name})`;
 	const form = page.locator('form').filter({ hasText: 'Correct a missed punch' });
 	await form.getByRole('combobox', { name: /^Staff member/ }).selectOption({ label: 'Cara Giver' });
-	await form.getByLabel('Clock-in', { exact: true }).fill(await local(start));
-	await form.getByLabel('Clock-out', { exact: true }).fill(await local(start + slot));
+	await form.getByLabel('Clock-in', { exact: true }).fill(local(start));
+	await form.getByLabel('Clock-out', { exact: true }).fill(local(start + slot));
 	await form.getByRole('textbox', { name: /^Reason/ }).fill(reason);
 	await form.getByRole('button', { name: 'Add manual entry for review', exact: true }).click();
 	await expect(form.getByRole('textbox', { name: /^Reason/ })).toHaveValue('');

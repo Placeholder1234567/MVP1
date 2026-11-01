@@ -49,6 +49,35 @@ export function localInstant(day: string, time: string, timeZone: string): Date 
 }
 
 /**
+ * A typed `YYYY-MM-DDTHH:MM` wall time (a datetime-local value) as an instant
+ * in a time zone, or null when it is malformed or does not exist there: the
+ * hour skipped when clocks go forward. localInstant would silently move such a
+ * time; a payroll entry must not. In the hour repeated when clocks go back,
+ * the typed time means its first occurrence (still daylight time): a typed
+ * wall time alone cannot name the second one.
+ */
+export function typedInstant(value: string, timeZone: string): Date | null {
+	const typed = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(value);
+	if (!typed) return null;
+	const [, day, hour, minute] = typed;
+	const matches = (instant: Date) => {
+		const back = localTime(instant, timeZone);
+		return back.day === day && back.hour === Number(hour) && back.minute === Number(minute);
+	};
+	const at = localInstant(day, `${hour}:${minute}`, timeZone);
+	if (!matches(at)) return null;
+	// localInstant may land on either occurrence (east of UTC it finds the
+	// second). Offsets and their changes are whole quarter hours and at most
+	// two hours apart, so the earliest match is within eight steps back.
+	let earliest = at;
+	for (let step = 1; step <= 8; step++) {
+		const earlier = new Date(at.getTime() - step * 15 * 60_000);
+		if (matches(earlier)) earliest = earlier;
+	}
+	return earliest;
+}
+
+/**
  * The doses at `now` that need a reminder (due within the lead time) or an
  * overdue alert (30 to 120 minutes late), grouped by home and dose time.
  */

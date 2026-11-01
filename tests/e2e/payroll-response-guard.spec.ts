@@ -29,10 +29,12 @@ for (const change of [
 		const form = page.locator('form').filter({ has: load });
 		await form.getByLabel('From', { exact: true }).fill('2026-01-01T00:00');
 		await form.getByLabel('To', { exact: true }).fill('2026-01-02T00:00');
-		const expectedPeriod = await page.evaluate(() => ({
-			from: new Date('2026-01-01T00:00').toISOString(),
-			to: new Date('2026-01-02T00:00').toISOString()
-		}));
+		// Typed times are in the agency's time zone (the demo agency is
+		// America/New_York, UTC-5 in January), not the browser's.
+		const expectedPeriod = {
+			from: '2026-01-01T05:00:00.000Z',
+			to: '2026-01-02T05:00:00.000Z'
+		};
 		const json = page.getByRole('button', { name: 'Download JSON', exact: true });
 		if (change !== 'load-home') {
 			await load.click();
