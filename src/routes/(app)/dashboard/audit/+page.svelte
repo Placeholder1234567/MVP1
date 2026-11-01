@@ -8,6 +8,8 @@
 	import { ReportJobGuard, reportCanConnect } from '#lib/app/report-job.ts';
 	import { trpc } from '#lib/trpc.ts';
 	import Skeleton from '#lib/app/Skeleton.svelte';
+	import { addDays } from '#lib/domain/index.ts';
+	import { calendarDayStart } from '#lib/domain/clinical-export.ts';
 
 	type Entry = Awaited<ReturnType<typeof trpc.audit.list.query>>[number];
 	type Detail = Awaited<ReturnType<typeof trpc.audit.get.query>>;
@@ -48,6 +50,12 @@
 	let offset = $state(0);
 
 	const app = useSession();
+	// Days are agency calendar days, like the reports: from the start of From to
+	// the last moment of To in the agency's time zone, whatever the device's.
+	const period = (fromDay: string, toDay: string) => ({
+		from: calendarDayStart(fromDay, app.user.timeZone).toISOString(),
+		to: new Date(calendarDayStart(addDays(toDay, 1), app.user.timeZone).getTime() - 1).toISOString()
+	});
 	let online = $state(false);
 	let visible = $state(false);
 	let opening = $state(false);
@@ -143,13 +151,7 @@
 				{
 					tableName: tableName || undefined,
 					action: action || undefined,
-					dateRange:
-						from && to
-							? {
-									from: new Date(`${from}T00:00:00`).toISOString(),
-									to: new Date(`${to}T23:59:59`).toISOString()
-								}
-							: undefined,
+					dateRange: from && to ? period(from, to) : undefined,
 					limit: PAGE,
 					offset
 				},
@@ -178,10 +180,7 @@
 				{
 					tableName: tableName || undefined,
 					action: action || undefined,
-					dateRange: {
-						from: new Date(`${from}T00:00:00`).toISOString(),
-						to: new Date(`${to}T23:59:59`).toISOString()
-					}
+					dateRange: period(from, to)
 				},
 				{ signal: operation.signal }
 			);
@@ -232,7 +231,8 @@
 	}
 	const show = (v: unknown) =>
 		v === undefined ? '—' : typeof v === 'string' ? v : JSON.stringify(v);
-	const when = (d: Date | string) => new Date(d).toLocaleString();
+	const when = (d: Date | string) =>
+		new Date(d).toLocaleString(undefined, { timeZone: app.user.timeZone });
 </script>
 
 <svelte:head><title>Audit log · Guad</title></svelte:head>
@@ -241,7 +241,8 @@
 	<h1>Audit log</h1>
 	<p class="muted">
 		Every change to care records, people and staff, and actions such as exports and AI use. Entries
-		can't be edited or deleted. Opening an entry shows its values and is recorded too.
+		can't be edited or deleted. Opening an entry shows its values and is recorded too. Dates and
+		times are in the agency's time zone ({app.user.timeZone}).
 	</p>
 	<form
 		class="card pad stack"
