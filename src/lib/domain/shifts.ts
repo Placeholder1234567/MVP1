@@ -1,3 +1,4 @@
+import { localInstant } from './med-reminders';
 import { addDays, hhmm, localTime } from './time';
 
 export type ShiftKey = 'am' | 'pm' | 'on';
@@ -51,15 +52,17 @@ export function shiftAt(at: Date, timeZone: string): { shift: ShiftKey; day: str
 }
 
 /**
- * Wall-clock minutes left in the shift running at `at` (frontend-spec-2.md
- * §1 greeting countdown, "4h 23m left"). Counted on the clock face, so a
- * daylight-saving change during an overnight shift is off by an hour.
+ * Minutes left in the shift running at `at` (frontend-spec-2.md §1 greeting
+ * countdown, "4h 23m left"): real elapsed minutes to the shift's end in the
+ * agency's time zone, so the night clocks change the overnight countdown is
+ * an hour longer or shorter, as the shift itself is. Seconds are ignored.
  */
 export function shiftMinutesLeft(at: Date, timeZone: string): number {
-	const shift = SHIFTS.find((s) => s.key === shiftAt(at, timeZone).shift)!;
-	const [h, m] = shift.end.split(':').map(Number);
-	const t = localTime(at, timeZone);
-	return (h * 60 + m - (t.hour * 60 + t.minute) + 1440) % 1440 || 1440;
+	const { shift: key, day } = shiftAt(at, timeZone);
+	const shift = SHIFTS.find((s) => s.key === key)!;
+	const end = localInstant(key === 'on' ? addDays(day, 1) : day, shift.end, timeZone);
+	const minute = Math.floor(at.getTime() / 60_000) * 60_000;
+	return Math.max(1, Math.round((end.getTime() - minute) / 60_000));
 }
 
 /** 263 -> "4h 23m left", 240 -> "4h left", 45 -> "45m left". */
