@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt } from 'drizzle-orm';
 import type { RequestInfo, Tx } from '../../db';
 import { auditLog, profiles } from '../../db/schema';
 
 export interface AuditFilter {
 	from?: Date;
+	/** Exclusive: entries before this instant (created_at keeps microseconds). */
 	to?: Date;
 	tableName?: string;
 	recordId?: string;
@@ -17,7 +18,7 @@ export interface AuditFilter {
 export function selectAuditEntries(tx: Tx, agencyId: string, f: AuditFilter) {
 	const where = [eq(auditLog.agency_id, agencyId)];
 	if (f.from) where.push(gte(auditLog.created_at, f.from));
-	if (f.to) where.push(lte(auditLog.created_at, f.to));
+	if (f.to) where.push(lt(auditLog.created_at, f.to));
 	if (f.tableName) where.push(eq(auditLog.table_name, f.tableName));
 	if (f.recordId) where.push(eq(auditLog.record_id, f.recordId));
 	if (f.performedBy) where.push(eq(auditLog.performed_by, f.performedBy));

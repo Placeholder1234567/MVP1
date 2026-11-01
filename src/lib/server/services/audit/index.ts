@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { asService, type RequestInfo, type Tx } from '../../db';
 import { ServiceError } from '../../errors';
-import { csvRows, signedVersions, type NoteState } from '../../../domain/index.ts';
+import { csvRows, localTime, signedVersions, type NoteState } from '../../../domain/index.ts';
 import {
 	recordAuditExport,
 	recordAuditView,
@@ -15,6 +15,8 @@ import {
 	selectNoteStates
 } from './audit.queries';
 
+// dateRange is half-open, [from, to): the screen sends the start of the
+// first agency day and the start of the day after the last one.
 export const AuditFilterInput = z.object({
 	dateRange: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).optional(),
 	tableName: z.string().trim().max(64).optional(),
@@ -69,7 +71,8 @@ export async function exportAudit(
 	agencyId: string,
 	viewerId: string,
 	input: z.input<typeof AuditExportInput>,
-	request: RequestInfo
+	request: RequestInfo,
+	timeZone: string
 ) {
 	const f = AuditExportInput.parse(input);
 	const rows = await selectAuditEntries(tx, agencyId, {
@@ -99,9 +102,11 @@ export async function exportAudit(
 			r.id
 		])
 	]);
-	const day = (iso: string) => iso.slice(0, 10);
+	// Agency days, and the last day is the one before the exclusive end.
+	const first = localTime(new Date(f.dateRange.from), timeZone).day;
+	const last = localTime(new Date(Date.parse(f.dateRange.to) - 1), timeZone).day;
 	return {
-		filename: `audit-log-${day(f.dateRange.from)}-to-${day(f.dateRange.to)}.csv`,
+		filename: `audit-log-${first}-to-${last}.csv`,
 		contentType: 'text/csv',
 		content,
 		rows: rows.length
