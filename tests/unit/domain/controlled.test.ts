@@ -132,6 +132,22 @@ describe('count periods', () => {
 		);
 	});
 
+	it('keeps the real boundary across a daylight-saving change', () => {
+		// Clocks go back at 02:00 on 2026-11-01. At 03:00 EST the overnight
+		// period began at 23:00 EDT the evening before (03:00Z), not an hour later.
+		expect(countPeriodStart(new Date('2026-11-01T08:00:00Z'), NY_TZ, 'shift').toISOString()).toBe(
+			'2026-11-01T03:00:00.000Z'
+		);
+		// Clocks go forward at 02:00 on 2026-03-08: 03:30 EDT -> 23:00 EST (04:00Z).
+		expect(countPeriodStart(new Date('2026-03-08T07:30:00Z'), NY_TZ, 'shift').toISOString()).toBe(
+			'2026-03-08T04:00:00.000Z'
+		);
+		// The agency day on a change day starts at its real midnight.
+		expect(countPeriodStart(new Date('2026-11-01T20:00:00Z'), NY_TZ, 'day').toISOString()).toBe(
+			'2026-11-01T04:00:00.000Z'
+		);
+	});
+
 	it('a witnessed (or pending) count this shift satisfies it', () => {
 		const now = new Date('2026-10-02T20:30:00Z');
 		const rules = DEFAULT_CONTROLLED_RULES;
