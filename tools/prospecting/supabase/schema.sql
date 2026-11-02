@@ -60,6 +60,8 @@ language sql stable security definer set search_path = public as $$
     where lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
   );
 $$;
+-- Only the policies (run as signed-in users) need it; nobody signed out does.
+revoke execute on function public.is_allowed() from public, anon;
 
 alter table public.homes enable row level security;
 alter table public.outreach enable row level security;
