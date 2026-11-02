@@ -33,37 +33,53 @@ The output keeps empty tracker columns (status, first contact, visit date,
 outcome, next step, notes). It can be loaded into the dataqs-tracker app with
 a small change to its `seed_db.py`.
 
-Tests (synthetic data only; needs flask and requests): `python -m unittest discover -s tools/prospecting`. GitHub runs them on every change here.
+Tests (synthetic data only): `python -m unittest discover -s tools/prospecting`. GitHub runs them on every change here.
 
-## The tracker website (phone)
+## The tracker website (free: GitHub + Supabase)
 
-`app.py` puts the list on a PIN-protected website, built the same way as
-dataqs-tracker. It's laid out for phones and has:
+The list lives on a free website you can use on your phone. Each home shows
+its owner, administrator, address, phone and email, with **Call**, **Email**
+and **Directions** buttons. You can filter by type, county and outreach
+status, and search across names, owners, cities and notes. Each home has
+outreach fields you can edit: status, priority, the person you spoke to,
+visit date, next step and notes. Nothing runs on a paid server:
 
-- **Call, Email and Directions buttons** for every home.
-- **Filters** by type, county and outreach status, plus search across names,
-  owners, cities and notes.
-- **Outreach fields you can edit:** status, priority, the person you spoke to,
-  visit date, next step and notes.
-- **CSV download** of whatever is filtered.
+- **GitHub Actions** runs `sync_supabase.py` every morning
+  (`.github/workflows/prospecting-refresh.yml`). It downloads the state lists
+  and saves them to Supabase. If any download fails, it saves what arrived,
+  removes nothing, and the run fails so GitHub emails you.
+- **Supabase** (free plan) stores the homes and your notes. Its database
+  rules only let emails you list read anything.
+- **GitHub Pages** hosts the site (`site/`,
+  `.github/workflows/prospecting-site.yml`). You sign in with a link
+  sent to your email.
 
-**Refresh data** downloads the state lists on the server and merges them in.
-Your notes and statuses are kept. If any source fails to download, nothing is
-hidden and the page says what failed. Otherwise homes that drop off the state list are
-hidden, and adding `?gone=1` to the address shows them.
+### Setup (about 15 minutes, once)
 
-Deploy on Railway (about 5 minutes):
+1. **Supabase:** create a free project at supabase.com. Open **SQL Editor**
+   and run `supabase/schema.sql`, then run
+   `insert into public.allowed_users (email) values ('your@email');`.
+2. **Supabase → Authentication → Users → Add user → Create new user:**
+   add the same email and tick "Auto confirm". Sign-up for anyone else stays off.
+3. **Supabase → Project Settings → API:** copy the **Project URL**, the
+   **anon public** key and the **service_role** key.
+4. **GitHub → this repo → Settings → Secrets and variables → Actions:**
+   - Secrets: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (keep the
+     service key secret; it bypasses the database rules).
+   - Variables: `SUPABASE_URL` and `SUPABASE_ANON_KEY` (public by design).
+     Optional: `REFRESH_TYPES` (default `idd,nursing`; add `elderly` for
+     assisted living) and `CONTACT_EMAIL` (sent to the state sites as a
+     courtesy).
+5. **GitHub → Settings → Pages → Source: GitHub Actions.**
+6. **GitHub → Actions → Prospecting site → Run workflow.** It prints the
+   site's address, `https://<your-user>.github.io/<repo>/`.
+7. **Supabase → Authentication → URL Configuration:** set **Site URL** to
+   that address, so sign-in links open the site.
+8. **GitHub → Actions → Prospecting refresh → Run workflow** for the first
+   load. After that it runs every morning on its own.
 
-1. New project, then Deploy from GitHub repo, then this repo.
-2. Service, then Settings: **Root Directory** `tools/prospecting`.
-3. Add a **Volume** mounted at `/data`.
-4. Variables: `DATA_DIR=/data` and `APP_PIN=<a PIN you choose>`.
-5. Settings, then Networking: **Generate Domain**, then open it on your phone.
-6. Sign in and tap **Refresh data**. The first load takes a minute or two.
-
-To run it on your computer instead: `pip install -r requirements.txt`, then
-`python app.py`, and open http://localhost:5000. The PIN is printed in the
-terminal unless `APP_PIN` is set.
+Open the site on your phone, enter your email and tap the link you get.
+To keep it on your home screen, use Share → Add to Home Screen.
 
 ## Before you reach out
 

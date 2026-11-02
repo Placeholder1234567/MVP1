@@ -1,5 +1,4 @@
 downloads/
 *.csv
 __pycache__/
-homes.db
-secret.json
+site/config.js
