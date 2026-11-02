@@ -21,6 +21,8 @@ concurrency:
 jobs:
   deploy:
     name: Publish site
+    # Inert until the owner finishes setup (tools/prospecting/README.md).
+    if: vars.SUPABASE_URL != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
