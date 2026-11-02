@@ -33,6 +33,48 @@ The output keeps empty tracker columns (status, first contact, visit date,
 outcome, next step, notes). It can be loaded into the dataqs-tracker app with
 a small change to its `seed_db.py`.
 
+Tests (synthetic data only): `python -m unittest discover -s tools/prospecting`. GitHub runs them on every change here.
+
+## The tracker website (free: GitHub + Supabase)
+
+The list lives on a free website you can use on your phone. Each home shows
+its owner, administrator, address, phone and email, with **Call**, **Email**
+and **Directions** buttons. You can filter by type, county and outreach
+status, and search across names, owners, cities and notes. Each home has
+outreach fields you can edit: status, priority, the person you spoke to,
+visit date, next step and notes. Nothing runs on a paid server:
+
+- **Supabase** (free plan) stores the homes and your notes, and refreshes the
+  list itself every morning at 14:17 UTC: `public.refresh_homes()`
+  (`supabase/refresh.sql`) asks data.chhs.ca.gov for the Bay Area rows of the
+  CDSS and CDPH lists, scheduled with pg_cron. If a download fails it keeps
+  what arrived and marks nothing gone. Each run is logged in `refresh_log`,
+  which the site shows. Its database rules only let emails you list read
+  anything.
+- **GitHub Pages** hosts the site (`site/`,
+  `.github/workflows/prospecting-site.yml`). You sign in with your email and a
+  password.
+
+### Setup
+
+The Supabase project (`care-homes`) is already set up: `supabase/schema.sql`
+(tables and access rules) and `supabase/refresh.sql` (the daily refresh) are
+applied, and `site/config.js` holds its public URL and anon key. What's left:
+
+1. In GitHub, **Settings → Pages → Source: GitHub Actions**, then
+   **Actions → Prospecting site → Run workflow**. The run shows the site's
+   address.
+2. On the site, enter your email and a password and tap **Create account**,
+   then tap the confirmation link Supabase emails you (the page it opens may
+   not load; the account is confirmed anyway) and sign in. Only emails in
+   `allowed_users` see the list; add one in the Supabase SQL editor with
+   `insert into public.allowed_users (email) values ('them@example.com');`.
+
+To refresh right away, run `select public.refresh_homes();` in the SQL
+editor. It loads DD group homes, ICF/DD, nursing homes, assisted living
+(RCFEs) and adult day programs; pass a list such as
+`select public.refresh_homes(array['idd','nursing']);` for fewer.
+
 ## Before you reach out
 
 - **Emails:** the state lists don't publish owner emails. `--enrich` only

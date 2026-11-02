@@ -1,0 +1,26 @@
+name: Prospecting tools
+
+# Tests for tools/prospecting (lead-list script and tracker website). Synthetic
+# data only: the state download is stubbed and nothing is fetched.
+on:
+  pull_request:
+    paths: ['tools/prospecting/**', '.github/workflows/prospecting.yml']
+  push:
+    branches: [main]
+    paths: ['tools/prospecting/**', '.github/workflows/prospecting.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Prospecting tools (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r tools/prospecting/requirements.txt
+      - run: python -W error::ResourceWarning -m unittest discover -s tools/prospecting -v
