@@ -102,9 +102,12 @@ test('a refused change can be retried or discarded', async ({ page }, info) => {
 	await expect(page.getByLabel('Device PIN', { exact: true })).toBeHidden();
 	await page.getByLabel('Current home', { exact: true }).selectOption({ label: 'Oak House' });
 
+	// Already on Team messages: clicking its link again reloads the page data,
+	// which can reset the composer between filling it and saving.
 	const post = async (text: string) => {
-		await page.getByRole('link', { name: /^Team messages/ }).click();
-		await page.getByLabel('Message your team', { exact: true }).fill(text);
+		const composer = page.getByLabel('Message your team', { exact: true });
+		await composer.fill(text);
+		await expect(composer).toHaveValue(text);
 		await page.getByRole('button', { name: 'Save message', exact: true }).click();
 	};
 	const banner = page.getByTestId('failed-writes');
