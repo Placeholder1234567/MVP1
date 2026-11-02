@@ -1,0 +1,3 @@
+downloads/
+*.csv
+__pycache__/
