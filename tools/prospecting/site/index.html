@@ -167,6 +167,15 @@
 				display: grid;
 				gap: 8px;
 			}
+			.link {
+				background: none;
+				border: 0;
+				padding: 0;
+				color: var(--accent);
+				font-weight: 700;
+				text-decoration: underline;
+				cursor: pointer;
+			}
 			.row {
 				display: flex;
 				flex-wrap: wrap;
@@ -343,10 +352,7 @@
 			<div class="wrap">
 				<section class="panel" id="login" hidden>
 					<h2>Sign in</h2>
-					<p class="muted">
-						Only emails added to the tracker can see the list. First time here? Enter your email and
-						a password, then tap Create account.
-					</p>
+					<p class="muted">Only emails added to the tracker can see the list.</p>
 					<form id="loginForm" class="auth">
 						<input
 							id="email"
@@ -354,21 +360,63 @@
 							required
 							autocomplete="email"
 							placeholder="you@example.com"
+							aria-label="Email"
 						/>
 						<input
 							id="password"
 							type="password"
 							required
-							minlength="8"
 							autocomplete="current-password"
-							placeholder="Password (8+ characters)"
+							placeholder="Password"
+							aria-label="Password"
 						/>
-						<div class="row">
-							<button class="btn" id="signInBtn">Sign in</button>
-							<button class="ghost" type="button" id="signUpBtn">Create account</button>
-						</div>
+						<button class="btn">Sign in</button>
 					</form>
 					<p class="muted" id="loginMsg" aria-live="polite"></p>
+					<p class="muted">
+						First time here?
+						<button class="link" type="button" id="toSignUp">Create an account</button>
+					</p>
+				</section>
+				<section class="panel" id="signup" hidden>
+					<h2>Create your account</h2>
+					<p class="muted">
+						Use the email you were added with and pick a password (8 or more characters).
+					</p>
+					<form id="signUpForm" class="auth">
+						<input
+							id="newEmail"
+							type="email"
+							required
+							autocomplete="email"
+							placeholder="you@example.com"
+							aria-label="Email"
+						/>
+						<input
+							id="newPassword"
+							type="password"
+							required
+							minlength="8"
+							autocomplete="new-password"
+							placeholder="New password (8+ characters)"
+							aria-label="New password"
+						/>
+						<input
+							id="newPassword2"
+							type="password"
+							required
+							minlength="8"
+							autocomplete="new-password"
+							placeholder="Type the password again"
+							aria-label="Type the password again"
+						/>
+						<button class="btn">Create account</button>
+					</form>
+					<p class="muted" id="signUpMsg" aria-live="polite"></p>
+					<p class="muted">
+						Already have an account?
+						<button class="link" type="button" id="toSignIn">Sign in</button>
+					</p>
 				</section>
 				<section class="panel" id="status" hidden>
 					<p class="muted" id="refreshText"></p>
