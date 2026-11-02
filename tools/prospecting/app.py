@@ -19,6 +19,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from flask import Flask, Response, jsonify, redirect, render_template_string, request, session
@@ -49,10 +50,16 @@ GROUPS = {"idd": "DD group homes & ICF/DD", "nursing": "Nursing homes", "elderly
 PAGE_SIZE = 100
 
 
-def db() -> sqlite3.Connection:
+@contextmanager
+def db():
+    """A connection that commits (or rolls back) and is closed afterwards."""
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
-    return con
+    try:
+        with con:
+            yield con
+    finally:
+        con.close()
 
 
 with db() as _c:
@@ -107,10 +114,16 @@ def refresh(types: set[str]) -> None:
     try:
         meta("refresh_state", "running")
         rows = homes.collect(types, cache=CACHE)
+        problems = list(homes.PROBLEMS)
+        # Only a complete download says which homes left the state list. If a
+        # source failed (or nothing came back), update what did arrive and
+        # leave every other home as it was.
+        complete = not problems and bool(rows)
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with db() as c:
-            c.execute("UPDATE homes SET still_listed = 0 WHERE grp IN (%s)" % ",".join("?" * len(types)),
-                      sorted(types))
+            if complete:
+                c.execute("UPDATE homes SET still_listed = 0 WHERE grp IN (%s)" % ",".join("?" * len(types)),
+                          sorted(types))
             for r in rows:
                 vals = {f: str(r.get("group" if f == "grp" else f, "") or "") for f in FACT_FIELDS}
                 key = home_key(r)
@@ -121,8 +134,12 @@ def refresh(types: set[str]) -> None:
                     + ", ".join(f"{f} = excluded.{f}" for f in FACT_FIELDS),
                     [key, now, *vals.values()],
                 )
-        meta("refreshed_at", now)
-        meta("refresh_state", f"done: {len(rows)} homes")
+        if complete:
+            meta("refreshed_at", now)
+            meta("refresh_state", f"done: {len(rows)} homes")
+        else:
+            why = "; ".join(problems) or "no homes came back"
+            meta("refresh_state", f"incomplete, nothing hidden ({len(rows)} homes updated): {why}"[:300])
     except Exception as e:  # shown on the page; the old list stays
         meta("refresh_state", f"failed: {type(e).__name__}: {e}"[:300])
     finally:

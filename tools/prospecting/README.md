@@ -33,7 +33,7 @@ The output keeps empty tracker columns (status, first contact, visit date,
 outcome, next step, notes). It can be loaded into the dataqs-tracker app with
 a small change to its `seed_db.py`.
 
-Tests (synthetic data only): `python -m unittest tools/prospecting/test_bay_area_homes.py`.
+Tests (synthetic data only; needs flask and requests): `python -m unittest discover -s tools/prospecting`. GitHub runs them on every change here.
 
 ## The tracker website (phone)
 
@@ -48,7 +48,8 @@ dataqs-tracker. It's laid out for phones and has:
 - **CSV download** of whatever is filtered.
 
 **Refresh data** downloads the state lists on the server and merges them in.
-Your notes and statuses are kept. Homes that drop off the state list are
+Your notes and statuses are kept. If any source fails to download, nothing is
+hidden and the page says what failed. Otherwise homes that drop off the state list are
 hidden, and adding `?gone=1` to the address shows them.
 
 Deploy on Railway (about 5 minutes):

@@ -122,6 +122,16 @@ FIELDS = {
 }
 
 
+PROBLEMS: list[str] = []
+
+
+def warn(msg: str) -> None:
+    """A source that couldn't be read: printed, and recorded so callers can
+    tell an incomplete download from a real change in the state list."""
+    PROBLEMS.append(msg)
+    print(f"  ! {msg}", file=sys.stderr)
+
+
 def norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
@@ -243,8 +253,7 @@ def rows_from_file(path: Path, source: dict, inspect: bool) -> list[dict]:
                 top = sorted(counts.items(), key=lambda kv: -kv[1])[:20]
                 print(f"   {f} values: " + "; ".join(f"{k or '(blank)'}={n}" for k, n in top))
     if not cols["county"] or not cols["name"]:
-        print(f"  ! {path.name}: no county/name column found; run --inspect and add the header to FIELDS",
-              file=sys.stderr)
+        warn(f"{path.name}: no county/name column found; run --inspect and add the header to FIELDS")
         return []
     out = []
     for r in rows:
@@ -415,6 +424,7 @@ def collect(groups: set[str], counties: set[str] | None = None, from_dir: str | 
     """Every licensed home of the given groups in the given counties, one row
     each. Used by the command line below and by the tracker website (app.py)."""
     global BAY_AREA_COUNTIES
+    PROBLEMS.clear()
     counties = counties or set(DEFAULT_COUNTIES)
     BAY_AREA_COUNTIES = {c.upper() for c in counties}
     s = session()
@@ -433,13 +443,18 @@ def collect(groups: set[str], counties: set[str] | None = None, from_dir: str | 
                 continue  # the large elderly file is only needed for RCFEs
             try:
                 urls = ckan_csv_urls(s, src["query"], src["resource"])
-            except requests.RequestException as e:
-                print(f"  ! {src['key']}: catalogue search failed ({e}); use --from-dir", file=sys.stderr)
+            except (requests.RequestException, ValueError, KeyError) as e:
+                warn(f"{src['key']}: catalogue search failed ({e}); use --from-dir")
                 continue
             if not urls:
-                print(f"  ! {src['key']}: no CSV found; download it by hand and use --from-dir", file=sys.stderr)
+                warn(f"{src['key']}: no CSV found; download it by hand and use --from-dir")
             for _, url in urls[:1]:
-                rows += rows_from_file(download(s, url, Path(cache)), src, inspect)
+                try:
+                    path = download(s, url, Path(cache))
+                except requests.RequestException as e:
+                    warn(f"{src['key']}: download failed ({e})")
+                    continue
+                rows += rows_from_file(path, src, inspect)
 
     rows = [r for r in rows if r["group"] in groups]
     # One row per home: the same home can appear in several files.
