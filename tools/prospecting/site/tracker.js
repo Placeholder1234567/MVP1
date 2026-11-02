@@ -160,6 +160,7 @@ async function fetchAll(table, order) {
 
 async function load() {
 	$('login').hidden = true;
+	$('signup').hidden = true;
 	$('status').hidden = false;
 	$('refreshText').textContent = 'Loading…';
 	try {
@@ -195,7 +196,16 @@ async function load() {
 	}
 }
 
+function showSignUp() {
+	$('login').hidden = true;
+	$('signup').hidden = false;
+	$('newEmail').value = $('newEmail').value || $('email').value.trim();
+	$('signUpMsg').textContent = '';
+	$('newEmail').focus();
+}
+
 function showLogin(msg) {
+	$('signup').hidden = true;
 	$('login').hidden = false;
 	$('status').hidden = true;
 	$('filters').hidden = true;
@@ -219,27 +229,49 @@ function wire() {
 		shown += PAGE;
 		render();
 	});
-	const creds = () => ({ email: $('email').value.trim(), password: $('password').value });
+	$('toSignUp').addEventListener('click', showSignUp);
+	$('toSignIn').addEventListener('click', () => {
+		$('email').value = $('email').value || $('newEmail').value.trim();
+		showLogin('');
+	});
 	$('loginForm').addEventListener('submit', async (e) => {
 		e.preventDefault();
 		$('loginMsg').textContent = 'Signing in…';
-		const { error } = await sb.auth.signInWithPassword(creds());
-		if (error)
-			$('loginMsg').textContent = /confirm/i.test(error.message)
-				? 'Confirm your email first: open the email from Supabase and tap its link, then sign in here.'
+		const { error } = await sb.auth.signInWithPassword({
+			email: $('email').value.trim(),
+			password: $('password').value
+		});
+		if (!error) return;
+		$('loginMsg').textContent = /confirm/i.test(error.message)
+			? 'Confirm your email first: open the email from Supabase and tap its link, then sign in here.'
+			: /invalid login/i.test(error.message)
+				? 'That email and password don’t match an account. New here? Tap Create an account below.'
 				: `Couldn't sign in: ${error.message}`;
 	});
-	$('signUpBtn').addEventListener('click', async () => {
-		if (!$('loginForm').reportValidity()) return;
-		$('loginMsg').textContent = 'Creating your account…';
+	$('signUpForm').addEventListener('submit', async (e) => {
+		e.preventDefault();
+		const email = $('newEmail').value.trim();
+		const password = $('newPassword').value;
+		if (password !== $('newPassword2').value) {
+			$('signUpMsg').textContent = 'The two passwords don’t match.';
+			return;
+		}
+		$('signUpMsg').textContent = 'Creating your account…';
 		const { data, error } = await sb.auth.signUp({
-			...creds(),
+			email,
+			password,
 			options: { emailRedirectTo: location.origin + location.pathname }
 		});
-		if (error) $('loginMsg').textContent = `Couldn't create the account: ${error.message}`;
-		else if (!data.session)
-			$('loginMsg').textContent =
-				'Account created. Open the email from Supabase and tap its link to confirm (if the page it opens doesn’t load, that’s fine), then sign in here.';
+		if (error) {
+			$('signUpMsg').textContent = `Couldn't create the account: ${error.message}`;
+			return;
+		}
+		if (data.session) return; // signed straight in; onAuthStateChange loads the list
+		$('email').value = email;
+		$('password').value = '';
+		showLogin(
+			'Account created. Open the email from Supabase and tap its link to confirm (if the page it opens doesn’t load, that’s fine), then sign in here.'
+		);
 	});
 	$('signOut').addEventListener('click', async () => {
 		await sb.auth.signOut();
