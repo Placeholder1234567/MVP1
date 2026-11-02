@@ -1,8 +1,7 @@
 -- Bay Area care-home tracker: run once in Supabase (SQL Editor > New query).
--- The daily GitHub Action writes `homes` and `refresh_log` with the
--- refresh token through the functions in ingest.sql. The website signs you in by
--- email link and can only read homes and read/write your outreach notes if
--- your email is in `allowed_users`.
+-- refresh.sql fills `homes` and `refresh_log` every morning. The website signs
+-- you in with email and password and can only read homes and read/write your
+-- outreach notes if your email is in `allowed_users`.
 
 create table if not exists public.homes (
   home_key text primary key,

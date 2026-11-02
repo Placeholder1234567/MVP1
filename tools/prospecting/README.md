@@ -44,12 +44,13 @@ status, and search across names, owners, cities and notes. Each home has
 outreach fields you can edit: status, priority, the person you spoke to,
 visit date, next step and notes. Nothing runs on a paid server:
 
-- **GitHub Actions** runs `sync_supabase.py` every morning
-  (`.github/workflows/prospecting-refresh.yml`). It downloads the state lists
-  and saves them to Supabase. If any download fails, it saves what arrived,
-  removes nothing, and the run fails so GitHub emails you.
-- **Supabase** (free plan) stores the homes and your notes. Its database
-  rules only let emails you list read anything.
+- **Supabase** (free plan) stores the homes and your notes, and refreshes the
+  list itself every morning at 14:17 UTC: `public.refresh_homes()`
+  (`supabase/refresh.sql`) asks data.chhs.ca.gov for the Bay Area rows of the
+  CDSS and CDPH lists, scheduled with pg_cron. If a download fails it keeps
+  what arrived and marks nothing gone. Each run is logged in `refresh_log`,
+  which the site shows. Its database rules only let emails you list read
+  anything.
 - **GitHub Pages** hosts the site (`site/`,
   `.github/workflows/prospecting-site.yml`). You sign in with your email and a
   password.
@@ -57,27 +58,22 @@ visit date, next step and notes. Nothing runs on a paid server:
 ### Setup
 
 The Supabase project (`care-homes`) is already set up: `supabase/schema.sql`
-(tables and access rules) and `supabase/ingest.sql` (the two functions the
-refresh writes through) are applied, and `site/config.js` holds its public
-URL and anon key. What's left is in GitHub:
+(tables and access rules) and `supabase/refresh.sql` (the daily refresh) are
+applied, and `site/config.js` holds its public URL and anon key. What's left:
 
-1. **Settings → Pages → Source: GitHub Actions.**
-2. **Settings → Secrets and variables → Actions → New repository secret:**
-   `REFRESH_TOKEN`, with the refresh token. It can only add homes and log
-   refreshes; it can't read notes. To rotate it, store a new token's SHA-256
-   with the statement at the end of `supabase/ingest.sql`.
-3. **Actions → Prospecting site → Run workflow**. The run shows the site's
-   address. Then **Actions → Prospecting refresh → Run workflow** for the
-   first load; after that it runs every morning on its own.
-4. On the site, enter your email and a password and tap **Create account**,
+1. In GitHub, **Settings → Pages → Source: GitHub Actions**, then
+   **Actions → Prospecting site → Run workflow**. The run shows the site's
+   address.
+2. On the site, enter your email and a password and tap **Create account**,
    then tap the confirmation link Supabase emails you (the page it opens may
    not load; the account is confirmed anyway) and sign in. Only emails in
-   `allowed_users` see the list; add one with
+   `allowed_users` see the list; add one in the Supabase SQL editor with
    `insert into public.allowed_users (email) values ('them@example.com');`.
 
-Optional repository variables: `REFRESH_TYPES` (default `idd,nursing`; add
-`elderly` for assisted living) and `CONTACT_EMAIL` (sent to the state sites
-as a courtesy).
+To refresh right away, run `select public.refresh_homes();` in the SQL
+editor. It loads DD group homes, ICF/DD, nursing homes, assisted living
+(RCFEs) and adult day programs; pass a list such as
+`select public.refresh_homes(array['idd','nursing']);` for fewer.
 
 ## Before you reach out
 

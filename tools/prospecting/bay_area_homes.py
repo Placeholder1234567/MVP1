@@ -422,7 +422,7 @@ def collect(groups: set[str], counties: set[str] | None = None, from_dir: str | 
             cache: str = "downloads", cms: bool = True, enrich: bool = False, limit: int = 0,
             inspect: bool = False) -> list[dict]:
     """Every licensed home of the given groups in the given counties, one row
-    each. Used by the command line below and by the daily Supabase sync (sync_supabase.py)."""
+    each. Used by the command line below. The website's daily refresh (supabase/refresh.sql) follows the same rules."""
     global BAY_AREA_COUNTIES
     PROBLEMS.clear()
     counties = counties or set(DEFAULT_COUNTIES)
