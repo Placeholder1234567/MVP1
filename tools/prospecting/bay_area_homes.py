@@ -202,6 +202,25 @@ def clean_phone(p: str) -> str:
     return f"({d[:3]}) {d[3:6]}-{d[6:]}" if len(d) == 10 else (p or "").strip()
 
 
+OPEN_WORDS = {"LICENSED", "OPEN", "ACTIVE", "PENDING", "PROBATION", "CERTIFIED"}
+CLOSED_WORDS = {
+    "INACTIVE", "UNLICENSED", "CLOSED", "REVOKED", "SUSPENDED", "EXPIRED",
+    "DENIED", "WITHDRAWN", "TERMINATED", "CANCELLED", "CANCELED", "SURRENDERED",
+}
+
+
+def status_is_open(status: str) -> bool:
+    """Whether a licence status means the home is operating. Whole words
+    only, so INACTIVE isn't read as ACTIVE nor UNLICENSED as LICENSED, and
+    any closing word wins. A blank status (some files have none) is kept."""
+    words = set(re.findall(r"[A-Z]+", (status or "").upper()))
+    if not words:
+        return True
+    if words & CLOSED_WORDS:
+        return False
+    return bool(words & OPEN_WORDS)
+
+
 def rows_from_file(path: Path, source: dict, inspect: bool) -> list[dict]:
     headers, rows = read_csv(path)
     cols = pick_columns(headers)
@@ -219,8 +238,8 @@ def rows_from_file(path: Path, source: dict, inspect: bool) -> list[dict]:
         if county not in BAY_AREA_COUNTIES:
             continue
         status = get("status").upper()
-        if status and not any(w in status for w in ("LICENSED", "OPEN", "ACTIVE", "PENDING")):
-            continue  # closed, revoked, inactive
+        if not status_is_open(status):
+            continue  # closed, revoked, inactive, unlicensed
         ftype = get("type") or source["label"]
         group = source["group"]
         if source["key"] == "cdph":

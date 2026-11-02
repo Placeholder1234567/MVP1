@@ -33,6 +33,8 @@ The output keeps empty tracker columns (status, first contact, visit date,
 outcome, next step, notes). It can be loaded into the dataqs-tracker app with
 a small change to its `seed_db.py`.
 
+Tests (synthetic data only): `python -m unittest tools/prospecting/test_bay_area_homes.py`.
+
 ## Before you reach out
 
 - **Emails:** the state lists don't publish owner emails. `--enrich` only
