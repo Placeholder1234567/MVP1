@@ -67,12 +67,6 @@ STATE_SOURCES = [
         "resource": r"adult residential(?! facility for persons)",
     },
     {
-        "key": "ccl_arfpshn", "group": "idd",
-        "label": "ARF for Persons with Special Health Care Needs",
-        "query": "community care licensing facilities",
-        "resource": r"special health care needs",
-    },
-    {
         "key": "ccl_rcfe", "group": "elderly", "label": "Residential Care for the Elderly",
         "query": "community care licensing facilities",
         "resource": r"residential care (facilities )?for the elderly|rcfe",
@@ -84,18 +78,28 @@ STATE_SOURCES = [
     },
 ]
 
-# CDPH facility types worth keeping (others are hospitals, clinics, labs...).
-CDPH_TYPES = {
-    "SKILLED NURSING FACILITY": "nursing",
-    "INTERMEDIATE CARE FACILITY": "nursing",
-    "INTERMEDIATE CARE FACILITY-DD": "idd",
-    "INTERMEDIATE CARE FACILITY-DDH": "idd",
-    "INTERMEDIATE CARE FACILITY-DDN": "idd",
-    "INTERMEDIATE CARE FACILITY-DEVELOPMENTALLY DISABLED": "idd",
-    "INTERMEDIATE CARE FACILITY-DEVELOPMENTALLY DISABLED HABILITATIVE": "idd",
-    "INTERMEDIATE CARE FACILITY-DEVELOPMENTALLY DISABLED NURSING": "idd",
-    "CONGREGATE LIVING HEALTH FACILITY": "nursing",
-}
+def cdph_group(ftype: str) -> str | None:
+    """CDPH facility types worth keeping (others are hospitals, clinics, labs).
+    Matched on words, since the file spells ICF/DD types several ways."""
+    t = (ftype or "").upper()
+    if "INTERMEDIATE CARE" in t or t.startswith("ICF"):
+        return "idd" if ("DEVELOPMENTAL" in t or re.search(r"\bDD", t)) else "nursing"
+    if "SKILLED NURSING" in t or "CONGREGATE LIVING" in t or t in {"SNF", "CLHF"}:
+        return "nursing"
+    return None
+
+
+def ccl_group(ftype: str, default: str) -> str:
+    """CDSS adult files mix residential homes with other programs."""
+    t = (ftype or "").upper()
+    if "ADULT DAY" in t:
+        return "day"
+    if "SOCIAL REHAB" in t or "CHRONICALLY ILL" in t:
+        return "other"
+    if "ELDERLY" in t or "RCFE" in t:
+        return "elderly"
+    return default
+
 
 # Column names differ between files and years; each field takes the first
 # header that matches one of these (case-insensitive, punctuation ignored).
@@ -103,15 +107,17 @@ FIELDS = {
     "facility_number": ["facility number", "facility_number", "facid", "fac id", "license number", "facility id"],
     "name": ["facility name", "facname", "fac name", "name"],
     "type": ["facility type", "fac type", "fac_fdr", "facility type description", "ltc", "license type"],
-    "licensee": ["licensee", "licensee name", "owner", "lic name"],
-    "administrator": ["facility administrator", "administrator", "admin name", "contact name"],
+    "licensee": ["licensee", "licensee name", "business name", "owner", "lic name"],
+    "administrator": ["facility administrator", "facadmin", "administrator", "admin name", "contact name"],
+    "email": ["contact email", "facility email", "email"],
+    "ccn": ["ccn", "cms certification number"],
     "address": ["facility address", "address", "street address", "street"],
     "city": ["facility city", "city"],
     "zip": ["facility zip", "zip", "zip code", "zipcode"],
     "county": ["county name", "county"],
     "phone": ["facility telephone number", "telephone", "phone", "contact phone number", "phone number"],
     "capacity": ["facility capacity", "capacity", "bed capacity", "total beds", "beds"],
-    "status": ["facility status", "status", "license status"],
+    "status": ["facility status", "license status description", "license status", "status"],
 }
 
 
@@ -227,6 +233,14 @@ def rows_from_file(path: Path, source: dict, inspect: bool) -> list[dict]:
     if inspect:
         print(f"\n== {path.name} ({len(rows)} rows)\n   headers: {headers}")
         print("   mapped:  " + ", ".join(f"{k}={v!r}" for k, v in cols.items()))
+        for f in ("type", "status"):
+            if cols[f]:
+                counts: dict[str, int] = {}
+                for r in rows:
+                    v = (r.get(cols[f]) or "").strip()
+                    counts[v] = counts.get(v, 0) + 1
+                top = sorted(counts.items(), key=lambda kv: -kv[1])[:20]
+                print(f"   {f} values: " + "; ".join(f"{k or '(blank)'}={n}" for k, n in top))
     if not cols["county"] or not cols["name"]:
         print(f"  ! {path.name}: no county/name column found; run --inspect and add the header to FIELDS",
               file=sys.stderr)
@@ -241,11 +255,12 @@ def rows_from_file(path: Path, source: dict, inspect: bool) -> list[dict]:
         if not status_is_open(status):
             continue  # closed, revoked, inactive, unlicensed
         ftype = get("type") or source["label"]
-        group = source["group"]
         if source["key"] == "cdph":
-            group = next((g for t, g in CDPH_TYPES.items() if norm(t) == norm(ftype)), None)
+            group = cdph_group(ftype)
             if not group:
                 continue  # hospitals, clinics, etc.
+        else:
+            group = ccl_group(ftype, source["group"])
         out.append({
             "facility_number": get("facility_number"),
             "facility_name": get("name").title(),
@@ -258,6 +273,8 @@ def rows_from_file(path: Path, source: dict, inspect: bool) -> list[dict]:
             "zip": get("zip")[:5],
             "county": county.title(),
             "phone": clean_phone(get("phone")),
+            "email": get("email").lower(),
+            "ccn": get("ccn"),
             "capacity": get("capacity"),
             "license_status": status.title(),
             "source": source["key"],
@@ -270,7 +287,13 @@ def cms_ownership(s: requests.Session, inspect: bool) -> dict[str, dict]:
 
     Matched to state rows by phone and by address (CMS and CDPH use
     different facility IDs)."""
-    meta = s.get(CMS_METASTORE, timeout=60).json()
+    try:
+        resp = s.get(CMS_METASTORE, timeout=60)
+        meta = resp.json()
+    except ValueError:
+        print(f"  ! CMS catalogue answered {resp.status_code} with non-JSON "
+              f"({resp.text[:80]!r}); using the known dataset IDs", file=sys.stderr)
+        meta = []
 
     def find(title_re):
         for d in meta:
@@ -279,18 +302,25 @@ def cms_ownership(s: requests.Session, inspect: bool) -> dict[str, dict]:
                 return d["identifier"]
         return None
 
-    info_id, own_id = find(r"^provider information$"), find(r"^ownership$")
+    # Fallback IDs: Nursing Home "Provider Information" and "Ownership".
+    info_id = find(r"^provider information$") or "4pq5-n9py"
+    own_id = find(r"^ownership$") or "y2hd-n93e"
     if not info_id or not own_id:
         print("  ! CMS: could not find the nursing home Provider Information / Ownership datasets", file=sys.stderr)
         return {}
 
     def query(ds):
         rows, offset = [], 0
+        state_col = "state"
         while True:
             r = s.post(CMS_QUERY.format(id=ds), json={
-                "conditions": [{"property": "state", "value": "CA", "operator": "="}],
+                "conditions": [{"property": state_col, "value": "CA", "operator": "="}],
                 "limit": 1500, "offset": offset}, timeout=120)
-            r.raise_for_status()
+            if r.status_code == 400 and state_col == "state" and offset == 0:
+                state_col = "provider_state"  # the ownership file names it differently
+                continue
+            if r.status_code != 200:
+                raise ValueError(f"CMS dataset {ds} answered {r.status_code}: {r.text[:120]!r}")
             batch = r.json().get("results", [])
             rows += batch
             if len(batch) < 1500:
@@ -381,8 +411,9 @@ OUT_COLUMNS = [
 def main() -> int:
     global BAY_AREA_COUNTIES
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--types", default="idd,nursing,elderly",
-                    help="comma list of: idd (DD group homes, ICF/DD), nursing (SNF, ICF, CLHF), elderly (RCFE)")
+    ap.add_argument("--types", default="idd,nursing,elderly,day",
+                    help="comma list of: idd (DD group homes, ICF/DD), nursing (SNF, ICF, CLHF), "
+                         "elderly (RCFE), day (adult day programs), other (social rehab, chronically ill)")
     ap.add_argument("--counties", default=",".join(sorted(BAY_AREA_COUNTIES)),
                     help="comma list of county names (default: the 9 Bay Area counties)")
     ap.add_argument("--from-dir", help="read CSVs you downloaded yourself instead of fetching (any file names)")
@@ -408,8 +439,8 @@ def main() -> int:
             rows += rows_from_file(path, src, args.inspect)
     else:
         for src in STATE_SOURCES:
-            if src["group"] not in groups and src["key"] != "cdph":
-                continue
+            if src["key"] == "ccl_rcfe" and "elderly" not in groups:
+                continue  # the large elderly file is only needed for RCFEs
             try:
                 urls = ckan_csv_urls(s, src["query"], src["resource"])
             except requests.RequestException as e:
@@ -438,7 +469,8 @@ def main() -> int:
             by_addr = {v["address"]: v for v in cms.values() if v["address"]}
             matched = 0
             for r in rows:
-                m = by_phone.get(re.sub(r"\D", "", r["phone"])) or by_addr.get(norm(r["address"]))
+                m = (cms.get(r.get("ccn", "")) or by_phone.get(re.sub(r"\D", "", r["phone"]))
+                     or by_addr.get(norm(r["address"])))
                 if m:
                     matched += 1
                     r["cms_legal_business_name"] = m["legal_business_name"]
@@ -463,7 +495,7 @@ def main() -> int:
                 r["google_maps"] = p.get("googleMapsUri", "")
                 if not r["phone"] and p.get("nationalPhoneNumber"):
                     r["phone"] = p["nationalPhoneNumber"]
-                if r["website"]:
+                if r["website"] and not r.get("email"):
                     r["email"] = "; ".join(site_emails(s, r["website"], robots))
                 if i % 25 == 0:
                     print(f"  enriched {i}/{len(todo)}", file=sys.stderr)
