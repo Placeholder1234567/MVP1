@@ -35,6 +35,35 @@ a small change to its `seed_db.py`.
 
 Tests (synthetic data only): `python -m unittest tools/prospecting/test_bay_area_homes.py`.
 
+## The tracker website (phone)
+
+`app.py` puts the list on a PIN-protected website, built the same way as
+dataqs-tracker. It's laid out for phones and has:
+
+- **Call, Email and Directions buttons** for every home.
+- **Filters** by type, county and outreach status, plus search across names,
+  owners, cities and notes.
+- **Outreach fields you can edit:** status, priority, the person you spoke to,
+  visit date, next step and notes.
+- **CSV download** of whatever is filtered.
+
+**Refresh data** downloads the state lists on the server and merges them in.
+Your notes and statuses are kept. Homes that drop off the state list are
+hidden, and adding `?gone=1` to the address shows them.
+
+Deploy on Railway (about 5 minutes):
+
+1. New project, then Deploy from GitHub repo, then this repo.
+2. Service, then Settings: **Root Directory** `tools/prospecting`.
+3. Add a **Volume** mounted at `/data`.
+4. Variables: `DATA_DIR=/data` and `APP_PIN=<a PIN you choose>`.
+5. Settings, then Networking: **Generate Domain**, then open it on your phone.
+6. Sign in and tap **Refresh data**. The first load takes a minute or two.
+
+To run it on your computer instead: `pip install -r requirements.txt`, then
+`python app.py`, and open http://localhost:5000. The PIN is printed in the
+terminal unless `APP_PIN` is set.
+
 ## Before you reach out
 
 - **Emails:** the state lists don't publish owner emails. `--enrich` only

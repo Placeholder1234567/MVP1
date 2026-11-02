@@ -47,10 +47,11 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-BAY_AREA_COUNTIES = {
+DEFAULT_COUNTIES = frozenset({
     "ALAMEDA", "CONTRA COSTA", "MARIN", "NAPA", "SAN FRANCISCO",
     "SAN MATEO", "SANTA CLARA", "SOLANO", "SONOMA",
-}
+})
+BAY_AREA_COUNTIES = set(DEFAULT_COUNTIES)
 
 CKAN = "https://data.chhs.ca.gov/api/3/action/package_search"
 CMS_METASTORE = "https://data.cms.gov/provider-data/api/1/metastore/schemas/dataset/items"
@@ -408,35 +409,24 @@ OUT_COLUMNS = [
 ]
 
 
-def main() -> int:
+def collect(groups: set[str], counties: set[str] | None = None, from_dir: str | None = None,
+            cache: str = "downloads", cms: bool = True, enrich: bool = False, limit: int = 0,
+            inspect: bool = False) -> list[dict]:
+    """Every licensed home of the given groups in the given counties, one row
+    each. Used by the command line below and by the tracker website (app.py)."""
     global BAY_AREA_COUNTIES
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--types", default="idd,nursing,elderly,day",
-                    help="comma list of: idd (DD group homes, ICF/DD), nursing (SNF, ICF, CLHF), "
-                         "elderly (RCFE), day (adult day programs), other (social rehab, chronically ill)")
-    ap.add_argument("--counties", default=",".join(sorted(BAY_AREA_COUNTIES)),
-                    help="comma list of county names (default: the 9 Bay Area counties)")
-    ap.add_argument("--from-dir", help="read CSVs you downloaded yourself instead of fetching (any file names)")
-    ap.add_argument("--cache", default="downloads", help="where fetched CSVs are kept (default: downloads)")
-    ap.add_argument("--no-cms", action="store_true", help="skip the CMS owner lookup")
-    ap.add_argument("--enrich", action="store_true", help="Google Places website + published email (GOOGLE_MAPS_API_KEY)")
-    ap.add_argument("--limit", type=int, default=0, help="enrich at most N homes (cost control)")
-    ap.add_argument("--inspect", action="store_true", help="print each file's columns and how they were mapped")
-    ap.add_argument("-o", "--out", default="bay_area_care_homes.csv")
-    args = ap.parse_args()
-
-    BAY_AREA_COUNTIES = {c.strip().upper() for c in args.counties.split(",") if c.strip()}
-    groups = {g.strip() for g in args.types.split(",")}
+    counties = counties or set(DEFAULT_COUNTIES)
+    BAY_AREA_COUNTIES = {c.upper() for c in counties}
     s = session()
 
     rows: list[dict] = []
-    if args.from_dir:
-        for path in sorted(Path(args.from_dir).glob("*.csv")):
+    if from_dir:
+        for path in sorted(Path(from_dir).glob("*.csv")):
             name = path.name.lower()
             src = next((x for x in STATE_SOURCES if re.search(x["resource"], name.replace("_", " "), re.I)), None)
             src = src or {"key": "cdph" if "health" in name or "facility" in name else "ccl_arf",
                           "group": "idd", "label": ""}
-            rows += rows_from_file(path, src, args.inspect)
+            rows += rows_from_file(path, src, inspect)
     else:
         for src in STATE_SOURCES:
             if src["key"] == "ccl_rcfe" and "elderly" not in groups:
@@ -449,7 +439,7 @@ def main() -> int:
             if not urls:
                 print(f"  ! {src['key']}: no CSV found; download it by hand and use --from-dir", file=sys.stderr)
             for _, url in urls[:1]:
-                rows += rows_from_file(download(s, url, Path(args.cache)), src, args.inspect)
+                rows += rows_from_file(download(s, url, Path(cache)), src, inspect)
 
     rows = [r for r in rows if r["group"] in groups]
     # One row per home: the same home can appear in several files.
@@ -460,16 +450,16 @@ def main() -> int:
             seen.add(k)
             unique.append(r)
     rows = unique
-    print(f"{len(rows)} licensed homes in {', '.join(sorted(BAY_AREA_COUNTIES)).title()}", file=sys.stderr)
+    print(f"{len(rows)} licensed homes in {', '.join(sorted(counties)).title()}", file=sys.stderr)
 
-    if not args.no_cms and not args.from_dir and groups & {"nursing", "idd"}:
+    if not not cms and not from_dir and groups & {"nursing", "idd"}:
         try:
-            cms = cms_ownership(s, args.inspect)
-            by_phone = {v["phone"]: v for v in cms.values() if v["phone"]}
-            by_addr = {v["address"]: v for v in cms.values() if v["address"]}
+            cms_rows = cms_ownership(s, inspect)
+            by_phone = {v["phone"]: v for v in cms_rows.values() if v["phone"]}
+            by_addr = {v["address"]: v for v in cms_rows.values() if v["address"]}
             matched = 0
             for r in rows:
-                m = (cms.get(r.get("ccn", "")) or by_phone.get(re.sub(r"\D", "", r["phone"]))
+                m = (cms_rows.get(r.get("ccn", "")) or by_phone.get(re.sub(r"\D", "", r["phone"]))
                      or by_addr.get(norm(r["address"])))
                 if m:
                     matched += 1
@@ -480,13 +470,13 @@ def main() -> int:
         except (requests.RequestException, ValueError, KeyError) as e:
             print(f"  ! CMS lookup failed ({e}); continuing without it", file=sys.stderr)
 
-    if args.enrich:
+    if enrich:
         key = os.environ.get("GOOGLE_MAPS_API_KEY")
         if not key:
             print("  ! --enrich needs GOOGLE_MAPS_API_KEY; skipping", file=sys.stderr)
         else:
             robots: dict = {}
-            todo = rows[: args.limit] if args.limit else rows
+            todo = rows[: limit] if limit else rows
             for i, r in enumerate(todo, 1):
                 p = places_lookup(s, key, r)
                 r["website"] = p.get("websiteUri", "")
@@ -501,6 +491,29 @@ def main() -> int:
                     print(f"  enriched {i}/{len(todo)}", file=sys.stderr)
 
     rows.sort(key=lambda r: (r["county"], r["city"], r["facility_name"]))
+    return rows
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--types", default="idd,nursing,elderly,day",
+                    help="comma list of: idd (DD group homes, ICF/DD), nursing (SNF, ICF, CLHF), "
+                         "elderly (RCFE), day (adult day programs), other (social rehab, chronically ill)")
+    ap.add_argument("--counties", default=",".join(sorted(DEFAULT_COUNTIES)),
+                    help="comma list of county names (default: the 9 Bay Area counties)")
+    ap.add_argument("--from-dir", help="read CSVs you downloaded yourself instead of fetching (any file names)")
+    ap.add_argument("--cache", default="downloads", help="where fetched CSVs are kept (default: downloads)")
+    ap.add_argument("--no-cms", action="store_true", help="skip the CMS owner lookup")
+    ap.add_argument("--enrich", action="store_true", help="Google Places website + published email (GOOGLE_MAPS_API_KEY)")
+    ap.add_argument("--limit", type=int, default=0, help="enrich at most N homes (cost control)")
+    ap.add_argument("--inspect", action="store_true", help="print each file's columns and how they were mapped")
+    ap.add_argument("-o", "--out", default="bay_area_care_homes.csv")
+    args = ap.parse_args()
+
+    rows = collect({g.strip() for g in args.types.split(",") if g.strip()},
+                   {c.strip() for c in args.counties.split(",") if c.strip()},
+                   from_dir=args.from_dir, cache=args.cache, cms=not args.no_cms,
+                   enrich=args.enrich, limit=args.limit, inspect=args.inspect)
     with open(args.out, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=OUT_COLUMNS, extrasaction="ignore")
         w.writeheader()
