@@ -1,8 +1,8 @@
 name: Prospecting site
 
-# Publishes tools/prospecting/site to GitHub Pages. config.js is written here
-# from the repository variables SUPABASE_URL and SUPABASE_ANON_KEY (the anon
-# key is public by design; the database rules decide who sees data).
+# Publishes tools/prospecting/site to GitHub Pages. Its config.js holds only
+# public Supabase settings; the database rules decide who sees data. Needs
+# Settings > Pages > Source: GitHub Actions.
 on:
   push:
     branches: [main]
@@ -21,8 +21,6 @@ concurrency:
 jobs:
   deploy:
     name: Publish site
-    # Inert until the owner finishes setup (tools/prospecting/README.md).
-    if: vars.SUPABASE_URL != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -30,12 +28,6 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Write config.js
-        env:
-          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
-        run: |
-          python3 -c 'import json,os; print("window.TRACKER_CONFIG=" + json.dumps({"url": os.environ["SUPABASE_URL"], "anonKey": os.environ["SUPABASE_ANON_KEY"]}) + ";")' > tools/prospecting/site/config.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

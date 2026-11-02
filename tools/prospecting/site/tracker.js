@@ -219,16 +219,27 @@ function wire() {
 		shown += PAGE;
 		render();
 	});
+	const creds = () => ({ email: $('email').value.trim(), password: $('password').value });
 	$('loginForm').addEventListener('submit', async (e) => {
 		e.preventDefault();
-		$('loginMsg').textContent = 'Sending…';
-		const { error } = await sb.auth.signInWithOtp({
-			email: $('email').value.trim(),
-			options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false }
+		$('loginMsg').textContent = 'Signing in…';
+		const { error } = await sb.auth.signInWithPassword(creds());
+		if (error)
+			$('loginMsg').textContent = /confirm/i.test(error.message)
+				? 'Confirm your email first: open the email from Supabase and tap its link, then sign in here.'
+				: `Couldn't sign in: ${error.message}`;
+	});
+	$('signUpBtn').addEventListener('click', async () => {
+		if (!$('loginForm').reportValidity()) return;
+		$('loginMsg').textContent = 'Creating your account…';
+		const { data, error } = await sb.auth.signUp({
+			...creds(),
+			options: { emailRedirectTo: location.origin + location.pathname }
 		});
-		$('loginMsg').textContent = error
-			? `Couldn't send the link: ${error.message}`
-			: 'Check your email and tap the link (it opens this page).';
+		if (error) $('loginMsg').textContent = `Couldn't create the account: ${error.message}`;
+		else if (!data.session)
+			$('loginMsg').textContent =
+				'Account created. Open the email from Supabase and tap its link to confirm (if the page it opens doesn’t load, that’s fine), then sign in here.';
 	});
 	$('signOut').addEventListener('click', async () => {
 		await sb.auth.signOut();
@@ -309,7 +320,7 @@ function wire() {
 	const cfg = window.TRACKER_CONFIG || {};
 	if (!cfg.url || !cfg.anonKey || !window.supabase) {
 		$('list').innerHTML =
-			'<p class="muted">This site isn\'t connected to Supabase yet: set the SUPABASE_URL and SUPABASE_ANON_KEY repository variables and run the Pages workflow again.</p>';
+			'<p class="muted">This site isn\'t connected to Supabase: config.js is missing or the Supabase library didn\'t load. Reload to try again.</p>';
 		return;
 	}
 	sb = window.supabase.createClient(cfg.url, cfg.anonKey);

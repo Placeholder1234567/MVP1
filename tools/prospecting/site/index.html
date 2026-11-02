@@ -163,6 +163,10 @@
 				font-weight: 700;
 				cursor: pointer;
 			}
+			.auth {
+				display: grid;
+				gap: 8px;
+			}
 			.row {
 				display: flex;
 				flex-wrap: wrap;
@@ -340,19 +344,29 @@
 				<section class="panel" id="login" hidden>
 					<h2>Sign in</h2>
 					<p class="muted">
-						Enter your email and tap the link we send you. Only emails added to the tracker can see
-						the list.
+						Only emails added to the tracker can see the list. First time here? Enter your email and
+						a password, then tap Create account.
 					</p>
-					<form id="loginForm" class="row">
+					<form id="loginForm" class="auth">
 						<input
 							id="email"
 							type="email"
 							required
 							autocomplete="email"
 							placeholder="you@example.com"
-							style="flex: 1"
 						/>
-						<button class="btn">Email me a link</button>
+						<input
+							id="password"
+							type="password"
+							required
+							minlength="8"
+							autocomplete="current-password"
+							placeholder="Password (8+ characters)"
+						/>
+						<div class="row">
+							<button class="btn" id="signInBtn">Sign in</button>
+							<button class="ghost" type="button" id="signUpBtn">Create account</button>
+						</div>
 					</form>
 					<p class="muted" id="loginMsg" aria-live="polite"></p>
 				</section>

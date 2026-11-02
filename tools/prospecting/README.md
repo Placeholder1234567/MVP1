@@ -51,35 +51,33 @@ visit date, next step and notes. Nothing runs on a paid server:
 - **Supabase** (free plan) stores the homes and your notes. Its database
   rules only let emails you list read anything.
 - **GitHub Pages** hosts the site (`site/`,
-  `.github/workflows/prospecting-site.yml`). You sign in with a link
-  sent to your email.
+  `.github/workflows/prospecting-site.yml`). You sign in with your email and a
+  password.
 
-### Setup (about 15 minutes, once)
+### Setup
 
-1. **Supabase:** create a free project at supabase.com. Open **SQL Editor**
-   and run `supabase/schema.sql`, then run
-   `insert into public.allowed_users (email) values ('your@email');`.
-2. **Supabase → Authentication → Users → Add user → Create new user:**
-   add the same email and tick "Auto confirm". Sign-up for anyone else stays off.
-3. **Supabase → Project Settings → API:** copy the **Project URL**, the
-   **anon public** key and the **service_role** key.
-4. **GitHub → this repo → Settings → Secrets and variables → Actions:**
-   - Secrets: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (keep the
-     service key secret; it bypasses the database rules).
-   - Variables: `SUPABASE_URL` and `SUPABASE_ANON_KEY` (public by design).
-     Optional: `REFRESH_TYPES` (default `idd,nursing`; add `elderly` for
-     assisted living) and `CONTACT_EMAIL` (sent to the state sites as a
-     courtesy).
-5. **GitHub → Settings → Pages → Source: GitHub Actions.**
-6. **GitHub → Actions → Prospecting site → Run workflow.** It prints the
-   site's address, `https://<your-user>.github.io/<repo>/`.
-7. **Supabase → Authentication → URL Configuration:** set **Site URL** to
-   that address, so sign-in links open the site.
-8. **GitHub → Actions → Prospecting refresh → Run workflow** for the first
-   load. After that it runs every morning on its own.
+The Supabase project (`care-homes`) is already set up: `supabase/schema.sql`
+(tables and access rules) and `supabase/ingest.sql` (the two functions the
+refresh writes through) are applied, and `site/config.js` holds its public
+URL and anon key. What's left is in GitHub:
 
-Open the site on your phone, enter your email and tap the link you get.
-To keep it on your home screen, use Share → Add to Home Screen.
+1. **Settings → Pages → Source: GitHub Actions.**
+2. **Settings → Secrets and variables → Actions → New repository secret:**
+   `REFRESH_TOKEN`, with the refresh token. It can only add homes and log
+   refreshes; it can't read notes. To rotate it, store a new token's SHA-256
+   with the statement at the end of `supabase/ingest.sql`.
+3. **Actions → Prospecting site → Run workflow**. The run shows the site's
+   address. Then **Actions → Prospecting refresh → Run workflow** for the
+   first load; after that it runs every morning on its own.
+4. On the site, enter your email and a password and tap **Create account**,
+   then tap the confirmation link Supabase emails you (the page it opens may
+   not load; the account is confirmed anyway) and sign in. Only emails in
+   `allowed_users` see the list; add one with
+   `insert into public.allowed_users (email) values ('them@example.com');`.
+
+Optional repository variables: `REFRESH_TYPES` (default `idd,nursing`; add
+`elderly` for assisted living) and `CONTACT_EMAIL` (sent to the state sites
+as a courtesy).
 
 ## Before you reach out
 

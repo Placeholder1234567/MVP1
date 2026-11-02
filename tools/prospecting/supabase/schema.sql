@@ -1,6 +1,6 @@
 -- Bay Area care-home tracker: run once in Supabase (SQL Editor > New query).
 -- The daily GitHub Action writes `homes` and `refresh_log` with the
--- service-role key (which skips these rules). The website signs you in by
+-- refresh token through the functions in ingest.sql. The website signs you in by
 -- email link and can only read homes and read/write your outreach notes if
 -- your email is in `allowed_users`.
 
@@ -66,7 +66,7 @@ revoke execute on function public.is_allowed() from public, anon;
 alter table public.homes enable row level security;
 alter table public.outreach enable row level security;
 alter table public.refresh_log enable row level security;
-alter table public.allowed_users enable row level security;  -- no policies: only the SQL editor and service role
+alter table public.allowed_users enable row level security;  -- no policies: only the SQL editor
 
 drop policy if exists homes_read on public.homes;
 create policy homes_read on public.homes for select to authenticated using (public.is_allowed());

@@ -1,4 +1,3 @@
 downloads/
 *.csv
 __pycache__/
-site/config.js
